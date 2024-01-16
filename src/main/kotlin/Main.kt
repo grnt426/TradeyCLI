@@ -65,7 +65,11 @@ val commandHistory = ArrayDeque<String>(emptyList())
 var commandHistoryIndex = 0
 var shipsInShipyard: ShipyardResults? = null
 
+val notifications = mutableListOf("Nothing to report...")
+
 suspend fun main() {
+
+    theScreen()
 
     val agentData = readAgentData()["data"]?.jsonObject
     val agent = Json.decodeFromString<Agent>(agentData?.get("agent").toString())
@@ -279,7 +283,7 @@ suspend fun createAgent() {
     // write to file
 }
 
-fun columnsSdf() {
+fun columns() {
     session {
         section {
             val leftCol = offscreen {
@@ -314,6 +318,129 @@ fun columnsSdf() {
                 index++
             }
         }
+    }
+}
+
+fun theScreen() {
+    session {
+        section {
+            val columnWidth = 40
+            println("Doing thing")
+            val quad1 = blockLineWrap(
+                """
+                    I am the main screen, showing the system and what's going on in it. There can be all kinds of info here.
+                    Stuff like
+                    4 ships in system
+                    2 mining
+                    2 moving
+                    idk, what else the player might need. I'll need to keep playing the game to find out.
+                """.trimIndent(),
+                columnWidth)
+            println("Doing thing")
+            val quad2 = blockLineWrap(
+                """
+                    This is the summary screen. Will summarize the player's assets.
+                    Presence in how many systems.
+                    Total credits.
+                    Total ships.
+                    Whatever.
+                """.trimIndent(),
+                columnWidth
+            )
+            println("Doing thing")
+            val quad3 = blockLineWrap(
+                """
+                    This will show the results of the current command.
+                    Lots of stuff will be here. Mostly the things that I have been trying to render so
+                    far
+                """.trimIndent(),
+                columnWidth
+            )
+            println("Doing thing")
+            val quad4 = blockLineWrap(
+                """
+                    This will show notifications and one-line summaries of things that happened
+                    should be lots of
+                    singular lines looking
+                    kind of like this I guess
+                    so the user will see plenty
+                    of little messages or something
+                """.trimIndent(),
+                columnWidth
+            )
+            println(quad1)
+            columnPair(quad1, quad2, columnWidth, this)
+            columnPair(quad3, quad4, columnWidth, this)
+        }.runUntilKeyPressed(Keys.ESC) { }
+    }
+}
+
+fun columnPair(col1: StringBuilder, col2: StringBuilder, width: Int, mrs: MainRenderScope) {
+    with(mrs) {
+        val left = offscreen {
+            col1.lines().forEach { l -> textLine(l.toString()) }
+        }
+        val leftRenderer = left.createRenderer()
+        val right = offscreen {
+            col2.lines().forEach { l -> textLine(l.toString()) }
+        }
+        val rightRenderer = right.createRenderer()
+        var index = 0
+        while(leftRenderer.hasNextRow() || rightRenderer.hasNextRow()) {
+            var hadRow = false
+            if (leftRenderer.hasNextRow()) {
+                leftRenderer.renderNextRow()
+                hadRow = true
+            }
+            repeat(width - if (hadRow) left.lineLengths[index] else 0 ) { text(" ") }
+
+            // buffer between horizontal quadrants
+            text("  |  ")
+
+            if (rightRenderer.hasNextRow()) {
+                rightRenderer.renderNextRow()
+            }
+
+            textLine()
+            index++
+        }
+
+        // buffer between vertical quadrants
+        repeat(width * 2 + 5) { text("=") }
+        textLine()
+    }
+}
+
+fun blockLineWrap(text: String, width: Int): StringBuilder {
+    val lines = text.lines()
+    return if (lines.size > 1) {
+        val sb = StringBuilder()
+        lines.forEach { l ->
+            println("Wrapping line")
+            textLineWrap(l, width, sb)
+        }
+        println("Finished block wrap of quad")
+        sb
+    }
+    else {
+        StringBuilder(text)
+    }
+}
+
+fun textLineWrap(text: String, width: Int, sb: StringBuilder) {
+    if (text.length > width || text.lines().size > 1) {
+        val chunks = text.length / width
+        var index = 0
+        while (index <= chunks) {
+            println("Breaking line")
+            val storing = text.substring(index * width, min((index + 1) * width, text.length)).trim()
+            sb.appendLine(storing)
+            index++
+        }
+        println("Done breaking line")
+    }
+    else {
+        sb.appendLine(text)
     }
 }
 
