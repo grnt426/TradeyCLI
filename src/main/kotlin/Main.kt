@@ -6,6 +6,7 @@ import com.varabyte.kotter.runtime.MainRenderScope
 import com.varabyte.kotterx.decorations.bordered
 import data.Agent
 import data.Faction
+import data.ShipyardResults
 import data.contract.Contract
 import data.ship.Ship
 import data.system.Orbital
@@ -26,12 +27,15 @@ import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.util.*
 import kotlin.collections.ArrayDeque
+import kotlin.math.max
+import kotlin.math.min
 
 enum class Window {
     MAIN,
     CONTRACT,
     SHIP,
     WAYPOINTS,
+    WAYPOINTS_INFO,
 }
 
 enum class RequestStatus {
@@ -59,6 +63,7 @@ lateinit var renderScope: MainRenderScope
 var waypointsInSystem: List<Orbital> = emptyList()
 val commandHistory = ArrayDeque<String>(emptyList())
 var commandHistoryIndex = 0
+var shipsInShipyard: ShipyardResults? = null
 
 suspend fun main() {
 
@@ -99,6 +104,8 @@ suspend fun main() {
                         textLine("${wp.type} ${wp.symbol}")
                     }
                 }
+
+                Window.WAYPOINTS_INFO -> TODO()
             }
             text("> ");
             (if(setInputTo != null) setInputTo else "")?.let { inital ->
@@ -114,14 +121,14 @@ suspend fun main() {
                     Keys.UP -> {
                         if(commandHistory.size > 0 && commandHistoryIndex < commandHistory.size){
                             setInputTo = commandHistory[commandHistoryIndex]
-                            commandHistoryIndex++
+                            commandHistoryIndex = min(commandHistory.size - 1, commandHistoryIndex++)
                             rerender()
                         }
                     }
                     Keys.DOWN -> {
                         if (commandHistory.size > 0 && commandHistoryIndex >= 0) {
                             setInputTo = commandHistory[commandHistoryIndex]
-                            commandHistoryIndex--
+                            commandHistoryIndex = max(0, commandHistoryIndex--)
                             rerender()
                         }
                     }
@@ -155,12 +162,47 @@ suspend fun main() {
                         }
                         this.clearInput()
                     }
+                    4 -> {
+                        when(command) {
+                            "waypointInfo" -> {
+                                currentView = Window.WAYPOINTS_INFO
+                                getWaypointInfo(args[1], args[2], args[3])
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
     client.close()
+}
+
+
+fun getWaypointInfo(systemSymbol: String, waypointSymbol: String, target: String) {
+    runBlocking {
+        launch {
+            try {
+                withTimeout(2_000) {
+                    val response = client.get {
+                        url("https://api.spacetraders.io/v2/systems/${systemSymbol.uppercase()}/waypoints/${waypointSymbol.uppercase()}/$target")
+                    }
+                    if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
+                        println(response.bodyAsText())
+                        shipsInShipyard = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
+                            Json.decodeFromJsonElement<ShipyardResults>(
+                                it
+                            )
+                        }!!
+                    } else {
+                        println("${response.status} - ${response.bodyAsText()}")
+                    }
+                }
+            } catch (e: TimeoutCancellationException) {
+                println("Timeout getting waypoint data @ $systemSymbol for $waypointSymbol")
+            }
+        }
+    }
 }
 
 /**
@@ -237,7 +279,7 @@ suspend fun createAgent() {
     // write to file
 }
 
-fun columns() {
+fun columnsSdf() {
     session {
         section {
             val leftCol = offscreen {

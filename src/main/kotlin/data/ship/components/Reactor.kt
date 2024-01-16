@@ -8,7 +8,7 @@ data class Reactor(
     val symbol: String,
     val name: String,
     val description: String,
-    val condition: Long,
+    val condition: Long? = null,
     val powerOutput: Long,
     val requirements: Requirements
 )

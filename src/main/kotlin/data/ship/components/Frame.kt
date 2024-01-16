@@ -11,6 +11,6 @@ data class Frame(
     val moduleSlots: Long,
     val mountingPoints: Long,
     val fuelCapacity: Long,
-    val condition: Long,
+    val condition: Long? = null,
     val requirements: Requirements
 )

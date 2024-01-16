@@ -4,10 +4,10 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class Crew(
-    val current: Long,
+    val current: Long? = null,
     val capacity: Long,
     val required: Long,
-    val rotation: String,
-    val morale: Long,
-    val wages: Long
+    val rotation: String? = null,
+    val morale: Long? = null,
+    val wages: Long? = null,
 )
