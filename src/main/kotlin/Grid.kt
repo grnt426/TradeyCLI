@@ -6,9 +6,10 @@ import com.varabyte.kotter.runtime.Section
 import com.varabyte.kotter.runtime.concurrent.createKey
 import com.varabyte.kotter.runtime.render.OffscreenRenderScope
 import com.varabyte.kotter.runtime.render.RenderScope
+import kotlin.math.min
 
 data class GridContext(
-    val width: Int,
+    val width: Int = Int.MAX_VALUE,
     val columns: Int,
     var cellIndex: Int,
     var previousBuffers: MutableList<Pair<List<Int>, OffscreenCommandRenderer>> = mutableListOf()
@@ -26,7 +27,6 @@ fun RenderScope.cell(render: OffscreenRenderScope.() -> Unit) {
     val renderer = content.createRenderer()
     previousBuffers.add(Pair(content.lineLengths, renderer))
 
-    data[gridContextKey]!!.previousBuffers = previousBuffers
     if (data[gridContextKey]!!.cellIndex == columns - 1) {
         flushCells(width)
         data[gridContextKey]!!.cellIndex = 0
@@ -38,25 +38,27 @@ fun RenderScope.cell(render: OffscreenRenderScope.() -> Unit) {
 
 fun RenderScope.flushCells(width: Int) {
     val previousBuffers = data[gridContextKey]!!.previousBuffers
+    var line = 0
     while (hasNextRows(previousBuffers)) {
         previousBuffers.forEachIndexed { index, buf ->
             val renderer = buf.second
             val lineLength = buf.first
             if (renderer.hasNextRow()) {
                 renderer.renderNextRow()
-                repeat(width - lineLength[index]) { text(" ") }
+                repeat(width - lineLength[line]) { text(" ") }
             }
             else {
                 repeat(width) { text(" ") }
             }
         }
         textLine()
+        line++
     }
 
     data[gridContextKey]!!.previousBuffers = mutableListOf()
 }
 
-fun hasNextRows(previousBuffers: MutableList<Pair<List<Int>, OffscreenCommandRenderer>>):
+private fun hasNextRows(previousBuffers: MutableList<Pair<List<Int>, OffscreenCommandRenderer>>):
         Boolean = previousBuffers.fold(false) { anyHas, buf -> anyHas || buf.second.hasNextRow() }
 
 fun RenderScope.grid(width: Int, columns: Int, render: OffscreenRenderScope.() -> Unit) {
@@ -68,4 +70,56 @@ fun RenderScope.grid(width: Int, columns: Int, render: OffscreenRenderScope.() -
         renderer.renderNextRow()
         textLine()
     }
+}
+
+fun RenderScope.wrapText(text: String) {
+    val width = data[gridContextKey]?.width ?: Int.MAX_VALUE
+    if (text.length > width || text.lines().size > 1) {
+        val chunks = text.length / width
+        var index = 0
+        while (index <= chunks) {
+
+            // previous lines won't write a newline, so we only do it if we broke a line
+            // and have more to process
+            if (index > 0)
+                textLine()
+            val broken = text.substring(index * width, min((index + 1) * width, text.length)).trim()
+            text(broken)
+            index++
+        }
+    }
+    else {
+        text(text)
+    }
+}
+
+fun RenderScope.wrapTextLine(text: String) {
+    wrapText(text)
+    textLine()
+}
+
+fun RenderScope.wrapWordText(text: String) {
+    val width = data[gridContextKey]?.width ?: Int.MAX_VALUE
+    if (text.length > width || text.lines().size > 1) {
+        val chunks = text.length / width
+        var index = 0
+        while (index <= chunks) {
+
+            // previous lines won't write a newline, so we only do it if we broke a line
+            // and have more to process
+            if (index > 0)
+                textLine()
+            val broken = text.substring(index * width, min((index + 1) * width, text.length)).trim()
+            text(broken)
+            index++
+        }
+    }
+    else {
+        text(text)
+    }
+}
+
+fun RenderScope.wrapWordTextLine(text: String) {
+    wrapWordText(text)
+    textLine()
 }

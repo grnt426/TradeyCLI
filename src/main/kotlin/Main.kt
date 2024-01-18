@@ -1,14 +1,7 @@
 import com.varabyte.kotter.foundation.input.*
-import com.varabyte.kotter.foundation.render.OffscreenCommandRenderer
-import com.varabyte.kotter.foundation.render.offscreen
 import com.varabyte.kotter.foundation.session
 import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.MainRenderScope
-import com.varabyte.kotter.runtime.Section
-import com.varabyte.kotter.runtime.concurrent.createKey
-import com.varabyte.kotter.runtime.render.OffscreenRenderScope
-import com.varabyte.kotter.runtime.render.RenderScope
-import com.varabyte.kotterx.decorations.bordered
 import data.Agent
 import data.Faction
 import data.ShipyardResults
@@ -71,7 +64,9 @@ val notifications = mutableListOf("Nothing to report...")
 
 suspend fun main() {
 
-    theGoodScreen()
+    gridWithSomeEmptyCells()
+
+    gridWithWrappedText()
 
 //    theScreen()
 
@@ -289,7 +284,25 @@ suspend fun createAgent() {
     // write to file
 }
 
-fun theGoodScreen() {
+fun gridWithWrappedText() {
+    session {
+        section {
+            grid(width = 30, columns = 2) {
+                cell {
+                    wrapTextLine("cell 1 line 1 way too long I think")
+                    textLine("cell 1 line 2")
+                }
+                cell {
+                    textLine("cell 2 line 1")
+                    textLine("cell 2 line 2")
+                    textLine("cell 2 line 3")
+                }
+            }
+        }.runUntilKeyPressed(Keys.ESC)
+    }
+}
+
+fun gridWithSomeEmptyCells() {
     session {
         section {
             grid(width = 30, columns = 3) {
