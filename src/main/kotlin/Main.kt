@@ -2,6 +2,7 @@ import com.varabyte.kotter.foundation.input.*
 import com.varabyte.kotter.foundation.session
 import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.MainRenderScope
+import com.varabyte.kotterx.decorations.bordered
 import data.Agent
 import data.Faction
 import data.ShipyardResults
@@ -305,7 +306,7 @@ fun gridWithWrappedText() {
 fun gridWithSomeEmptyCells() {
     session {
         section {
-            grid(width = 30, columns = 3) {
+            grid(width = 25, columns = 3, GridStyle(true, true, 1, 1)) {
                 cell {
                     yellow {
                         textLine("cell 1 line 1")
@@ -327,9 +328,11 @@ fun gridWithSomeEmptyCells() {
                     textLine("cell 4 line 3")
                 }
                 cell {
-                    textLine("cell 5 line 1")
-                    textLine("cell 5 line 2")
-                    textLine("cell 5 line 3")
+                    bold {
+                        textLine("cell 5 line 1")
+                        textLine("cell 5 line 2")
+                        textLine("cell 5 line 3")
+                    }
                 }
                 cell {
 

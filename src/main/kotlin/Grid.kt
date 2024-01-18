@@ -12,7 +12,15 @@ data class GridContext(
     val width: Int = Int.MAX_VALUE,
     val columns: Int,
     var cellIndex: Int,
-    var previousBuffers: MutableList<Pair<List<Int>, OffscreenCommandRenderer>> = mutableListOf()
+    val gridStyle: GridStyle,
+    var previousBuffers: MutableList<Pair<List<Int>, OffscreenCommandRenderer>> = mutableListOf(),
+)
+
+data class GridStyle(
+    val leftRightWalls:Boolean = false,
+    val topBottomWalls:Boolean = false,
+    val leftRightPadding: Int = 0,
+    val topBottomPadding: Int = 0,
 )
 
 val gridContextKey = Section.Lifecycle.createKey<GridContext>()
@@ -28,7 +36,7 @@ fun RenderScope.cell(render: OffscreenRenderScope.() -> Unit) {
     previousBuffers.add(Pair(content.lineLengths, renderer))
 
     if (data[gridContextKey]!!.cellIndex == columns - 1) {
-        flushCells(width)
+        flushCells()
         data[gridContextKey]!!.cellIndex = 0
     }
     else {
@@ -36,36 +44,65 @@ fun RenderScope.cell(render: OffscreenRenderScope.() -> Unit) {
     }
 }
 
-fun RenderScope.flushCells(width: Int) {
+fun RenderScope.flushCells() {
     val previousBuffers = data[gridContextKey]!!.previousBuffers
     var line = 0
+    val gridStyle = data[gridContextKey]!!.gridStyle
+    val leftRightPadding = gridStyle.leftRightPadding
+    val topBottomPadding = gridStyle.topBottomPadding
+    val width = data[gridContextKey]!!.width
+
     while (hasNextRows(previousBuffers)) {
         previousBuffers.forEachIndexed { index, buf ->
+            if (gridStyle.leftRightWalls)
+                text("|")
             val renderer = buf.second
             val lineLength = buf.first
             if (renderer.hasNextRow()) {
+                repeat(leftRightPadding) { text(" ") }
                 renderer.renderNextRow()
-                repeat(width - lineLength[line]) { text(" ") }
+                repeat(width - lineLength[line] + leftRightPadding) { text(" ") }
             }
             else {
-                repeat(width) { text(" ") }
+                repeat(leftRightPadding * 2 + width) { text(" ") }
             }
         }
-        textLine()
+        if (gridStyle.leftRightWalls)
+            text("|")
+        repeat(topBottomPadding) { textLine() }
         line++
     }
 
+    renderTopBottomCellWalls()
     data[gridContextKey]!!.previousBuffers = mutableListOf()
+}
+
+private fun RenderScope.renderTopBottomCellWalls() {
+    val columns = data[gridContextKey]!!.columns
+    val gridStyle = data[gridContextKey]!!.gridStyle
+    val leftRightPadding = gridStyle.leftRightPadding
+    val width = data[gridContextKey]!!.width
+
+    if (gridStyle.topBottomWalls) {
+        val wallExtra = if (gridStyle.leftRightWalls) 2 else 0
+        repeat((leftRightPadding * 2 + width) * columns + wallExtra * (columns - 1)) { text("-") }
+        textLine()
+    }
 }
 
 private fun hasNextRows(previousBuffers: MutableList<Pair<List<Int>, OffscreenCommandRenderer>>):
         Boolean = previousBuffers.fold(false) { anyHas, buf -> anyHas || buf.second.hasNextRow() }
 
-fun RenderScope.grid(width: Int, columns: Int, render: OffscreenRenderScope.() -> Unit) {
-    data[gridContextKey] = GridContext(width, columns, 0)
+fun RenderScope.grid(
+    width: Int,
+    columns: Int,
+    gridStyle: GridStyle = GridStyle(),
+    render: OffscreenRenderScope.() -> Unit) {
+    data[gridContextKey] = GridContext(width, columns, 0, gridStyle)
 
     val content = offscreen(render)
     val renderer = content.createRenderer()
+    renderTopBottomCellWalls()
     while (renderer.hasNextRow()) {
         renderer.renderNextRow()
         textLine()
@@ -98,20 +135,29 @@ fun RenderScope.wrapTextLine(text: String) {
     textLine()
 }
 
+// Below is TODO
 fun RenderScope.wrapWordText(text: String) {
     val width = data[gridContextKey]?.width ?: Int.MAX_VALUE
     if (text.length > width || text.lines().size > 1) {
-        val chunks = text.length / width
-        var index = 0
-        while (index <= chunks) {
+        text.lines().forEach { line ->
+            var consumedIndex = 0
+            while (consumedIndex < text.length) {
+                val extractedLine = StringBuilder()
+                var spaceIndex = text.indexOf(" ", consumedIndex)
+                var word = text.substring(consumedIndex, spaceIndex)
+                do {
+                    extractedLine.append(word)
+                    consumedIndex = spaceIndex
+                    spaceIndex = text.indexOf(" ", consumedIndex)
+                    word = text.substring(consumedIndex, spaceIndex)
+                } while(line.length + word.length <= width)
 
-            // previous lines won't write a newline, so we only do it if we broke a line
-            // and have more to process
-            if (index > 0)
-                textLine()
-            val broken = text.substring(index * width, min((index + 1) * width, text.length)).trim()
-            text(broken)
-            index++
+                // in the case where the text is a single long "word", then fallback to
+                // regular wrapText to not exceed the width
+                if (consumedIndex == 0) {
+
+                }
+            }
         }
     }
     else {
