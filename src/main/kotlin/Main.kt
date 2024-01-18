@@ -1,8 +1,13 @@
 import com.varabyte.kotter.foundation.input.*
+import com.varabyte.kotter.foundation.render.OffscreenCommandRenderer
 import com.varabyte.kotter.foundation.render.offscreen
 import com.varabyte.kotter.foundation.session
 import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.MainRenderScope
+import com.varabyte.kotter.runtime.Section
+import com.varabyte.kotter.runtime.concurrent.createKey
+import com.varabyte.kotter.runtime.render.OffscreenRenderScope
+import com.varabyte.kotter.runtime.render.RenderScope
 import com.varabyte.kotterx.decorations.bordered
 import data.Agent
 import data.Faction
@@ -11,21 +16,18 @@ import data.contract.Contract
 import data.ship.Ship
 import data.system.Orbital
 import io.ktor.client.*
-import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.client.plugins.auth.*
 import io.ktor.client.plugins.auth.providers.*
 import io.ktor.http.*
-import io.ktor.util.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import java.io.File
-import java.util.*
 import kotlin.collections.ArrayDeque
 import kotlin.math.max
 import kotlin.math.min
@@ -66,10 +68,18 @@ var commandHistoryIndex = 0
 var shipsInShipyard: ShipyardResults? = null
 
 val notifications = mutableListOf("Nothing to report...")
+val colWidth = Section.Lifecycle.createKey<Int>()
+val columnCount = Section.Lifecycle.createKey<Int>()
+val cellIndex = Section.Lifecycle.createKey<Int>()
+val prevBuffers = Section.Lifecycle.createKey<MutableList<Pair<List<Int>, OffscreenCommandRenderer>>>()
 
 suspend fun main() {
 
-    theScreen()
+    theGoodScreen()
+
+//    theScreen()
+
+    return
 
     val agentData = readAgentData()["data"]?.jsonObject
     val agent = Json.decodeFromString<Agent>(agentData?.get("agent").toString())
@@ -283,47 +293,77 @@ suspend fun createAgent() {
     // write to file
 }
 
-fun columns() {
+fun theGoodScreen() {
     session {
         section {
-            val leftCol = offscreen {
-                bordered {
+            grid(width = 30, columns = 3) {
+                cell {
+                    yellow {
+                        textLine("cell 1 line 1")
+                        textLine("cell 1 line 2")
+                    }
+                }
+                cell {
+
+                }
+                cell {
+                    textLine("cell 3 line 1")
+                    textLine("cell 3 line 2")
+                    textLine("cell 3 line 3")
+                }
+
+                cell {
+                    textLine("cell 4 line 1")
+                    textLine("cell 4 line 2")
+                    textLine("cell 4 line 3")
+                }
+                cell {
+                    textLine("cell 5 line 1")
+                    textLine("cell 5 line 2")
+                    textLine("cell 5 line 3")
+                }
+                cell {
 
                 }
             }
-            val leftRenderer = leftCol.createRenderer()
-
-            val rightCol = offscreen {
-                bordered {
-                    textLine("Hello World from the Right!")
-                    textLine("row 3 row 3")
-                }
-            }
-            val rightRenderer = rightCol.createRenderer()
-
-            var index = 0
-            while(leftRenderer.hasNextRow() || rightRenderer.hasNextRow()) {
-                var hadRow = false
-                if (leftRenderer.hasNextRow()) {
-                    leftRenderer.renderNextRow()
-                    hadRow = true
-                }
-                repeat(40 - if (hadRow) leftCol.lineLengths[index] else 0 ) { text(" ") }
-
-                if (rightRenderer.hasNextRow()) {
-                    rightRenderer.renderNextRow()
-                }
-
-                textLine()
-                index++
-            }
-        }
+        }.runUntilKeyPressed(Keys.ESC)
     }
 }
 
 fun theScreen() {
     session {
         section {
+
+                table {
+                    row {
+                        col {
+                            yellow {
+                                textLine("1")
+                            }
+                        }
+                        col {
+                            textLine("2")
+                            textLine("3")
+                        }
+                    }
+                }
+        }.runUntilKeyPressed(Keys.ESC)
+    }
+
+    return
+
+    session {
+        section {
+
+//            columns(2) {
+//                row{
+//                    text("fuck it")
+//                }
+//                row {
+//                    text("fuck it twice")
+//                }
+//            }
+
             val columnWidth = 40
             println("Doing thing")
             val quad1 = blockLineWrap(
@@ -335,7 +375,8 @@ fun theScreen() {
                     2 moving
                     idk, what else the player might need. I'll need to keep playing the game to find out.
                 """.trimIndent(),
-                columnWidth)
+                columnWidth
+            )
             println("Doing thing")
             val quad2 = blockLineWrap(
                 """
@@ -375,14 +416,60 @@ fun theScreen() {
     }
 }
 
+
+
+fun RenderScope.table(render: OffscreenRenderScope.() -> Unit) {
+    val content = offscreen(render)
+    val renderer = content.createRenderer()
+    var count = 0
+    while (renderer.hasNextRow()) {
+        renderer.renderNextRow()
+        textLine()
+        count++
+    }
+    println("table did $count renders")
+}
+
+fun RenderScope.col(render: OffscreenRenderScope.() -> Unit) {
+    println("Col called")
+    val content = offscreen(render)
+    val renderer = content.createRenderer()
+    var count = 0
+    while (renderer.hasNextRow()) {
+        renderer.renderNextRow()
+        textLine()
+        count++
+    }
+//    data.putIfAbsent(rowLinesWritten, provideInitialValue = { mutableListOf(count) }, block = {
+//        this.add(count)
+//    })
+    println("Row did $count renders")
+}
+
+private fun RenderScope.row(render: OffscreenRenderScope.() -> Unit) {
+    val colLinesWritten = Section.Lifecycle.createKey<MutableList<Int>>()
+    println("called row")
+    val content = offscreen(render)
+    val renderer = content.createRenderer()
+    var count = 0
+    while (renderer.hasNextRow()) {
+        renderer.renderNextRow()
+        textLine()
+        count++
+    }
+    println("row did $count renders")
+}
+
+
+
 fun columnPair(col1: StringBuilder, col2: StringBuilder, width: Int, mrs: MainRenderScope) {
     with(mrs) {
         val left = offscreen {
-            col1.lines().forEach { l -> textLine(l.toString()) }
+            col1.lines().forEach { l -> textLine(l) }
         }
         val leftRenderer = left.createRenderer()
         val right = offscreen {
-            col2.lines().forEach { l -> textLine(l.toString()) }
+            col2.lines().forEach { l -> textLine(l) }
         }
         val rightRenderer = right.createRenderer()
         var index = 0
