@@ -309,7 +309,7 @@ fun gridWithSomeEmptyCells() {
             grid(width = 25, columns = 3, GridStyle(true, true, 1, 1)) {
                 cell {
                     yellow {
-                        textLine("cell 1 line 1")
+                        wrapTextLine("cell 1 line 1 long line is split up no word wrap yet :(")
                         textLine("cell 1 line 2")
                     }
                 }

@@ -23,6 +23,10 @@ data class GridStyle(
     val topBottomPadding: Int = 0,
 )
 
+val CELL_WALL = "|"
+val CELL_CEIL = "-"
+val CELL_VERT = "<"
+
 val gridContextKey = Section.Lifecycle.createKey<GridContext>()
 
 fun RenderScope.cell(render: OffscreenRenderScope.() -> Unit) {
@@ -55,7 +59,7 @@ fun RenderScope.flushCells() {
     while (hasNextRows(previousBuffers)) {
         previousBuffers.forEachIndexed { index, buf ->
             if (gridStyle.leftRightWalls)
-                text("|")
+                text(CELL_WALL)
             val renderer = buf.second
             val lineLength = buf.first
             if (renderer.hasNextRow()) {
@@ -68,7 +72,7 @@ fun RenderScope.flushCells() {
             }
         }
         if (gridStyle.leftRightWalls)
-            text("|")
+            text(CELL_WALL)
         repeat(topBottomPadding) { textLine() }
         line++
     }
@@ -85,7 +89,7 @@ private fun RenderScope.renderTopBottomCellWalls() {
 
     if (gridStyle.topBottomWalls) {
         val wallExtra = if (gridStyle.leftRightWalls) 2 else 0
-        repeat((leftRightPadding * 2 + width) * columns + wallExtra * (columns - 1)) { text("-") }
+        repeat((leftRightPadding * 2 + width) * columns + wallExtra * (columns - 1)) { text(CELL_CEIL) }
         textLine()
     }
 }
