@@ -1,30 +1,38 @@
+import com.varabyte.kotter.foundation.LiveVar
+import com.varabyte.kotter.foundation.anim.TextAnim
+import com.varabyte.kotter.foundation.anim.text
+import com.varabyte.kotter.foundation.anim.textAnimOf
 import com.varabyte.kotter.foundation.input.*
+import com.varabyte.kotter.foundation.liveVarOf
 import com.varabyte.kotter.foundation.session
 import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.MainRenderScope
-import com.varabyte.kotterx.decorations.bordered
-import data.Agent
-import data.Faction
-import data.ShipyardResults
+import com.varabyte.kotterx.grid.Cols
+import com.varabyte.kotterx.grid.grid
+import data.*
 import data.contract.Contract
 import data.ship.Ship
-import data.system.Orbital
+import data.system.System
+import data.system.WaypointType
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.client.plugins.auth.*
 import io.ktor.client.plugins.auth.providers.*
+import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.*
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.*
+import java.awt.Color
 import java.io.File
+import java.time.LocalDateTime
 import kotlin.collections.ArrayDeque
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.time.Duration.Companion.milliseconds
 
 enum class Window {
     MAIN,
@@ -47,34 +55,47 @@ val client = HttpClient(CIO) {
     install(Auth) {
         bearer {
             loadTokens {
-                val token = File("authtoken.secret").readText()
+                val token = File("profile/authtoken.secret").readText()
                 BearerTokens(token, token)
             }
         }
+    }
+    install(ContentNegotiation) {
+        json()
     }
 }
 
 var awaitContract = RequestStatus.NONE
 lateinit var renderScope: MainRenderScope
-var waypointsInSystem: List<Orbital> = emptyList()
+var waypointsInSystem: List<System> = emptyList()
 val commandHistory = ArrayDeque<String>(emptyList())
 var commandHistoryIndex = 0
 var shipsInShipyard: ShipyardResults? = null
 
 val notifications = mutableListOf("Nothing to report...")
 
+lateinit var liveCredits: LiveVar<Long>
+
 suspend fun main() {
 
-    gridWithSomeEmptyCells()
+    val gameState = GameState()
 
-    gridWithWrappedText()
+    val resp = callGet<Agent>(request {
+        url("https://api.spacetraders.io/v2/my/agent")
+    }) ?: Agent(
+        "empty",
+        "empty",
+        "empty",
+        0L,
+        "lsjfkldj",
+        0L
+    )
 
-//    theScreen()
+    println("Agent stuff: ${resp.accountId} as of ${resp.timestamp}")
 
-    return
-
+    var agent = gameState.agent
+    var hq = gameState.getHqSystem()
     val agentData = readAgentData()["data"]?.jsonObject
-    val agent = Json.decodeFromString<Agent>(agentData?.get("agent").toString())
     val faction = Json.decodeFromString<Faction>(agentData?.get("faction").toString())
     val ship = Json.decodeFromString<Ship>(agentData?.get("ship").toString())
     val contract = Json.decodeFromString<Contract>(agentData?.get("contract").toString())
@@ -82,36 +103,74 @@ suspend fun main() {
     var setInputTo: String? = null
 
     session {
+        val notificationBlink = TextAnim.Template(listOf(" + ", " - "), 500.milliseconds)
+        val anim = textAnimOf(notificationBlink)
+        liveCredits = liveVarOf(agent.credits)
+
         section {
             renderScope = this
-            when(currentView) {
-                Window.MAIN -> {
-                    textLine("${agent.symbol} - $${agent.credits}")
+
+            grid(cols = Cols.uniform(2, gameState.profData.termWidth / 2)) {
+                cell {
+                    when (currentView) {
+                        Window.MAIN -> {
+                            underline {
+                                rgb(Color(20, 80, 180).rgb) {
+                                    textLine("HQ: ${hq.symbol}")
+                                }
+                            }
+                            var asteroids = 0
+                            hq.waypoints.forEach { o ->
+                                if (o.type == WaypointType.ASTEROID)
+                                    asteroids++
+                                else
+                                    textLine("${o.symbol} - ${o.type}")
+                            }
+                            textLine("Asteroids - $asteroids")
+                        }
+
+                        Window.CONTRACT -> {
+                            textLine("${contract.id} - ${contract.type} - ${if (contract.accepted) "Accepted" else "Waiting"}")
+                            val deliveryTerms = contract.terms.deliver[0]
+                            textLine("${deliveryTerms.unitsRequired} ${deliveryTerms.tradeSymbol} to ${deliveryTerms.destinationSymbol}")
+
+                            when (awaitContract) {
+                                RequestStatus.STARTED -> textLine("Awaiting Response to contract acceptance")
+                                RequestStatus.SUCCESS -> textLine("Contract accepted")
+                                RequestStatus.TIMEOUT -> textLine("Contract timeout")
+                                RequestStatus.FAILED -> textLine("Failed to accept contract")
+                                RequestStatus.NONE -> textLine("No contracts in process")
+                            }
+                        }
+
+                        Window.SHIP -> TODO()
+                        Window.WAYPOINTS -> {
+                            waypointsInSystem.forEach { wp ->
+                                textLine("${wp.type} ${wp.symbol}")
+                            }
+                        }
+
+                        Window.WAYPOINTS_INFO -> TODO()
+                    }
+                }
+
+                cell {
+                    textLine("${agent.symbol} - $${liveCredits.value}")
                     textLine("${faction.name} - ${faction.description}")
                     textLine("${ship.registration.name} flying with ${ship.crew.current} in ${ship.nav.systemSymbol}")
-                    textLine("Please accept by ${contract.deadlineToAccept} and deliver ${contract.terms.deliver[0].tradeSymbol}")
-                }
-                Window.CONTRACT -> {
-                    textLine("${contract.id} - ${contract.type} - ${if(contract.accepted) "Accepted" else "Waiting"}")
-                    val deliveryTerms = contract.terms.deliver[0]
-                    textLine("${deliveryTerms.unitsRequired} ${deliveryTerms.tradeSymbol} to ${deliveryTerms.destinationSymbol}")
-
-                    when(awaitContract) {
-                        RequestStatus.STARTED -> textLine("Awaiting Response to contract acceptance")
-                        RequestStatus.SUCCESS -> textLine("Contract accepted")
-                        RequestStatus.TIMEOUT -> textLine("Contract timeout")
-                        RequestStatus.FAILED -> textLine("Failed to accept contract")
-                        RequestStatus.NONE -> textLine("No contracts in process")
-                    }
-                }
-                Window.SHIP -> TODO()
-                Window.WAYPOINTS -> {
-                    waypointsInSystem.forEach { wp ->
-                        textLine("${wp.type} ${wp.symbol}")
-                    }
                 }
 
-                Window.WAYPOINTS_INFO -> TODO()
+                cell {
+                    textLine("Current command stuff")
+                }
+
+                cell {
+                    textLine(" * Old Notification")
+                    green { text(anim) }
+                    textLine("New Notification")
+                    green { text(anim) }
+                    textLine("New Notification")
+                }
             }
             text("> ");
             (if(setInputTo != null) setInputTo else "")?.let { inital ->
@@ -144,33 +203,36 @@ suspend fun main() {
             onInputEntered {
                 commandHistoryIndex = 0
                 commandHistory.addFirst(input)
-                val args = input.split(" ")
+                val args = input.split(" ").map { str -> str.uppercase() }
                 val command = args[0]
                 when(args.size) {
                     1 -> {
                         when(command) {
-                            "contracts" -> currentView = Window.CONTRACT
+                            "CONTRACTS" -> currentView = Window.CONTRACT
                         }
                         this.clearInput()
                     }
                     2 -> {
                         when(command) {
-                            "accept" -> acceptContract(args[1], this)
+                            "ACCEPT" -> acceptContract(args[1], this)
                         }
                         this.clearInput()
                     }
                     3 -> {
                         when(command) {
-                            "waypoints" -> {
+                            "WAYPOINTS" -> {
                                 currentView = Window.WAYPOINTS
-                                getWaypoints(args[1].uppercase(), args[2].uppercase())
+                                getWaypoints(args[1], args[2])
+                            }
+                            "PURCHASESHIP" -> {
+                                purchaseShip(args[1], args[2])
                             }
                         }
                         this.clearInput()
                     }
                     4 -> {
                         when(command) {
-                            "waypointInfo" -> {
+                            "WAYPOINTINFO" -> {
                                 currentView = Window.WAYPOINTS_INFO
                                 getWaypointInfo(args[1], args[2], args[3])
                             }
@@ -184,6 +246,32 @@ suspend fun main() {
     client.close()
 }
 
+inline fun <reified T: LastRead> callGet(request: HttpRequestBuilder): T? {
+    var result: T? = null
+    runBlocking {
+        launch {
+            try {
+                withTimeout(2_000) {
+                    val response = client.get(request)
+                    if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
+                        println(response.bodyAsText())
+                        result = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
+                            Json.decodeFromJsonElement<T>(
+                                it
+                            )
+                        }!!
+                        result!!.timestamp = LocalDateTime.now().toString()
+                    } else {
+                        println("${response.status} - ${response.bodyAsText()}")
+                    }
+                }
+            } catch (e: TimeoutCancellationException) {
+                println("Timeout")
+            }
+        }
+    }
+    return result
+}
 
 fun getWaypointInfo(systemSymbol: String, waypointSymbol: String, target: String) {
     runBlocking {
@@ -211,6 +299,33 @@ fun getWaypointInfo(systemSymbol: String, waypointSymbol: String, target: String
     }
 }
 
+fun purchaseShip(shipType: String, waypointSymbol: String) {
+
+    @Serializable
+    data class ShipPurchase(val shipType: String, val waypointSymbol: String)
+
+    runBlocking {
+        launch {
+            try {
+                withTimeout(2_000) {
+                    val response = client.post {
+                        url("https://api.spacetraders.io/v2/my/ships")
+                        contentType(ContentType.Application.Json)
+                        setBody(ShipPurchase(shipType, waypointSymbol))
+                    }
+                    if (response.status == HttpStatusCode.OK) {
+                        println("Success ${response.bodyAsText()}")
+                    } else {
+                        println("${response.status} - ${response.bodyAsText()}")
+                    }
+                }
+            } catch (e: TimeoutCancellationException) {
+                println("Timeout buying ship @ $shipType for $waypointSymbol")
+            }
+        }
+    }
+}
+
 /**
  * TODO: Paginated API
  */
@@ -222,11 +337,11 @@ fun getWaypoints(systemSymbol: String, trait: String) {
                     val response = client.get {
                         url("https://api.spacetraders.io/v2/systems/$systemSymbol/waypoints")
                         parameter("traits", trait)
-                        println("Built URL ${this.url.toString()}")
+                        println("Built URL ${this.url}")
                     }
                     if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
                         waypointsInSystem = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
-                            Json.decodeFromJsonElement<List<Orbital>>(
+                            Json.decodeFromJsonElement<List<System>>(
                                 it
                             )
                         }!!
@@ -283,96 +398,6 @@ suspend fun createAgent() {
     }.bodyAsText())
 
     // write to file
-}
-
-fun gridWithWrappedText() {
-    session {
-        section {
-            grid(width = 30, columns = 2) {
-                cell {
-                    wrapTextLine("cell 1 line 1 way too long I think")
-                    textLine("cell 1 line 2")
-                }
-                cell {
-                    textLine("cell 2 line 1")
-                    textLine("cell 2 line 2")
-                    textLine("cell 2 line 3")
-                }
-            }
-        }.runUntilKeyPressed(Keys.ESC)
-    }
-}
-
-fun gridWithSomeEmptyCells() {
-    session {
-        section {
-            grid(width = 25, columns = 3, GridStyle(true, true, 1, 1)) {
-                cell {
-                    yellow {
-                        wrapTextLine("cell 1 line 1 long line is split up no word wrap yet :(")
-                        textLine("cell 1 line 2")
-                    }
-                }
-                cell {
-
-                }
-                cell {
-                    textLine("cell 3 line 1")
-                    textLine("cell 3 line 2")
-                    textLine("cell 3 line 3")
-                }
-
-                cell {
-                    textLine("cell 4 line 1")
-                    textLine("cell 4 line 2")
-                    textLine("cell 4 line 3")
-                }
-                cell {
-                    bold {
-                        textLine("cell 5 line 1")
-                        textLine("cell 5 line 2")
-                        textLine("cell 5 line 3")
-                    }
-                }
-                cell {
-
-                }
-            }
-        }.runUntilKeyPressed(Keys.ESC)
-    }
-}
-
-fun blockLineWrap(text: String, width: Int): StringBuilder {
-    val lines = text.lines()
-    return if (lines.size > 1) {
-        val sb = StringBuilder()
-        lines.forEach { l ->
-            println("Wrapping line")
-            textLineWrap(l, width, sb)
-        }
-        println("Finished block wrap of quad")
-        sb
-    }
-    else {
-        StringBuilder(text)
-    }
-}
-
-fun textLineWrap(text: String, width: Int, sb: StringBuilder) {
-    if (text.length > width || text.lines().size > 1) {
-        val chunks = text.length / width
-        var index = 0
-        while (index <= chunks) {
-            println("Breaking line")
-            val storing = text.substring(index * width, min((index + 1) * width, text.length)).trim()
-            sb.appendLine(storing)
-            index++
-        }
-        println("Done breaking line")
-    }
-    else {
-        sb.appendLine(text)
-    }
 }
 
 suspend fun readAgentData(): JsonObject = Json.decodeFromString(File("agentdata.secret").readText())

@@ -11,10 +11,13 @@ val ktorVersion: String by project
 
 repositories {
     mavenCentral()
+    maven {
+        url = uri("https://s01.oss.sonatype.org/content/repositories/snapshots/")
+    }
 }
 
 dependencies {
-    implementation("com.varabyte.kotter:kotter-jvm:1.1.1")
+    implementation("com.varabyte.kotter:kotter-jvm:1.1.2-SNAPSHOT")
     implementation("io.ktor:ktor-client-core:$ktorVersion")
     implementation("io.ktor:ktor-client-cio:$ktorVersion")
     implementation("io.ktor:ktor-client-auth:$ktorVersion")

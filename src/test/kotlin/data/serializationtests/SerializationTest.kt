@@ -5,6 +5,7 @@ import data.Faction
 import data.ShipyardResults
 import data.contract.Contract
 import data.ship.Ship
+import data.system.System
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -32,5 +33,11 @@ class SerializationTest {
         agentData?.get("faction")?.let { Json.decodeFromJsonElement<Faction>(it.jsonObject) }
         agentData?.get("ship")?.let { Json.decodeFromJsonElement<Ship>(it.jsonObject) }
         agentData?.get("contract")?.let { Json.decodeFromJsonElement<Contract>(it) }
+    }
+
+    @Test
+    fun `can read response from systems`() {
+        val file = File("src/test/resources/systems_result.json").readText()
+        val system = Json.decodeFromString<System>(file)
     }
 }

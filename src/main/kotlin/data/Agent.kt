@@ -9,5 +9,5 @@ class Agent(
     val headquarters: String,
     val credits: Long,
     val startingFaction: String,
-    val shipCount: Long
-)
+    val shipCount: Long,
+) : LastRead()

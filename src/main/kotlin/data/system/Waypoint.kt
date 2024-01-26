@@ -5,17 +5,14 @@ import data.Trait
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class Orbital(
-    val systemSymbol: String,
+data class Waypoint(
     val symbol: String,
-    val type: String,
+    val type: WaypointType,
     val x: Long,
     val y: Long,
-    val orbitals: List<Orbital> = emptyList(),
+    val orbitals: List<OrbitingBodies> = emptyList(),
     val traits: List<Trait> = emptyList(),
     val modifiers: List<String> = emptyList(),
-    val chart: Chart,
-    val faction: Faction,
-    val orbits: String,
-    val isUnderConstruction: Boolean
+    val orbits: String? = null,
+    val isUnderConstruction: Boolean? = null
 )
