@@ -27,8 +27,11 @@ class GameState(profileDataFile: String = DEFAULT_PROF_FILE) {
 
     private fun loadSystems(): MutableMap<String, System> {
         val systems = mutableMapOf<String, System>()
-        File("$DEFAULT_PROF_FILE/systems").walk().forEach { s ->
-            systems[s.nameWithoutExtension.uppercase()] = Json.decodeFromString(s.readText())
+        File("$DEFAULT_PROF_DIR/systems").walk().forEach { s ->
+            if(s.isFile && s.canRead()) {
+                println("Attempting to load file ${s.name}")
+                systems[s.nameWithoutExtension.uppercase()] = Json.decodeFromString(s.readText())
+            }
         }
 
         return systems
@@ -51,13 +54,13 @@ class GameState(profileDataFile: String = DEFAULT_PROF_FILE) {
 
         if (system != null) {
             systems[systemName] = system
-
+            saveSystem(systemName)
         }
 
         return system
     }
 
     private fun saveSystem(systemName: String) {
-        File("$DEFAULT_PROF_FILE/systems/$systemName").writeText(Json.encodeToString(systems[systemName]))
+        File("$DEFAULT_PROF_DIR/systems/$systemName").writeText(Json.encodeToString(systems[systemName]))
     }
 }

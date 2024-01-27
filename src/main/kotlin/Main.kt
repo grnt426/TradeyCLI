@@ -76,6 +76,14 @@ val notifications = mutableListOf("Nothing to report...")
 
 lateinit var liveCredits: LiveVar<Long>
 
+enum class QuadSelect {
+    MAIN,
+    SUMM,
+    COMM,
+    NOTF,
+    NONE
+}
+
 suspend fun main() {
 
     val gameState = GameState()
@@ -91,6 +99,10 @@ suspend fun main() {
         0L
     )
 
+    val HEADER_COLOR = Color(16, 66, 182)
+    val SELECTED_HEADER_COLOR = Color(26, 208, 222)
+
+
     println("Agent stuff: ${resp.accountId} as of ${resp.timestamp}")
 
     var agent = gameState.agent
@@ -103,6 +115,7 @@ suspend fun main() {
     var setInputTo: String? = null
 
     session {
+        var selectedQuad by liveVarOf(QuadSelect.NONE)
         val notificationBlink = TextAnim.Template(listOf(" + ", " - "), 500.milliseconds)
         val anim = textAnimOf(notificationBlink)
         liveCredits = liveVarOf(agent.credits)
@@ -112,10 +125,11 @@ suspend fun main() {
 
             grid(cols = Cols.uniform(2, gameState.profData.termWidth / 2)) {
                 cell {
+                    val headerColor = if (selectedQuad != QuadSelect.MAIN) HEADER_COLOR else SELECTED_HEADER_COLOR
                     when (currentView) {
                         Window.MAIN -> {
                             underline {
-                                rgb(Color(20, 80, 180).rgb) {
+                                rgb(headerColor.rgb) {
                                     textLine("HQ: ${hq.symbol}")
                                 }
                             }
@@ -173,16 +187,26 @@ suspend fun main() {
                 }
             }
             text("> ");
-            (if(setInputTo != null) setInputTo else "")?.let { inital ->
+            (if(setInputTo != null) setInputTo else "")?.let { initial ->
                 input(Completions(*ACTIONS.toTypedArray()),
-                    inital
+                    initial
                 )
             }
         }.runUntilKeyPressed(Keys.ESC) {
-
-            // Doesn't quite work...
             onKeyPressed {
+                println("Pressed: $key ${key.hashCode()}")
                 when(key) {
+                    Keys.DIGIT_1 -> {
+                        val inputLen = (getInput()?.length ?: 0)
+                        println("Input len $inputLen")
+                        if (inputLen == 1) {
+                            selectedQuad = QuadSelect.MAIN
+                            setInput("")
+                            println("One pressed")
+                        }
+                    }
+
+                    // Doesn't quite work...
                     Keys.UP -> {
                         if(commandHistory.size > 0 && commandHistoryIndex < commandHistory.size){
                             setInputTo = commandHistory[commandHistoryIndex]
@@ -197,47 +221,61 @@ suspend fun main() {
                             rerender()
                         }
                     }
+                    Keys.TAB -> {
+                        if (selectedQuad != QuadSelect.NONE) {
+                            selectedQuad = QuadSelect.NONE
+                        }
+                    }
                 }
             }
 
             onInputEntered {
-                commandHistoryIndex = 0
-                commandHistory.addFirst(input)
-                val args = input.split(" ").map { str -> str.uppercase() }
-                val command = args[0]
-                when(args.size) {
-                    1 -> {
-                        when(command) {
-                            "CONTRACTS" -> currentView = Window.CONTRACT
-                        }
-                        this.clearInput()
-                    }
-                    2 -> {
-                        when(command) {
-                            "ACCEPT" -> acceptContract(args[1], this)
-                        }
-                        this.clearInput()
-                    }
-                    3 -> {
-                        when(command) {
-                            "WAYPOINTS" -> {
-                                currentView = Window.WAYPOINTS
-                                getWaypoints(args[1], args[2])
+                if (selectedQuad == QuadSelect.NONE) {
+                    commandHistoryIndex = 0
+                    commandHistory.addFirst(input)
+                    val args = input.split(" ").map { str -> str.uppercase() }
+                    val command = args[0]
+                    when (args.size) {
+                        1 -> {
+                            when (command) {
+                                "CONTRACTS" -> currentView = Window.CONTRACT
                             }
-                            "PURCHASESHIP" -> {
-                                purchaseShip(args[1], args[2])
+                            this.clearInput()
+                        }
+
+                        2 -> {
+                            when (command) {
+                                "ACCEPT" -> acceptContract(args[1], this)
+                            }
+                            this.clearInput()
+                        }
+
+                        3 -> {
+                            when (command) {
+                                "WAYPOINTS" -> {
+                                    currentView = Window.WAYPOINTS
+                                    getWaypoints(args[1], args[2])
+                                }
+
+                                "PURCHASESHIP" -> {
+                                    purchaseShip(args[1], args[2])
+                                }
+                            }
+                            this.clearInput()
+                        }
+
+                        4 -> {
+                            when (command) {
+                                "WAYPOINTINFO" -> {
+                                    currentView = Window.WAYPOINTS_INFO
+                                    getWaypointInfo(args[1], args[2], args[3])
+                                }
                             }
                         }
-                        this.clearInput()
                     }
-                    4 -> {
-                        when(command) {
-                            "WAYPOINTINFO" -> {
-                                currentView = Window.WAYPOINTS_INFO
-                                getWaypointInfo(args[1], args[2], args[3])
-                            }
-                        }
-                    }
+                }
+                else {
+                    println("Ignoring for different window context")
                 }
             }
         }
