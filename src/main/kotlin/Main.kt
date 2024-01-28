@@ -99,7 +99,7 @@ suspend fun main() {
         0L
     )
 
-    val HEADER_COLOR = Color(16, 66, 182)
+    val HEADER_COLOR = Color(149, 149, 240)
     val SELECTED_HEADER_COLOR = Color(26, 208, 222)
 
 
@@ -169,16 +169,34 @@ suspend fun main() {
                 }
 
                 cell {
+                    val headerColor = if (selectedQuad != QuadSelect.SUMM) HEADER_COLOR else SELECTED_HEADER_COLOR
+                    underline {
+                        rgb(headerColor.rgb) {
+                            textLine("Agent")
+                        }
+                    }
                     textLine("${agent.symbol} - $${liveCredits.value}")
                     textLine("${faction.name} - ${faction.description}")
                     textLine("${ship.registration.name} flying with ${ship.crew.current} in ${ship.nav.systemSymbol}")
                 }
 
                 cell {
+                    val headerColor = if (selectedQuad != QuadSelect.COMM) HEADER_COLOR else SELECTED_HEADER_COLOR
+                    underline {
+                        rgb(headerColor.rgb) {
+                            textLine("Command")
+                        }
+                    }
                     textLine("Current command stuff")
                 }
 
                 cell {
+                    val headerColor = if (selectedQuad != QuadSelect.NOTF) HEADER_COLOR else SELECTED_HEADER_COLOR
+                    underline {
+                        rgb(headerColor.rgb) {
+                            textLine("Notifications")
+                        }
+                    }
                     textLine(" * Old Notification")
                     green { text(anim) }
                     textLine("New Notification")
@@ -199,10 +217,37 @@ suspend fun main() {
                     Keys.DIGIT_1 -> {
                         val inputLen = (getInput()?.length ?: 0)
                         println("Input len $inputLen")
-                        if (inputLen == 1) {
+                        if (inputLen <= 1) {
                             selectedQuad = QuadSelect.MAIN
                             setInput("")
                             println("One pressed")
+                        }
+                    }
+                    Keys.DIGIT_2 -> {
+                        val inputLen = (getInput()?.length ?: 0)
+                        println("Input len $inputLen")
+                        if (inputLen <= 1) {
+                            selectedQuad = QuadSelect.SUMM
+                            setInput("")
+                            println("Two pressed")
+                        }
+                    }
+                    Keys.DIGIT_3 -> {
+                        val inputLen = (getInput()?.length ?: 0)
+                        println("Input len $inputLen")
+                        if (inputLen <= 1) {
+                            selectedQuad = QuadSelect.COMM
+                            setInput("")
+                            println("Three pressed")
+                        }
+                    }
+                    Keys.DIGIT_4 -> {
+                        val inputLen = (getInput()?.length ?: 0)
+                        println("Input len $inputLen")
+                        if (inputLen <= 1) {
+                            selectedQuad = QuadSelect.NOTF
+                            setInput("")
+                            println("Four pressed")
                         }
                     }
 
