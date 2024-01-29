@@ -6,13 +6,13 @@ import java.time.LocalDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-class ScriptTest {
+class ScriptStateTransitionerTest {
 
     @Test
     fun `test mining action transitions to terminal mining action`() {
         val endState = ScriptState(CargoEmptyCheck(), MiningAction(), emptyList())
         val startState = ScriptState(CargoEmptyCheck(), MiningAction(), listOf(endState))
-        val script = Script(listOf(startState))
+        val script = ScriptStateTransitioner(listOf(startState))
 
         script.startScript()
 

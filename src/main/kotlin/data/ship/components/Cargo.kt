@@ -5,6 +5,6 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class Cargo(
     val capacity: Long,
-    val units: Long,
+    var units: Long,
     val inventory: List<String>
 )
