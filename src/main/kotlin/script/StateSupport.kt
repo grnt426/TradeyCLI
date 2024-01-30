@@ -1,16 +1,27 @@
 package script
 
-class State(val cond: () -> Boolean, val scope: ScriptScope.() -> Unit) {
+import data.ship.Ship
+
+class State(
+    val cond: () -> Boolean,
+    val scope: StateScope
+) {
 
     fun canRun(): Boolean = cond()
 
-    fun run() {  }
+    fun run() {
+        println("Trying to run all ${scope.actions.size} actions enqueued")
+        scope.actions.forEach { it() }
+    }
 }
 
-class StateScope(val action: ScriptAction) {
-    // make mining action use state scope for ship to use
+class StateScope {
 
-    // Somehow get all actions within a state scope
+    init { println("Created StateScope") }
 
-    // then run them?
+    val actions = mutableListOf<() -> Unit>()
+    fun enqueueAction(action: () -> Unit) {
+        println("Enqueued action")
+        actions.add(action)
+    }
 }

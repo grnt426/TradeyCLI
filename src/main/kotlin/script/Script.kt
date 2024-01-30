@@ -9,22 +9,28 @@ class Script internal constructor(scope: ScriptScope) {
     val data = mutableMapOf<String, String>()
     val states = mutableListOf<State>()
 
-    fun state(cond: () -> Boolean, scope: ScriptScope.() -> Unit) {
-        states.add(State(cond, scope))
+    fun state(cond: () -> Boolean, scope: StateScope.() -> Unit): State {
+        println("Creating state")
+        val newScope = StateScope()
+        val state = State(cond, newScope)
+        states.add(state)
+        return state.apply { scope(newScope) }
     }
 
     fun run() {
-        states.first { s -> s.canRun() }.
+        println("Running stuff ${states.firstOrNull { s -> s.canRun() } ?: "Nothing"}")
+        states.first { s -> s.canRun() }.run()
     }
 
 }
 
-fun script(ship: Ship, block: Script.() -> Unit): Script {
-    return Script(ScriptScope(ship)).apply { block() }
+fun script(block: Script.() -> Unit): Script {
+    println("Creating script")
+    return Script(ScriptScope()).apply { block() }
 }
 
 @KtorDsl
-class ScriptScope(val ship: Ship) {
+class ScriptScope {
     var stateValue: Long = 0L
     var cooldownDateTime = LocalDateTime.now()
 }

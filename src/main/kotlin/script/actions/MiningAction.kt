@@ -1,7 +1,9 @@
 package script.actions
 
+import data.ship.Ship
 import script.ScriptAction
 import script.ScriptScope
+import script.StateScope
 import java.time.LocalDateTime
 
 class MiningAction: ScriptAction() {
@@ -10,7 +12,10 @@ class MiningAction: ScriptAction() {
     }
 }
 
-fun ScriptScope.mine() {
-    println("Mining....")
-    ship.cargo.units += 1000
+fun StateScope.mine(ship: Ship) {
+    enqueueAction {
+        println("Mining....")
+        ship.cargo.units += 100
+        LocalDateTime.now().plusHours(1)
+    }
 }
