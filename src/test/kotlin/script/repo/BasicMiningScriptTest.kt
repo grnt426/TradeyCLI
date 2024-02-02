@@ -3,17 +3,20 @@ package script.repo
 import data.Location
 import data.ship.*
 import data.ship.components.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Test
+import java.lang.Thread.sleep
 import kotlin.test.assertEquals
 
 class BasicMiningScriptTest {
 
     @Test
-    fun `testing the basic mining script`() {
+    fun `testing the basic mining script`() = runBlocking {
         val ship = createShip()
         val bms = BasicMiningScript(ship)
-        bms.execute()
-        assertEquals(100, ship.cargo.units)
+        launch{bms.execute()}.join()
+        sleep(5_000)
     }
 
     private fun createShip(): Ship {

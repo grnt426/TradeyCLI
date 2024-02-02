@@ -1,21 +1,9 @@
 package script
 
-import data.ship.Ship
-
 class State(
     val cond: () -> Boolean,
-    val scope: StateScope
+    val scope: StateScope.() -> Unit
 ) {
-
-    fun canRun(): Boolean = cond()
-
-    fun run() {
-        println("Trying to run all ${scope.actions.size} actions enqueued")
-        scope.actions.forEach { it() }
-    }
-}
-
-class StateScope {
 
     init { println("Created StateScope") }
 
@@ -23,5 +11,12 @@ class StateScope {
     fun enqueueAction(action: () -> Unit) {
         println("Enqueued action")
         actions.add(action)
+    }
+
+    fun canRun(): Boolean = cond()
+
+    fun run() {
+        println("Trying to run all ${actions.size} actions enqueued")
+        actions.forEach { it() }
     }
 }

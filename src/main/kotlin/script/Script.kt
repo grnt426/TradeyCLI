@@ -1,36 +1,39 @@
 package script
 
-import data.ship.Ship
-import io.ktor.util.*
-import java.time.LocalDateTime
+import kotlin.concurrent.timer
 
-class Script internal constructor(scope: ScriptScope) {
+class Script internal constructor() {
 
     val data = mutableMapOf<String, String>()
     val states = mutableListOf<State>()
 
-    fun state(cond: () -> Boolean, scope: StateScope.() -> Unit): State {
+    fun state(cond: () -> Boolean = { true }, scope: StateScope.() -> Unit): State {
         println("Creating state")
-        val newScope = StateScope()
-        val state = State(cond, newScope)
+        val state = State(cond, scope)
         states.add(state)
-        return state.apply { scope(newScope) }
+        return state
     }
 
-    fun run() {
-        println("Running stuff ${states.firstOrNull { s -> s.canRun() } ?: "Nothing"}")
-        states.first { s -> s.canRun() }.run()
+    fun runOnce() {
+        StateScope().apply { findRunnableState() }
     }
 
+    private fun StateScope.findRunnableState() {
+        val s = states.firstOrNull { s -> s.canRun() }
+        println("Running stuff ${s ?: "Nothing"}")
+        s?.scope?.let { it(this) }
+    }
+
+    fun runForever() {
+        timer("sdfdf",true, 0, 1_000) { StateScope().apply { runOnce() } }
+    }
 }
 
-fun script(block: Script.() -> Unit): Script {
+fun script(init: Script.() -> Unit): Script {
     println("Creating script")
-    return Script(ScriptScope()).apply { block() }
+    return Script().apply{ init() }
 }
 
-@KtorDsl
-class ScriptScope {
-    var stateValue: Long = 0L
-    var cooldownDateTime = LocalDateTime.now()
+class StateScope {
+
 }

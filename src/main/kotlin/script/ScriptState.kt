@@ -9,7 +9,7 @@ class ScriptState(
 ) {
     fun canTransition(): Boolean = check.isSatisfied()
 
-    fun execute():LocalDateTime = action.run()
+    fun execute():LocalDateTime = action.doAction()
 
     fun getState(): ScriptState? = transitions.firstOrNull { t -> t.canTransition() }
 }

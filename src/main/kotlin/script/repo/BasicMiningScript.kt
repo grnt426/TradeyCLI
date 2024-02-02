@@ -1,20 +1,33 @@
 package script.repo
 
 import data.ship.Ship
+import script.State
+import script.ScriptExecutor
+import script.script
+import script.script
 import script.actions.mine
 import script.actions.noop
-import script.script
 
-class BasicMiningScript(val ship: Ship) {
+class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.MiningStates>(MiningStates.MINING) {
 
-    fun execute() {
-        println("Executing...")
+    enum class MiningStates {
+        MINING,
+        STOP
+    }
+
+    override fun execute() {
         script {
-            println("Inside script")
-            state(cond = { ship.cargo.units < ship.cargo.capacity } ) {
-                println("Inside state")
+            println("Start!")
+            state(cond = { ship.cargo.units < ship.cargo.capacity} ) {
                 mine(ship)
+                println("I have ${ship.cargo.units} in the cargo bay")
             }
-        }.run()
+            state(cond = { ship.cargo.units >= ship.cargo.capacity} ) {
+                noop()
+                println("${ship.cargo.units} of ${ship.cargo.capacity} used;" +
+                        "Full? ${ship.cargo.units >= ship.cargo.capacity}")
+                println("My cargo bay is full!")
+            }
+        }.runForever()
     }
 }
