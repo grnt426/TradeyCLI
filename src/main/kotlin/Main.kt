@@ -7,6 +7,9 @@ import com.varabyte.kotter.foundation.liveVarOf
 import com.varabyte.kotter.foundation.session
 import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.MainRenderScope
+import com.varabyte.kotter.runtime.render.RenderScope
+import com.varabyte.kotter.runtime.terminal.Terminal
+import com.varabyte.kotter.terminal.virtual.VirtualTerminal
 import com.varabyte.kotterx.grid.Cols
 import com.varabyte.kotterx.grid.grid
 import data.*
@@ -88,29 +91,16 @@ suspend fun main() {
 
     val gameState = GameState()
 
-    val resp = callGet<Agent>(request {
-        url("https://api.spacetraders.io/v2/my/agent")
-    }) ?: Agent(
-        "empty",
-        "empty",
-        "empty",
-        0L,
-        "lsjfkldj",
-        0L
-    )
-
     val HEADER_COLOR = Color(149, 149, 240)
     val SELECTED_HEADER_COLOR = Color(26, 208, 222)
 
-
-    println("Agent stuff: ${resp.accountId} as of ${resp.timestamp}")
-
     var agent = gameState.agent
     var hq = gameState.getHqSystem()
-    val agentData = readAgentData()["data"]?.jsonObject
-    val faction = Json.decodeFromString<Faction>(agentData?.get("faction").toString())
-    val ship = Json.decodeFromString<Ship>(agentData?.get("ship").toString())
-    val contract = Json.decodeFromString<Contract>(agentData?.get("contract").toString())
+    val profileData = gameState.profData
+//    val agentData = readAgentData()["data"]?.jsonObject
+//    val faction = Json.decodeFromString<Faction>(agentData?.get("faction").toString())
+//    val ship = Json.decodeFromString<Ship>(agentData?.get("ship").toString())
+//    val contract = Json.decodeFromString<Contract>(agentData?.get("contract").toString())
     var currentView = Window.MAIN
     var setInputTo: String? = null
 
@@ -128,10 +118,8 @@ suspend fun main() {
                     val headerColor = if (selectedQuad != QuadSelect.MAIN) HEADER_COLOR else SELECTED_HEADER_COLOR
                     when (currentView) {
                         Window.MAIN -> {
-                            underline {
-                                rgb(headerColor.rgb) {
-                                    textLine("HQ: ${hq.symbol}")
-                                }
+                            rgb(headerColor.rgb) {
+                                makeHeader("HQ: ${hq.symbol}")
                             }
                             var asteroids = 0
                             hq.waypoints.forEach { o ->
@@ -144,9 +132,9 @@ suspend fun main() {
                         }
 
                         Window.CONTRACT -> {
-                            textLine("${contract.id} - ${contract.type} - ${if (contract.accepted) "Accepted" else "Waiting"}")
-                            val deliveryTerms = contract.terms.deliver[0]
-                            textLine("${deliveryTerms.unitsRequired} ${deliveryTerms.tradeSymbol} to ${deliveryTerms.destinationSymbol}")
+                            textLine("id - type - ${if (true) "Accepted" else "Waiting"}")
+//                            val deliveryTerms = contract.terms.deliver[0]
+//                            textLine("${deliveryTerms.unitsRequired} ${deliveryTerms.tradeSymbol} to ${deliveryTerms.destinationSymbol}")
 
                             when (awaitContract) {
                                 RequestStatus.STARTED -> textLine("Awaiting Response to contract acceptance")
@@ -170,32 +158,26 @@ suspend fun main() {
 
                 cell {
                     val headerColor = if (selectedQuad != QuadSelect.SUMM) HEADER_COLOR else SELECTED_HEADER_COLOR
-                    underline {
-                        rgb(headerColor.rgb) {
-                            textLine("Agent")
-                        }
+                    rgb(headerColor.rgb) {
+                        makeHeader("Agent")
                     }
                     textLine("${agent.symbol} - $${liveCredits.value}")
-                    textLine("${faction.name} - ${faction.description}")
-                    textLine("${ship.registration.name} flying with ${ship.crew.current} in ${ship.nav.systemSymbol}")
+                    textLine(" - ")
+                    textLine(" flying with  in ")
                 }
 
                 cell {
                     val headerColor = if (selectedQuad != QuadSelect.COMM) HEADER_COLOR else SELECTED_HEADER_COLOR
-                    underline {
-                        rgb(headerColor.rgb) {
-                            textLine("Command")
-                        }
+                    rgb(headerColor.rgb) {
+                        makeHeader("Command")
                     }
                     textLine("Current command stuff")
                 }
 
                 cell {
                     val headerColor = if (selectedQuad != QuadSelect.NOTF) HEADER_COLOR else SELECTED_HEADER_COLOR
-                    underline {
-                        rgb(headerColor.rgb) {
-                            textLine("Notifications")
-                        }
+                    rgb(headerColor.rgb) {
+                        makeHeader("Notifications")
                     }
                     textLine(" * Old Notification")
                     green { text(anim) }
@@ -481,6 +463,14 @@ suspend fun createAgent() {
     }.bodyAsText())
 
     // write to file
+}
+
+fun RenderScope.makeHeader(text: String) {
+    underline {
+        text(text)
+        repeat(Profile.profileData.termWidth / 2 - text.length) { text(" ") }
+    }
+    textLine()
 }
 
 suspend fun readAgentData(): JsonObject = Json.decodeFromString(File("agentdata.secret").readText())

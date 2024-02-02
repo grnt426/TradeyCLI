@@ -18,11 +18,13 @@ class GameState(profileDataFile: String = DEFAULT_PROF_FILE) {
 
     init {
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
+        Profile.createProfile(profData)
         SpaceTradersClient.createClient("$DEFAULT_PROF_DIR/authtoken.secret")
         println("Name ${profData.name}")
         agent = (getAgentData() ?: failedToLoad("Agent")) as Agent
+        println("${agent.headquarters}")
         systems = loadSystems()
-//        refreshSystem(OrbitalNames.getSectorSystem(agent.headquarters)) ?: failedToLoad("Headquarters")
+        refreshSystem(OrbitalNames.getSectorSystem(agent.headquarters)) ?: failedToLoad("Headquarters")
     }
 
     private fun loadSystems(): MutableMap<String, System> {
@@ -48,8 +50,9 @@ class GameState(profileDataFile: String = DEFAULT_PROF_FILE) {
     })
 
     fun refreshSystem(systemName: String): System? {
+        println("Loading ${systemName}")
         val system = SpaceTradersClient.callGet<System>(request {
-            url("https://api.spacetraders.io/v2/systems/$systemName/")
+            url("https://api.spacetraders.io/v2/systems/$systemName")
         })
 
         if (system != null) {
