@@ -1,7 +1,5 @@
 package script.actions
 
-import data.ship.Ship
-import script.State
 import script.StateScope
 import java.time.LocalDateTime
 

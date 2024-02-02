@@ -16,7 +16,8 @@ class BasicMiningScriptTest {
         val ship = createShip()
         val bms = BasicMiningScript(ship)
         launch{bms.execute()}.join()
-        sleep(5_000)
+        sleep(5000)
+        assertEquals(100, ship.cargo.units)
     }
 
     private fun createShip(): Ship {

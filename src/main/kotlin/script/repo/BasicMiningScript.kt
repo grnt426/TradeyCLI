@@ -1,9 +1,7 @@
 package script.repo
 
 import data.ship.Ship
-import script.State
 import script.ScriptExecutor
-import script.script
 import script.script
 import script.actions.mine
 import script.actions.noop
@@ -18,7 +16,7 @@ class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.Mining
     override fun execute() {
         script {
             println("Start!")
-            state(cond = { ship.cargo.units < ship.cargo.capacity} ) {
+            state(cond = { ship.cargo.units < ship.cargo.capacity}) {
                 mine(ship)
                 println("I have ${ship.cargo.units} in the cargo bay")
             }
