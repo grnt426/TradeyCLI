@@ -10,21 +10,22 @@ import java.io.File
 
 const val DEFAULT_PROF_DIR = "profile"
 const val DEFAULT_PROF_FILE = "$DEFAULT_PROF_DIR/profile.settings.json"
-class GameState(profileDataFile: String = DEFAULT_PROF_FILE) {
+object GameState {
 
-    val profData: ProfileData
-    var agent: Agent
-    val systems: MutableMap<String, System>
+    lateinit var profData: ProfileData
+    lateinit var agent: Agent
+    lateinit var systems: MutableMap<String, System>
 
-    init {
+    fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE): GameState {
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
         Profile.createProfile(profData)
         SpaceTradersClient.createClient("$DEFAULT_PROF_DIR/authtoken.secret")
         println("Name ${profData.name}")
         agent = (getAgentData() ?: failedToLoad("Agent")) as Agent
-        println("${agent.headquarters}")
+        println("HQ @ ${agent.headquarters}")
         systems = loadSystems()
         refreshSystem(OrbitalNames.getSectorSystem(agent.headquarters)) ?: failedToLoad("Headquarters")
+        return this
     }
 
     private fun loadSystems(): MutableMap<String, System> {

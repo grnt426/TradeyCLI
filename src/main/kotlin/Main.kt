@@ -8,13 +8,10 @@ import com.varabyte.kotter.foundation.session
 import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.MainRenderScope
 import com.varabyte.kotter.runtime.render.RenderScope
-import com.varabyte.kotter.runtime.terminal.Terminal
-import com.varabyte.kotter.terminal.virtual.VirtualTerminal
 import com.varabyte.kotterx.grid.Cols
 import com.varabyte.kotterx.grid.grid
 import data.*
-import data.contract.Contract
-import data.ship.Ship
+import data.GameState.initializeGameState
 import data.system.System
 import data.system.WaypointType
 import io.ktor.client.*
@@ -89,7 +86,7 @@ enum class QuadSelect {
 
 suspend fun main() {
 
-    val gameState = GameState()
+    val gameState = initializeGameState()
 
     val HEADER_COLOR = Color(149, 149, 240)
     val SELECTED_HEADER_COLOR = Color(26, 208, 222)

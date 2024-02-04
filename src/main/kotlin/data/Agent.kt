@@ -11,3 +11,7 @@ class Agent(
     val startingFaction: String,
     val shipCount: Long,
 ) : LastRead()
+
+fun hasCredits(amount: Long): Boolean = GameState.agent.credits >= amount
+
+fun creditsBelow(amount: Long): Boolean = GameState.agent.credits < amount
