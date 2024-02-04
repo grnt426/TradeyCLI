@@ -20,6 +20,6 @@ class GatewayConstruction(val system: String): ScriptExecutor<GatewayConstructio
             state(matchesState(GatewayBuildStates.CONSTRUCT)) {
                 // direct resources
             }
-        }.runForever()
+        }.runForever(30_000)
     }
 }

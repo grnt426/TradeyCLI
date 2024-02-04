@@ -34,6 +34,6 @@ class SystemOverseerScript(val system: String): ScriptExecutor<SystemOverseerScr
             state(matchesState(SystemOversightState.MAINTAIN)) {
                 println("Maintaining status quo in system.")
             }
-        }
+        }.runForever()
     }
 }

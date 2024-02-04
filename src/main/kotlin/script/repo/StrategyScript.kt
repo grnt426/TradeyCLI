@@ -33,6 +33,6 @@ class StrategyScript: ScriptExecutor<StrategyScript.StrategyState>(StrategyState
             state(matchesState(StrategyState.EXPANSION)) {
                 // whatever at this point
             }
-        }
+        }.runForever()
     }
 }
