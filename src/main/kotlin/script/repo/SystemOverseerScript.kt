@@ -1,9 +1,12 @@
 package script.repo
 
+import model.system.System
 import script.ScriptExecutor
 import script.script
 
-class SystemOverseerScript(val system: String): ScriptExecutor<SystemOverseerScript.SystemOversightState>(SystemOversightState.MAINTAIN) {
+class SystemOverseerScript(val system: System): ScriptExecutor<SystemOverseerScript.SystemOversightState>(
+    SystemOversightState.MAINTAIN, "SystemOverseerScript", system.symbol
+) {
 
     enum class SystemOversightState {
         EXTRACTION,
@@ -15,6 +18,8 @@ class SystemOverseerScript(val system: String): ScriptExecutor<SystemOverseerScr
     val gatewayConstruction = GatewayConstruction(system)
 
     override fun execute() {
+        systemForeman.execute()
+        gatewayConstruction.execute()
         script{
             state(matchesState(SystemOversightState.EXTRACTION)){
                 systemForeman.changeState(MiningForemanScript.ForemanStates.EXPANDING)

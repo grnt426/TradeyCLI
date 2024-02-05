@@ -1,6 +1,6 @@
 package client
 
-import data.LastRead
+import model.LastRead
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.auth.*
@@ -49,12 +49,38 @@ object SpaceTradersClient{
                         val response = client.get(request)
                         if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
                             println(response.bodyAsText())
-                            result = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
+                            result = Json.decodeFromString<JsonObject>(response.bodyAsText())["model"]?.let {
                                 Json.decodeFromJsonElement<T>(
                                     it
                                 )
                             }!!
                             result!!.timestamp = LocalDateTime.now().toString()
+                        } else {
+                            println("${response.status} - ${response.bodyAsText()}")
+                        }
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    println("Timeout")
+                }
+            }
+        }
+        return result
+    }
+
+    inline fun <reified T> callFetch(request: HttpRequestBuilder): T? {
+        var result: T? = null
+        runBlocking {
+            launch {
+                try {
+                    withTimeout(2_000) {
+                        val response = client.get(request)
+                        if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
+                            println(response.bodyAsText())
+                            result = Json.decodeFromString<JsonObject>(response.bodyAsText())["model"]?.let {
+                                Json.decodeFromJsonElement<T>(
+                                    it
+                                )
+                            }!!
                         } else {
                             println("${response.status} - ${response.bodyAsText()}")
                         }

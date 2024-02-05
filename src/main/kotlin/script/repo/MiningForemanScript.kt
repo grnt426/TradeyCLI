@@ -1,10 +1,14 @@
 package script.repo
 
-import data.hasCredits
+import model.hasCredits
+import model.system.getShipyards
+import model.system.System
 import script.ScriptExecutor
 import script.script
 
-class MiningForemanScript(system: String) : ScriptExecutor<MiningForemanScript.ForemanStates>(ForemanStates.MAINTAINING) {
+class MiningForemanScript(val system: System) : ScriptExecutor<MiningForemanScript.ForemanStates>(
+    ForemanStates.MAINTAINING, "MiningForemanScript", system.symbol
+) {
 
     enum class ForemanStates {
         EXPANDING,
@@ -15,8 +19,10 @@ class MiningForemanScript(system: String) : ScriptExecutor<MiningForemanScript.F
     override fun execute() {
         script {
             state(matchesState(ForemanStates.EXPANDING)) {
+                val shipyards = getShipyards(system)
                 if (hasCredits(10_000)) {
                     // buy mining ship, assign script
+                    // execute script
                 }
                 else {
                     println("Want to expand mining fleet, but not enough money.")

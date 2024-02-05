@@ -1,6 +1,5 @@
 package script
 
-import data.ship.Ship
 import java.util.*
 import kotlin.concurrent.timer
 

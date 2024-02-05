@@ -10,10 +10,10 @@ import com.varabyte.kotter.runtime.MainRenderScope
 import com.varabyte.kotter.runtime.render.RenderScope
 import com.varabyte.kotterx.grid.Cols
 import com.varabyte.kotterx.grid.grid
-import data.*
-import data.GameState.initializeGameState
-import data.system.System
-import data.system.WaypointType
+import model.*
+import model.GameState.initializeGameState
+import model.system.System
+import model.system.WaypointType
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
@@ -317,7 +317,7 @@ inline fun <reified T: LastRead> callGet(request: HttpRequestBuilder): T? {
                     val response = client.get(request)
                     if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
                         println(response.bodyAsText())
-                        result = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
+                        result = Json.decodeFromString<JsonObject>(response.bodyAsText())["model"]?.let {
                             Json.decodeFromJsonElement<T>(
                                 it
                             )
@@ -345,7 +345,7 @@ fun getWaypointInfo(systemSymbol: String, waypointSymbol: String, target: String
                     }
                     if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
                         println(response.bodyAsText())
-                        shipsInShipyard = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
+                        shipsInShipyard = Json.decodeFromString<JsonObject>(response.bodyAsText())["model"]?.let {
                             Json.decodeFromJsonElement<ShipyardResults>(
                                 it
                             )
@@ -402,7 +402,7 @@ fun getWaypoints(systemSymbol: String, trait: String) {
                         println("Built URL ${this.url}")
                     }
                     if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
-                        waypointsInSystem = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
+                        waypointsInSystem = Json.decodeFromString<JsonObject>(response.bodyAsText())["model"]?.let {
                             Json.decodeFromJsonElement<List<System>>(
                                 it
                             )

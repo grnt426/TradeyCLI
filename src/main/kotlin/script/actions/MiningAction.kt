@@ -1,7 +1,6 @@
 package script.actions
 
-import data.ship.Ship
-import kotlinx.coroutines.delay
+import model.ship.Ship
 import script.StateScope
 import java.time.LocalDateTime
 

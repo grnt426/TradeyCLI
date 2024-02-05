@@ -1,12 +1,23 @@
 package script
 
-import script.repo.MiningForemanScript
+import data.SavedScripts
+import java.util.*
 
-abstract class ScriptExecutor<T>(var currentState: T) {
+abstract class ScriptExecutor<T>(
+    var currentState: T,
+    val scriptType: String,
+    val entityId: String? = null,
+    val uuid: String = UUID.randomUUID().toString(),
+) {
     abstract fun execute()
+
+    fun saveState() {
+        SavedScripts.saveState(uuid, currentState.toString(), entityId, scriptType)
+    }
 
     fun changeState(newState: T) {
         currentState = newState
+        saveState()
     }
 
     fun <T> matchesState(transition: T): () -> Boolean {

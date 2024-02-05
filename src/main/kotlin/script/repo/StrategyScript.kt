@@ -1,11 +1,12 @@
 package script.repo
 
-import data.GameState
-import data.system.System
+import model.GameState
 import script.ScriptExecutor
 import script.script
 
-class StrategyScript: ScriptExecutor<StrategyScript.StrategyState>(StrategyState.INITIAL_PHASE) {
+class StrategyScript: ScriptExecutor<StrategyScript.StrategyState>(
+    StrategyState.INITIAL_PHASE, "StrategyScript"
+) {
 
     enum class StrategyState {
         INITIAL_PHASE,
@@ -14,9 +15,10 @@ class StrategyScript: ScriptExecutor<StrategyScript.StrategyState>(StrategyState
     }
 
     val systems = mutableListOf<SystemOverseerScript>()
-    val hq = SystemOverseerScript(GameState.getHqSystem().symbol)
+    val hq = SystemOverseerScript(GameState.getHqSystem())
 
     override fun execute() {
+        hq.execute()
         script {
             state(matchesState(StrategyState.INITIAL_PHASE)) {
 
@@ -25,7 +27,6 @@ class StrategyScript: ScriptExecutor<StrategyScript.StrategyState>(StrategyState
                 hq.systemForeman.changeState(MiningForemanScript.ForemanStates.EXPANDING)
             }
             state(matchesState(StrategyState.INITIAL_EXPANSION)) {
-                hq.systemForeman.changeState(MiningForemanScript.ForemanStates.MAINTAINING)
                 hq.changeState(SystemOverseerScript.SystemOversightState.GATEWAY_CONSTRUCTION)
 
                 // if gateway done, change to expansion or whatever

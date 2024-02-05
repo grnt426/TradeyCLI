@@ -1,4 +1,5 @@
 *.secret
+database/
 
 # Standard stuff below
 .gradle

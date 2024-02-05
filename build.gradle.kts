@@ -8,6 +8,7 @@ group = "bot.kurtz"
 version = "1.0-SNAPSHOT"
 
 val ktorVersion: String by project
+val exposedVersion: String by project
 
 repositories {
     mavenCentral()
@@ -23,6 +24,16 @@ dependencies {
     implementation("io.ktor:ktor-client-auth:$ktorVersion")
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
+
+    // Exposed libs for Sqlite
+    implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-dao:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-java-time:$exposedVersion")
+    implementation("org.jetbrains.exposed:exposed-json:$exposedVersion")
+
+    // SQLite driver for Exposed
+    implementation("org.xerial:sqlite-jdbc:3.44.1.0")
 
     testImplementation(kotlin("test"))
 }

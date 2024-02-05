@@ -1,14 +1,16 @@
 package script.repo
 
-import data.ship.Ship
-import data.ship.components.cargoFull
-import data.ship.components.cargoNotFull
+import model.ship.Ship
+import model.ship.components.cargoFull
+import model.ship.components.cargoNotFull
 import script.ScriptExecutor
 import script.script
 import script.actions.mine
 import script.actions.noop
 
-class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.MiningStates>(MiningStates.MINING) {
+class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.MiningStates>(
+    MiningStates.MINING, "BasicMiningScript", ship.symbol
+) {
 
     enum class MiningStates {
         MINING,
@@ -21,18 +23,21 @@ class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.Mining
         script {
             println("Start!")
             state(matchesState(MiningStates.MINING)) {
+                println("Mining action")
                 mine(ship)
                 println("I have ${ship.cargo.units} in the cargo bay")
                 changeState(MiningStates.KEEP_VALUABLES)
             }
 
             state(matchesState(MiningStates.KEEP_VALUABLES)) {
+                println("Jettisoned junk")
                 // jettison less valuable stuff
 
                 if (cargoFull(ship)) {
                     changeState(MiningStates.FULL_AWAITING_PICKUP)
                 }
                 else {
+                    println("Back to mining state")
                     changeState(MiningStates.MINING)
                 }
             }
@@ -47,10 +52,11 @@ class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.Mining
             }
 
             state(matchesState(MiningStates.STOP)) {
+                println("Stopped")
                 noop()
                 println("${ship.cargo.units} of ${ship.cargo.capacity} used;" +
                         " Full? ${ship.cargo.units >= ship.cargo.capacity}")
             }
-        }.runForever(5_000)
+        }.runForever(500)
     }
 }

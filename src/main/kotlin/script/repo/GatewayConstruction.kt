@@ -1,9 +1,12 @@
 package script.repo
 
+import model.system.System
 import script.ScriptExecutor
 import script.script
 
-class GatewayConstruction(val system: String): ScriptExecutor<GatewayConstruction.GatewayBuildStates>(GatewayBuildStates.IDLE) {
+class GatewayConstruction(val system: System): ScriptExecutor<GatewayConstruction.GatewayBuildStates>(
+    GatewayBuildStates.IDLE, "GatewayConstruction", system.symbol
+) {
 
     enum class GatewayBuildStates {
         IDLE,

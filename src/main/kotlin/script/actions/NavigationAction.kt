@@ -1,7 +1,7 @@
 package script.actions
 
-import data.ship.Ship
-import data.system.Waypoint
+import model.ship.Ship
+import model.system.Waypoint
 import script.StateScope
 
 fun StateScope.navTo(ship: Ship, waypoint: Waypoint) {
