@@ -1,4 +1,4 @@
-package model
+package model.exceptions
 
 import java.lang.Exception
 

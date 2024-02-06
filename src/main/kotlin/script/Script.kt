@@ -11,7 +11,7 @@ class Script internal constructor() {
     var scheduledScript: Timer? = null
 
     fun state(cond: () -> Boolean = { true }, scope: StateScope.() -> Unit): State {
-        println("Creating state")
+//        println("Creating state")
         val state = State(cond, scope)
         states.add(state)
         return state
@@ -30,7 +30,7 @@ class Script internal constructor() {
 
     private fun StateScope.findRunnableState() {
         val s = states.firstOrNull { s -> s.canRun() }
-        println("Running stuff ${s ?: "Nothing"}")
+//        println("Running stuff ${s ?: "Nothing"}")
         s?.scope?.let { it(this) }
     }
 
@@ -48,7 +48,7 @@ class Script internal constructor() {
 }
 
 fun script(init: Script.() -> Unit): Script {
-    println("Creating script")
+//    println("Creating script")
     return Script().apply{ init() }
 }
 

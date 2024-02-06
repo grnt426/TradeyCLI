@@ -5,7 +5,7 @@ import script.StateScope
 import java.time.LocalDateTime
 
 fun StateScope.mine(ship: Ship) {
-    println("Mining....")
+//    println("Mining....")
 
     // delay until available after nav/off cooldown from previous mining
 

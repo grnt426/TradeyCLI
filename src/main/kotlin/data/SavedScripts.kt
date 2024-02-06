@@ -2,13 +2,11 @@ package data
 
 import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.upsert
 
 object SavedScripts: Table() {
     fun saveState(uuid: String, currentState: String, heldEntity: String?, scriptName: String) {
-        transaction {
+        DbClient.writeQueue.add {
             SavedScripts.upsert { s ->
                 s[id] = uuid
                 s[scriptState] = currentState

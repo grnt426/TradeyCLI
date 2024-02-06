@@ -2,16 +2,20 @@ package script.repo
 
 import data.DbClient
 import data.SavedScripts
+import kotlinx.coroutines.Job
 import model.Location
 import model.ship.*
 import model.ship.components.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.runTest
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.lang.Thread.sleep
@@ -27,7 +31,7 @@ class BasicMiningScriptTest {
         DbClient.createClient("unittests")
     }
 
-    @BeforeTest
+    @BeforeEach
     fun beforeTest() {
         transaction { SavedScripts.deleteAll() }
     }
@@ -44,14 +48,39 @@ class BasicMiningScriptTest {
             val res = SavedScripts.selectAll().where(SavedScripts.id eq bms.uuid).single()
             assertNotNull(res)
             assertEquals("FULL_AWAITING_PICKUP", res[SavedScripts.scriptState])
-            assertEquals("Symbol", res[SavedScripts.entityId])
+            assertEquals("Symbol-0", res[SavedScripts.entityId])
             assertEquals("BasicMiningScript", res[SavedScripts.scriptType])
         }
     }
 
-    private fun createShip(): Ship {
+    @Test
+    fun `large basic script test`() = runBlocking {
+        val jobs = mutableListOf<Job>()
+        (0..< 10_000).forEach { i ->
+            val ship = createShip(i.toString())
+            val bms = BasicMiningScript(ship)
+            jobs.add(launch{bms.execute()})
+        }
+
+        jobs.forEach { it.join() }
+        jobs.clear()
+
+        // wait for them to execute and stop
+        sleep(5_000)
+
+        transaction {
+            val res = SavedScripts.selectAll().where {
+                SavedScripts.scriptState eq BasicMiningScript.MiningStates.FULL_AWAITING_PICKUP.toString()
+            }
+            assertNotNull(res)
+            assertEquals(10_000, res.count())
+        }
+        assertEquals(0, DbClient.writeQueue.size)
+    }
+
+    private fun createShip(symbol: String = "0"): Ship {
         return Ship(
-            "Symbol",
+            "Symbol-$symbol",
             Navigation(
                 "SystemSymbol",
                 "WaypointSymbol",

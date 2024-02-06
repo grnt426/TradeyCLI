@@ -21,29 +21,29 @@ class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.Mining
 
     override fun execute() {
         script {
-            println("Start!")
+//            println("Start!")
             state(matchesState(MiningStates.MINING)) {
-                println("Mining action")
+//                println("Mining action")
                 mine(ship)
-                println("I have ${ship.cargo.units} in the cargo bay")
+//                println("I have ${ship.cargo.units} in the cargo bay")
                 changeState(MiningStates.KEEP_VALUABLES)
             }
 
             state(matchesState(MiningStates.KEEP_VALUABLES)) {
-                println("Jettisoned junk")
+//                println("Jettisoned junk")
                 // jettison less valuable stuff
 
                 if (cargoFull(ship)) {
                     changeState(MiningStates.FULL_AWAITING_PICKUP)
                 }
                 else {
-                    println("Back to mining state")
+//                    println("Back to mining state")
                     changeState(MiningStates.MINING)
                 }
             }
 
             state(matchesState(MiningStates.FULL_AWAITING_PICKUP)){
-                println("Awaiting pickup")
+//                println("Awaiting pickup")
                 // once freighter arrives, dump goods
 
                 if (cargoNotFull(ship)) {
@@ -52,10 +52,11 @@ class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.Mining
             }
 
             state(matchesState(MiningStates.STOP)) {
-                println("Stopped")
+//                println("Stopped")
                 noop()
-                println("${ship.cargo.units} of ${ship.cargo.capacity} used;" +
-                        " Full? ${ship.cargo.units >= ship.cargo.capacity}")
+                stopScript()
+//                println("${ship.cargo.units} of ${ship.cargo.capacity} used;" +
+//                        " Full? ${ship.cargo.units >= ship.cargo.capacity}")
             }
         }.runForever(500)
     }
