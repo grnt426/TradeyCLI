@@ -6,12 +6,15 @@ import model.system.OrbitalNames
 import io.ktor.client.request.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import model.GameState.GameApi
 import model.exceptions.ProfileLoadingFailure
 import java.io.File
 
 const val DEFAULT_PROF_DIR = "profile"
 const val DEFAULT_PROF_FILE = "$DEFAULT_PROF_DIR/profile.settings.json"
 object GameState {
+
+    const val GameApi = "https://api.spacetraders.io/v2/"
 
     lateinit var profData: ProfileData
     lateinit var agent: Agent
@@ -52,13 +55,13 @@ object GameState {
     }
 
     private fun getAgentData(): Agent? = SpaceTradersClient.callGet<Agent>(request {
-        url("https://api.spacetraders.io/v2/my/agent")
+        url(api("my/agent"))
     })
 
     fun refreshSystem(systemName: String): System? {
         println("Loading ${systemName}")
         val system = SpaceTradersClient.callGet<System>(request {
-            url("https://api.spacetraders.io/v2/systems/$systemName")
+            url(api("systems/$systemName"))
         })
 
         if (system != null) {
@@ -73,3 +76,5 @@ object GameState {
         File("$DEFAULT_PROF_DIR/systems/$systemName").writeText(Json.encodeToString(systems[systemName]))
     }
 }
+
+fun api(params: String): String = "$GameApi/$params"

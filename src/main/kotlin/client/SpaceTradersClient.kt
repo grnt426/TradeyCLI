@@ -40,7 +40,7 @@ object SpaceTradersClient{
         return client
     }
 
-    inline fun <reified T: LastRead> callGet(request: HttpRequestBuilder): T? {
+    inline fun <reified T> callGet(request: HttpRequestBuilder): T? {
         var result: T? = null
         runBlocking {
             launch {
@@ -54,33 +54,9 @@ object SpaceTradersClient{
                                     it
                                 )
                             }!!
-                            result!!.timestamp = LocalDateTime.now().toString()
-                        } else {
-                            println("${response.status} - ${response.bodyAsText()}")
-                        }
-                    }
-                } catch (e: TimeoutCancellationException) {
-                    println("Timeout")
-                }
-            }
-        }
-        return result
-    }
-
-    inline fun <reified T> callFetch(request: HttpRequestBuilder): T? {
-        var result: T? = null
-        runBlocking {
-            launch {
-                try {
-                    withTimeout(2_000) {
-                        val response = client.get(request)
-                        if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
-                            println(response.bodyAsText())
-                            result = Json.decodeFromString<JsonObject>(response.bodyAsText())["model"]?.let {
-                                Json.decodeFromJsonElement<T>(
-                                    it
-                                )
-                            }!!
+                            if (result is LastRead) {
+                                (result!! as LastRead).timestamp = LocalDateTime.now().toString()
+                            }
                         } else {
                             println("${response.status} - ${response.bodyAsText()}")
                         }

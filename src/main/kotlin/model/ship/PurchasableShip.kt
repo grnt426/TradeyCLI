@@ -5,6 +5,7 @@ import model.ship.components.*
 import model.system.Waypoint
 import io.ktor.client.request.*
 import kotlinx.serialization.Serializable
+import model.api
 
 @Serializable
 data class PurchasableShip(
@@ -21,6 +22,6 @@ data class PurchasableShip(
     val description: String,
 )
 
-fun shipsForPurchase(waypoint: Waypoint) = SpaceTradersClient.callFetch<List<PurchasableShip>>( request {
-    url("https://api.spacetraders.io/v2/systems/X1-GH12/waypoints/${waypoint.symbol.uppercase()}/shipyard")
+fun shipsForPurchase(waypoint: Waypoint) = SpaceTradersClient.callGet<List<PurchasableShip>>( request {
+    url(api("systems/X1-GH12/waypoints/${waypoint.symbol.uppercase()}/shipyard"))
 })
