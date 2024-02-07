@@ -3,4 +3,4 @@ package model.system
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class OrbitingBodies(val symbol: String)
+data class WaypointOrbital(val symbol: String)

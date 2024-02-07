@@ -11,11 +11,11 @@ data class Waypoint(
     val type: WaypointType,
     val x: Long,
     val y: Long,
-    val orbitals: List<OrbitingBodies> = emptyList(),
+    val orbitals: List<WaypointOrbital> = emptyList(),
     val traits: List<Trait> = emptyList(),
     val modifiers: List<String> = emptyList(),
-    val orbits: String? = null,
-    val isUnderConstruction: Boolean? = null,
+    val isUnderConstruction: Boolean,
     val chart: Chart? = null,
-    val faction: Faction? = null
+    val faction: Faction? = null,
+    val orbits: String? = null,
 )

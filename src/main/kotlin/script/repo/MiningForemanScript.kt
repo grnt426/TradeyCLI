@@ -1,7 +1,6 @@
 package script.repo
 
 import model.hasCredits
-import model.system.getShipyards
 import model.system.System
 import script.ScriptExecutor
 import script.script
@@ -19,7 +18,6 @@ class MiningForemanScript(val system: System) : ScriptExecutor<MiningForemanScri
     override fun execute() {
         script {
             state(matchesState(ForemanStates.EXPANDING)) {
-                val shipyards = getShipyards(system)
                 if (hasCredits(10_000)) {
                     // buy mining ship, assign script
                     // execute script

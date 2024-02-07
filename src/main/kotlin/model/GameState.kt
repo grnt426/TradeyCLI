@@ -8,6 +8,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import model.GameState.GameApi
 import model.exceptions.ProfileLoadingFailure
+import model.system.Waypoint
 import java.io.File
 
 const val DEFAULT_PROF_DIR = "profile"
@@ -19,12 +20,14 @@ object GameState {
     lateinit var profData: ProfileData
     lateinit var agent: Agent
     lateinit var systems: MutableMap<String, System>
+    lateinit var waypoints: MutableMap<String, Waypoint>
     lateinit var shipyards: MutableMap<String, ShipyardResults>
 
     fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE): GameState {
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
         Profile.createProfile(profData)
         SpaceTradersClient.createClient("$DEFAULT_PROF_DIR/authtoken.secret")
+        SpaceTradersClient.beginPollingRequests()
         println("Name ${profData.name}")
         agent = (getAgentData() ?: failedToLoad("Agent")) as Agent
         println("HQ @ ${agent.headquarters}")
