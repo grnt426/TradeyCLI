@@ -1,3 +1,4 @@
+import client.SpaceTradersClient
 import com.varabyte.kotter.foundation.LiveVar
 import com.varabyte.kotter.foundation.anim.TextAnim
 import com.varabyte.kotter.foundation.anim.text
@@ -26,8 +27,10 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
+import model.system.Waypoint
 import java.awt.Color
 import java.io.File
+import java.lang.Thread.sleep
 import java.time.LocalDateTime
 import kotlin.collections.ArrayDeque
 import kotlin.math.max
@@ -84,8 +87,27 @@ enum class QuadSelect {
     NONE
 }
 
-suspend fun main() {
+fun main() {
 
+
+
+
+    GameState.profData = Json.decodeFromString<ProfileData>(File(DEFAULT_PROF_FILE).readText())
+    Profile.createProfile(GameState.profData)
+    SpaceTradersClient.createClient("$DEFAULT_PROF_DIR/authtoken.secret")
+    SpaceTradersClient.setup()
+    (0..50).forEach { _ ->
+        SpaceTradersClient.asyncGet<List<Waypoint>>({ t -> println("lkjsdklfj")}, request {
+            url("https://api.spacetraders.io/v2/systems/X1-GH12/waypoints?type=ENGINEERED_ASTEROID")
+        })
+    }
+
+    (0..10).forEach { _ ->
+        println("Waiting....")
+        sleep(1000)
+    }
+
+    return
     val gameState = initializeGameState()
 
     val HEADER_COLOR = Color(149, 149, 240)

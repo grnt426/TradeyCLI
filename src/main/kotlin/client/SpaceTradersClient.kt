@@ -14,10 +14,14 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
+import model.actions.Extract
+import model.system.Waypoint
 import java.io.File
+import java.lang.Thread.sleep
 import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.concurrent.timer
+import kotlin.math.min
 
 object SpaceTradersClient{
 
@@ -27,9 +31,22 @@ object SpaceTradersClient{
 
     val pendingRequests = ConcurrentLinkedQueue<() -> Job>()
 
+    val pendingRequestsAny = ConcurrentLinkedQueue<RequestContext<*>>()
+
+    class RequestContext<Any>(val callback: (Any) -> Unit, val request: HttpRequestBuilder, var attempts: Int = 0)
+
     fun setup() {
-        timer("ApiRequestQueue", true, 0, 550) {
-            pendingRequests.poll()()
+
+        val mineRequest = RequestContext<Extract>({ t -> println("")}, request {})
+        val wayRequest = RequestContext<Waypoint>({ t -> println("")}, request {})
+
+
+        timer("ApiRequestQueue", true, 0, 500) {
+            println("Available to execute")
+            if(pendingRequests.isNotEmpty()) {
+                println("Executing")
+                pendingRequests.poll()().start()
+            }
         }
     }
 
@@ -55,11 +72,11 @@ object SpaceTradersClient{
         runBlocking {
             launch {
                 try {
-                    withTimeout(2_000) {
+//                    withTimeout(2_000) {
                         val response = client.get(request)
                         if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
                             println(response.bodyAsText())
-                            result = Json.decodeFromString<JsonObject>(response.bodyAsText())["model"]?.let {
+                            result = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
                                 Json.decodeFromJsonElement<T>(
                                     it
                                 )
@@ -70,7 +87,7 @@ object SpaceTradersClient{
                         } else {
                             println("${response.status} - ${response.bodyAsText()}")
                         }
-                    }
+//                    }
                 } catch (e: TimeoutCancellationException) {
                     println("Timeout")
                 }
@@ -85,12 +102,12 @@ object SpaceTradersClient{
                 withContext(apiDispatcher) {
                     launch {
                         try {
-                            withTimeout(2_000) {
+                            withTimeout(350) {
                                 val response = client.get(request)
                                 if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
                                     println(response.bodyAsText())
                                     val result =
-                                        Json.decodeFromString<JsonObject>(response.bodyAsText())["model"]?.let {
+                                        Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
                                             Json.decodeFromJsonElement<T>(
                                                 it
                                             )
@@ -101,6 +118,41 @@ object SpaceTradersClient{
                                     callback(result)
                                 } else {
                                     println("${response.status} - ${response.bodyAsText()}")
+//                                    asyncGet<T>(callback, request)
+                                }
+                            }
+                        } catch (e: TimeoutCancellationException) {
+                            println("Timeout")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    inline fun <reified T> asyncGet(requestContext: RequestContext<T>) {
+        pendingRequests.add {
+            runBlocking {
+                withContext(apiDispatcher) {
+                    launch {
+                        try {
+                            withTimeout(350) {
+                                val response = client.get(requestContext.request)
+                                if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
+                                    println(response.bodyAsText())
+                                    val result =
+                                        Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
+                                            Json.decodeFromJsonElement<T>(
+                                                it
+                                            )
+                                        }!!
+                                    if (result is LastRead) {
+                                        (result as LastRead).timestamp = LocalDateTime.now().toString()
+                                    }
+                                    requestContext.callback(result)
+                                } else {
+                                    println("${response.status} - ${response.bodyAsText()}")
+//                                    asyncGet<T>(callback, request)
                                 }
                             }
                         } catch (e: TimeoutCancellationException) {
