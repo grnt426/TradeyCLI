@@ -1,14 +1,19 @@
 package model
 
+import Symbol
 import client.SpaceTradersClient
 import model.system.System
 import model.system.OrbitalNames
 import io.ktor.client.request.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import model.GameState.GameApi
 import model.exceptions.ProfileLoadingFailure
+import model.ship.Ship
+import model.ship.listShips
 import model.system.Waypoint
+import script.repo.BasicMiningScript
 import java.io.File
 
 const val DEFAULT_PROF_DIR = "profile"
@@ -17,11 +22,14 @@ object GameState {
 
     const val GameApi = "https://api.spacetraders.io/v2/"
 
+    val stateDispatcher = Dispatchers.Default
+
     lateinit var profData: ProfileData
     lateinit var agent: Agent
     lateinit var systems: MutableMap<String, System>
     lateinit var waypoints: MutableMap<String, Waypoint>
     lateinit var shipyards: MutableMap<String, ShipyardResults>
+    lateinit var ships: MutableMap<String, Ship>
 
     fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE): GameState {
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
@@ -39,7 +47,31 @@ object GameState {
     private fun loadAllData() {
         systems = loadDataFromJsonFile<System>("systems")
         shipyards = loadDataFromJsonFile<ShipyardResults>("shipyards")
+        ships = loadDataFromJsonFile<Ship>("ships")
     }
+
+    fun fetchAllShips() {
+        val shipList = listShips()
+        shipList?.forEach { s ->
+            if (s.registration.role == "EXCAVATOR") {
+                val script = BasicMiningScript(s)
+                script.execute()
+            }
+        }
+        ships = convertToMap(shipList)
+    }
+
+    private fun <T> convertToMap(list: List<T>?): MutableMap<String, T> where T : Symbol {
+        if (list != null) {
+            return list.associateBy(
+                keySelector = {it.symbol},
+                valueTransform = {it}
+            ).toMutableMap()
+        }
+
+        return mutableMapOf()
+    }
+
 
     private inline fun <reified T> loadDataFromJsonFile(folderRoot: String): MutableMap<String, T> =
         File("$DEFAULT_PROF_DIR/$folderRoot")

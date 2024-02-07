@@ -27,6 +27,7 @@ import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
+import model.GameState.fetchAllShips
 import model.system.Waypoint
 import java.awt.Color
 import java.io.File
@@ -89,6 +90,7 @@ enum class QuadSelect {
 
 fun main() {
     val gameState = initializeGameState()
+    fetchAllShips()
 
     val HEADER_COLOR = Color(149, 149, 240)
     val SELECTED_HEADER_COLOR = Color(26, 208, 222)

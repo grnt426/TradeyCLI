@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
 data class Cargo(
     val capacity: Long,
     var units: Long,
-    val inventory: List<String>
+    val inventory: List<Inventory>
 )
 
 fun cargoFull(ship: Ship): Boolean {

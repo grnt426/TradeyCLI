@@ -14,10 +14,13 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
+import model.actions.Extract
 import java.io.File
 import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.concurrent.timer
+import kotlin.reflect.KSuspendFunction1
+import kotlin.reflect.KSuspendFunction2
 
 object SpaceTradersClient{
 
@@ -63,7 +66,7 @@ object SpaceTradersClient{
                 try {
                     withTimeout(2_000) {
                         val response = client.get(request)
-                        if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
+                        if (response.status.isSuccess() && response.bodyAsText().isNotEmpty()) {
                             println(response.bodyAsText())
                             result = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
                                 Json.decodeFromJsonElement<T>(
@@ -86,8 +89,8 @@ object SpaceTradersClient{
     }
 
     inline fun <reified T> enqueueRequest(
-        crossinline callback: (T) -> Unit,
-        crossinline failback: (HttpResponse?, Exception?) -> Unit,
+        callback: KSuspendFunction1<T, Unit>,
+        failback: KSuspendFunction2<HttpResponse?, Exception?, Unit>,
         request: HttpRequestBuilder
     ) {
         pendingRequestJobs.add {
@@ -95,9 +98,14 @@ object SpaceTradersClient{
                 launch {
                     try {
                         withTimeout(2_000) {
-                            val response = client.get(request)
-                            if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
-                                println(response.bodyAsText())
+                            val response = if (request.method == HttpMethod.Post) {
+                                client.post(request)
+                            }
+                            else {
+                                client.get(request)
+                            }
+                            if (response.status.isSuccess() && response.bodyAsText().isNotEmpty()) {
+                                println("Success ${response.bodyAsText()}")
                                 val result = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
                                     Json.decodeFromJsonElement<T>(
                                         it
@@ -106,13 +114,19 @@ object SpaceTradersClient{
                                 if (result is LastRead) {
                                     (result as LastRead).timestamp = LocalDateTime.now().toString()
                                 }
-                                callback(result)
+                                try {
+                                    callback(result)
+                                }
+                                catch(e: Exception) {
+                                    // prevent exceptions in callback from triggering anything else
+                                }
                             } else {
                                 failback(response, null)
-                                println("${response.status} - ${response.bodyAsText()}")
+                                println("Failure ${response.status} - ${response.bodyAsText()}")
                             }
                         }
                     } catch (e: TimeoutCancellationException) {
+                        println("Exception caught??")
                         failback(null, e)
                     }
                 }
