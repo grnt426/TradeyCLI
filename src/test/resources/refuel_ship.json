@@ -1,0 +1,30 @@
+{
+  "data": {
+    "agent": {
+      "accountId": "cls294vgt985ns60c2w4avmsq",
+      "symbol": "BIG_BUBBLES",
+      "headquarters": "X1-GH12-A1",
+      "credits": 210781,
+      "startingFaction": "VOID",
+      "shipCount": 3
+    },
+    "fuel": {
+      "current": 80,
+      "capacity": 80,
+      "consumed": {
+        "amount": 36,
+        "timestamp": "2024-02-07T03:02:37.794Z"
+      }
+    },
+    "transaction": {
+      "waypointSymbol": "X1-GH12-DX5B",
+      "shipSymbol": "BIG_BUBBLES-3",
+      "tradeSymbol": "FUEL",
+      "type": "PURCHASE",
+      "units": 1,
+      "pricePerUnit": 72,
+      "totalPrice": 72,
+      "timestamp": "2024-02-07T03:08:44.654Z"
+    }
+  }
+}

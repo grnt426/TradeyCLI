@@ -1,9 +1,11 @@
 package script.repo
 
+import model.actions.Extract
 import model.ship.Ship
 import model.ship.components.cargoFull
 import model.ship.components.cargoNotFull
 import script.ScriptExecutor
+import script.StateScope
 import script.script
 import script.actions.mine
 import script.actions.noop
@@ -19,12 +21,14 @@ class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.Mining
         FULL_AWAITING_PICKUP
     }
 
+    var extractResult: Extract? = null
+
     override fun execute() {
         script {
 //            println("Start!")
             state(matchesState(MiningStates.MINING)) {
 //                println("Mining action")
-                mine(ship)
+                mine(ship, ::mineCallback)
 //                println("I have ${ship.cargo.units} in the cargo bay")
                 changeState(MiningStates.KEEP_VALUABLES)
             }
@@ -59,5 +63,9 @@ class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.Mining
 //                        " Full? ${ship.cargo.units >= ship.cargo.capacity}")
             }
         }.runForever(500)
+    }
+
+    fun mineCallback(res: Extract) {
+        extractResult = res
     }
 }

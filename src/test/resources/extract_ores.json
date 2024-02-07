@@ -1,0 +1,31 @@
+{
+  "data": {
+    "extraction": {
+      "shipSymbol": "BIG_BUBBLES-3",
+      "yield": {
+        "symbol": "QUARTZ_SAND",
+        "units": 1
+      }
+    },
+    "cooldown": {
+      "shipSymbol": "BIG_BUBBLES-3",
+      "totalSeconds": 70,
+      "remainingSeconds": 69,
+      "expiration": "2024-02-07T03:10:48.583Z"
+    },
+    "cargo": {
+      "capacity": 15,
+      "units": 1,
+      "inventory": [
+
+        {
+
+          "symbol": "QUARTZ_SAND",
+          "name": "Quartz Sand",
+          "description": "High-purity quartz sand used in the production of glass and ceramics.",
+          "units": 1
+        }
+      ]
+    }
+  }
+}

@@ -1,14 +1,14 @@
 package script.actions
 
+import client.SpaceTradersClient
+import io.ktor.client.request.*
+import model.actions.Extract
+import model.api
 import model.ship.Ship
 import script.StateScope
-import java.time.LocalDateTime
 
-fun StateScope.mine(ship: Ship) {
-//    println("Mining....")
-
-    // delay until available after nav/off cooldown from previous mining
-
-    ship.cargo.units += 25
-    LocalDateTime.now().plusHours(1)
+fun StateScope.mine(ship: Ship, mineCallback:(Extract) -> Unit) {
+    SpaceTradersClient.asyncGet<Extract>(mineCallback, request {
+        url(api("my/ships/${ship.symbol}/extract"))
+    })
 }

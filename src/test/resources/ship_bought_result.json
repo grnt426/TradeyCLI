@@ -1,0 +1,172 @@
+{
+  "data": {
+    "agent": {
+      "accountId": "cls294vgt985ns60c2w4avmsq",
+      "symbol": "BIG_BUBBLES",
+      "headquarters": "X1-GH12-A1",
+      "credits": 210853,
+      "startingFaction": "VOID",
+      "shipCount": 3
+    },
+    "ship": {
+      "symbol": "BIG_BUBBLES-3",
+      "nav": {
+        "systemSymbol": "X1-GH12",
+        "waypointSymbol": "X1-GH12-H57",
+
+        "route": {
+
+          "departure": {
+            "symbol": "X1-GH12-H57",
+            "type": "MOON",
+            "systemSymbol": "X1-GH12",
+            "x": -30,
+            "y": 34
+          },
+          "origin": {
+            "symbol": "X1-GH12-H57",
+            "type": "MOON",
+            "systemSymbol": "X1-GH12",
+            "x": -30,
+            "y": 34
+          },
+          "destination": {
+            "symbol": "X1-GH12-H57",
+            "type": "MOON",
+            "systemSymbol": "X1-GH12",
+            "x": -30,
+            "y": 34
+          },
+          "arrival": "2024-02-07T03:01:04.832Z",
+          "departureTime": "2024-02-07T03:01:04.832Z"
+        },
+        "status": "DOCKED",
+        "flightMode": "CRUISE"
+      },
+      "crew": {
+        "current": 0,
+        "capacity": 0,
+        "required": 0,
+        "rotation": "STRICT",
+        "morale": 100,
+        "wages": 0
+      },
+      "fuel": {
+        "current": 80,
+        "capacity": 80,
+
+        "consumed": {
+
+          "amount": 0,
+          "timestamp": "2024-02-07T03:01:04.832Z"
+        }
+      },
+      "cooldown": {
+        "shipSymbol": "BIG_BUBBLES-3",
+        "totalSeconds": 0,
+        "remainingSeconds": 0
+      },
+      "frame": {
+        "symbol": "FRAME_DRONE",
+        "name": "Drone",
+        "description": "A small, unmanned spacecraft used for various tasks, such as surveillance, transportation, or combat.",
+        "moduleSlots": 3,
+        "mountingPoints": 2,
+        "fuelCapacity": 80,
+        "condition": 100,
+
+        "requirements": {
+
+          "power": 1,
+          "crew": -4
+        }
+      },
+      "reactor": {
+        "symbol": "REACTOR_CHEMICAL_I",
+        "name": "Chemical Reactor I",
+        "description": "A basic chemical power reactor, used to generate electricity from chemical reactions.",
+        "condition": 100,
+        "powerOutput": 15,
+
+        "requirements": {
+
+          "crew": 3
+        }
+      },
+      "engine": {
+        "symbol": "ENGINE_IMPULSE_DRIVE_I",
+        "name": "Impulse Drive I",
+        "description": "A basic low-energy propulsion system that generates thrust for interplanetary travel.",
+        "condition": 100,
+        "speed": 3,
+
+        "requirements": {
+
+          "power": 1,
+          "crew": 0
+        }
+      },
+      "modules": [
+
+        {
+
+          "symbol": "MODULE_CARGO_HOLD_I",
+          "name": "Cargo Hold",
+          "description": "A module that increases a ship's cargo capacity.",
+          "capacity": 15,
+          "requirements": {
+            "crew": 0,
+            "power": 1,
+            "slots": 1
+          }
+        },
+
+        {
+
+          "symbol": "MODULE_MINERAL_PROCESSOR_I",
+          "name": "Mineral Processor",
+          "description": "Crushes and processes extracted minerals and ores into their component parts, filters out impurities, and containerizes them into raw storage units.",
+          "requirements": {
+            "crew": 0,
+            "power": 1,
+            "slots": 2
+          }
+        }
+      ],
+      "mounts": [
+
+        {
+
+          "symbol": "MOUNT_MINING_LASER_I",
+          "name": "Mining Laser I",
+          "description": "A basic mining laser that can be used to extract valuable minerals from asteroids and other space objects.",
+          "strength": 3,
+          "requirements": {
+            "crew": 1,
+            "power": 1
+          }
+        }
+      ],
+      "registration": {
+        "name": "BIG_BUBBLES-3",
+        "factionSymbol": "VOID",
+        "role": "EXCAVATOR"
+      },
+      "cargo": {
+        "capacity": 15,
+        "units": 0,
+
+        "inventory": []
+
+      }
+    },
+    "transaction": {
+      "shipSymbol": "SHIP_MINING_DRONE",
+      "shipType": "SHIP_MINING_DRONE",
+      "waypointSymbol": "X1-GH12-H57",
+      "agentSymbol": "BIG_BUBBLES",
+      "price": 39147,
+      "timestamp": "2024-02-07T03:01:04.945Z"
+    }
+  }
+}

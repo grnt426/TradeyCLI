@@ -1,0 +1,37 @@
+{
+  "data": {
+    "extraction": {
+      "shipSymbol": "BIG_BUBBLES-3",
+      "yield": {
+        "symbol": "ICE_WATER",
+        "units": 2
+      }
+    },
+    "cooldown": {
+      "shipSymbol": "BIG_BUBBLES-3",
+      "totalSeconds": 70,
+      "remainingSeconds": 69,
+      "expiration": "2024-02-07T03:26:19.710Z"
+    },
+    "cargo": {
+      "capacity": 15,
+      "units": 3,
+      "inventory": [
+
+        {
+          "symbol": "ICE_WATER",
+          "name": "Fresh Water",
+          "description": "High-quality fresh water, essential for life support and hydroponic agriculture.",
+          "units": 2
+        },
+
+        {
+          "symbol": "QUARTZ_SAND",
+          "name": "Quartz Sand",
+          "description": "High-purity quartz sand used in the production of glass and ceramics.",
+          "units": 1
+        }
+      ]
+    }
+  }
+}

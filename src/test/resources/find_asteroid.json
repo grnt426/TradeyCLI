@@ -1,0 +1,43 @@
+{
+  "data": [
+    {
+      "systemSymbol": "X1-GH12",
+      "symbol": "X1-GH12-DX5B",
+      "type": "ENGINEERED_ASTEROID",
+      "x": -27,
+      "y": -2,
+      "orbitals": [],
+      "traits": [
+        {
+          "symbol": "COMMON_METAL_DEPOSITS",
+          "name": "Common Metal Deposits",
+          "description": "A waypoint rich in common metal ores like iron, copper, and aluminum, essential for construction and manufacturing."
+        },
+        {
+          "symbol": "STRIPPED",
+          "name": "Stripped",
+          "description": "A location that has been over-mined or over-harvested, resulting in depleted resources and barren landscapes."
+        },
+        {
+          "symbol": "MARKETPLACE",
+          "name": "Marketplace",
+          "description": "A thriving center of commerce where traders from across the galaxy gather to buy, sell, and exchange goods."
+        }
+      ],
+      "modifiers": [],
+      "chart": {
+        "submittedBy": "VOID",
+        "submittedOn": "2024-01-28T17:23:05.291Z"
+      },
+      "faction": {
+        "symbol": "VOID"
+      },
+      "isUnderConstruction": false
+    }
+  ],
+  "meta": {
+    "total": 1,
+    "page": 1,
+    "limit": 10
+  }
+}
