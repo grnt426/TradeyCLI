@@ -1,0 +1,172 @@
+{
+  "data": {
+    "agent": {
+      "accountId": "cls294vgt985ns60c2w4avmsq",
+      "symbol": "BIG_BUBBLES",
+      "headquarters": "X1-GH12-A1",
+      "credits": 123125,
+      "startingFaction": "VOID",
+      "shipCount": 4
+    },
+    "ship": {
+      "symbol": "BIG_BUBBLES-4",
+      "nav": {
+        "systemSymbol": "X1-GH12",
+        "waypointSymbol": "X1-GH12-A2",
+
+        "route": {
+
+          "departure": {
+            "symbol": "X1-GH12-A2",
+            "type": "MOON",
+            "systemSymbol": "X1-GH12",
+            "x": -5,
+            "y": 25
+          },
+          "origin": {
+            "symbol": "X1-GH12-A2",
+            "type": "MOON",
+            "systemSymbol": "X1-GH12",
+            "x": -5,
+            "y": 25
+          },
+          "destination": {
+            "symbol": "X1-GH12-A2",
+            "type": "MOON",
+            "systemSymbol": "X1-GH12",
+            "x": -5,
+            "y": 25
+          },
+          "arrival": "2024-02-09T01:46:13.176Z",
+          "departureTime": "2024-02-09T01:46:13.176Z"
+        },
+        "status": "DOCKED",
+        "flightMode": "CRUISE"
+      },
+      "crew": {
+        "current": 18,
+        "capacity": 40,
+        "required": 18,
+        "rotation": "STRICT",
+        "morale": 100,
+        "wages": 0
+      },
+      "fuel": {
+        "current": 300,
+        "capacity": 300,
+
+        "consumed": {
+
+          "amount": 0,
+          "timestamp": "2024-02-09T01:46:13.176Z"
+        }
+      },
+      "cooldown": {
+        "shipSymbol": "BIG_BUBBLES-4",
+        "totalSeconds": 0,
+        "remainingSeconds": 0
+      },
+      "frame": {
+        "symbol": "FRAME_SHUTTLE",
+        "name": "Shuttle",
+        "description": "A small, reusable spacecraft designed for short-range, low-speed travel between spacecraft or planetary surfaces.",
+        "moduleSlots": 3,
+        "mountingPoints": 1,
+        "fuelCapacity": 300,
+        "condition": 100,
+
+        "requirements": {
+
+          "power": 1,
+          "crew": 10
+        }
+      },
+      "reactor": {
+        "symbol": "REACTOR_CHEMICAL_I",
+        "name": "Chemical Reactor I",
+        "description": "A basic chemical power reactor, used to generate electricity from chemical reactions.",
+        "condition": 100,
+        "powerOutput": 15,
+
+        "requirements": {
+
+          "crew": 3
+        }
+      },
+      "engine": {
+        "symbol": "ENGINE_IMPULSE_DRIVE_I",
+        "name": "Impulse Drive I",
+        "description": "A basic low-energy propulsion system that generates thrust for interplanetary travel.",
+        "condition": 100,
+        "speed": 3,
+
+        "requirements": {
+
+          "power": 1,
+          "crew": 0
+        }
+      },
+      "modules": [
+
+        {
+
+          "symbol": "MODULE_CARGO_HOLD_II",
+          "name": "Expanded Cargo Hold",
+          "description": "An expanded cargo hold module that provides more efficient storage space for a ship's cargo.",
+          "capacity": 40,
+          "requirements": {
+            "crew": 2,
+            "power": 2,
+            "slots": 2
+          }
+        },
+
+        {
+
+          "symbol": "MODULE_CREW_QUARTERS_I",
+          "name": "Crew Quarters",
+          "description": "A module that provides living space and amenities for the crew.",
+          "capacity": 40,
+          "requirements": {
+            "crew": 2,
+            "power": 1,
+            "slots": 1
+          }
+        }
+      ],
+      "mounts": [
+
+        {
+
+          "symbol": "MOUNT_TURRET_I",
+          "name": "Rotary Cannon",
+          "description": "A rotary cannon is a type of mounted turret that is designed to fire a high volume of rounds in rapid succession.",
+          "requirements": {
+            "power": 1,
+            "crew": 1
+          }
+        }
+      ],
+      "registration": {
+        "name": "BIG_BUBBLES-4",
+        "factionSymbol": "VOID",
+        "role": "TRANSPORT"
+      },
+      "cargo": {
+        "capacity": 40,
+        "units": 0,
+
+        "inventory": []
+
+      }
+    },
+    "transaction": {
+      "shipSymbol": "SHIP_LIGHT_SHUTTLE",
+      "shipType": "SHIP_LIGHT_SHUTTLE",
+      "waypointSymbol": "X1-GH12-A2",
+      "agentSymbol": "BIG_BUBBLES",
+      "price": 87656,
+      "timestamp": "2024-02-09T01:46:13.344Z"
+    }
+  }
+}

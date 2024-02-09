@@ -41,7 +41,7 @@ class Script internal constructor() {
      */
     fun runForever(interval: Long = 1_000) {
         scriptStatus = ScriptStatus.RUNNING
-        scheduledScript = timer("sdfdf",true, 0, interval) {
+        scheduledScript = timer("scriptRunnerForever",true, 0, interval) {
             StateScope().apply { findRunnableState() }
         }
     }

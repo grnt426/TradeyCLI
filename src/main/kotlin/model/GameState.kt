@@ -8,7 +8,7 @@ import io.ktor.client.request.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import model.GameState.GameApi
+import model.GameState.GAME_API
 import model.exceptions.ProfileLoadingFailure
 import model.ship.Ship
 import model.ship.listShips
@@ -20,7 +20,7 @@ const val DEFAULT_PROF_DIR = "profile"
 const val DEFAULT_PROF_FILE = "$DEFAULT_PROF_DIR/profile.settings.json"
 object GameState {
 
-    const val GameApi = "https://api.spacetraders.io/v2/"
+    const val GAME_API = "https://api.spacetraders.io/v2/"
 
     val stateDispatcher = Dispatchers.Default
 
@@ -112,4 +112,4 @@ object GameState {
     }
 }
 
-fun api(params: String): String = "$GameApi/$params"
+fun api(params: String): String = "$GAME_API/$params"

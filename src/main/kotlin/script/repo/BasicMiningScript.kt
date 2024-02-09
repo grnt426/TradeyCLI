@@ -4,22 +4,21 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import model.actions.Extract
 import model.ship.Ship
+import model.ship.applyExtractResults
 import model.ship.components.cargoFull
 import model.ship.components.cargoNotFull
+import model.ship.isCooldownExpired
 import script.ScriptExecutor
 import script.actions.mine
 import script.actions.noop
+import script.repo.BasicMiningScript.*
+import script.repo.BasicMiningScript.MiningStates.*
 import script.script
 import java.time.Instant
-import java.time.LocalDateTime
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoField
-import java.util.*
 
 
-class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.MiningStates>(
-    MiningStates.MINING, "BasicMiningScript", ship.symbol
+class BasicMiningScript(val ship: Ship): ScriptExecutor<MiningStates>(
+    MINING, "BasicMiningScript", ship.symbol
 ) {
 
     enum class MiningStates {
@@ -36,76 +35,64 @@ class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.Mining
 
     override fun execute() {
         script {
-
-            state(matchesState(MiningStates.MINING_COOLDOWN)) {
+            state(matchesState(MINING_COOLDOWN)) {
                 print("Cooling state: ")
-                if (ship.cooldown.expiration == null) {
-                    println("Cooldown is null")
-                }
-                else {
-                    val cooldownTime = Instant.parse(ship.cooldown.expiration)
-                    val now = LocalDateTime.now(ZoneOffset.UTC)
-                    if (
-                        ship.cooldown.expiration != null &&
-                        now.toInstant(ZoneOffset.UTC) >= cooldownTime
-                    ) {
-                        println("Cooldown complete")
-                        changeState(MiningStates.MINING)
-                    } else {
-                        print("Cooldown has ")
-                        print((cooldownTime.epochSecond - now.toEpochSecond(ZoneOffset.UTC)))
-                        println(" seconds remain....")
-                    }
+                if (isCooldownExpired(ship.cooldown)) {
+                    println("Cooldown complete")
+                    changeState(MINING)
+                } else {
+                    print("Cooldown has ")
+                    print((ship.cooldown.expirationDateTime?.epochSecond?.minus(Instant.now().epochSecond)))
+                    println(" seconds remain....")
                 }
             }
 
-            state(matchesState(MiningStates.MINING)) {
+            state(matchesState(MINING)) {
                 extractResult = null
                 failed = false
                 println("Mining action")
                 mine(ship, ::mineCallback, ::failback)
-                changeState(MiningStates.AWAIT_MINING_RESPONSE)
+                changeState(AWAIT_MINING_RESPONSE)
             }
 
-            state(matchesState(MiningStates.AWAIT_MINING_RESPONSE)) {
+            state(matchesState(AWAIT_MINING_RESPONSE)) {
                 println("Awaiting mining response...")
                 if (extractResult != null) {
-                    ship.cargo = extractResult!!.cargo
-                    ship.cooldown = extractResult!!.cooldown
+                    applyExtractResults(ship, extractResult!!)
                     val yield = extractResult!!.extraction.yield
                     println("Mined ${yield.units} ${yield.symbol}")
-                    changeState(MiningStates.KEEP_VALUABLES)
+                    changeState(KEEP_VALUABLES)
                 }
                 else if (failed) {
                     println("Mining failed! Retrying....")
                     failed = false
-                    changeState(MiningStates.MINING_COOLDOWN)
+                    changeState(MINING_COOLDOWN)
                 }
             }
 
-            state(matchesState(MiningStates.KEEP_VALUABLES)) {
+            state(matchesState(KEEP_VALUABLES)) {
                 println("Ejecting commons")
                 ship.cargo = extractResult!!.cargo
 
                 // eject garbage
 
                 if (cargoFull(ship)) {
-                    changeState(MiningStates.FULL_AWAITING_PICKUP)
+                    changeState(FULL_AWAITING_PICKUP)
                 }
                 else {
-                    changeState(MiningStates.MINING_COOLDOWN)
+                    changeState(MINING_COOLDOWN)
                 }
             }
 
-            state(matchesState(MiningStates.FULL_AWAITING_PICKUP)){
+            state(matchesState(FULL_AWAITING_PICKUP)){
                 println("Awaiting pickup")
 
                 if (cargoNotFull(ship)) {
-                    changeState(MiningStates.MINING)
+                    changeState(MINING)
                 }
             }
 
-            state(matchesState(MiningStates.STOP)) {
+            state(matchesState(STOP)) {
 //                println("Stopped")
                 noop()
                 stopScript()
@@ -128,7 +115,7 @@ class BasicMiningScript(val ship: Ship): ScriptExecutor<BasicMiningScript.Mining
 
             // it could also be traveling, should handle
             if (resp.status == HttpStatusCode.Conflict) {
-                changeState(MiningStates.MINING_COOLDOWN)
+                changeState(MINING_COOLDOWN)
             }
             else {
                 failed = true

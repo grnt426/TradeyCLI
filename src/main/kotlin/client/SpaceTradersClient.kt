@@ -14,7 +14,6 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
-import model.actions.Extract
 import java.io.File
 import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -132,5 +131,13 @@ object SpaceTradersClient{
                 }
             }
         }
+    }
+
+    suspend fun ignoredCallback(any: Any) {
+
+    }
+
+    suspend fun ignoredFailback(resp: HttpResponse?, ex: Exception?) {
+
     }
 }
