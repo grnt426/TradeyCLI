@@ -1,6 +1,6 @@
 package model.contract
 
-import model.TradeSymbol
+import model.market.TradeSymbol
 import kotlinx.serialization.Serializable
 
 @Serializable

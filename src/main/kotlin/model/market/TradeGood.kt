@@ -1,12 +1,10 @@
-package model.ship.components
+package model.market
 
 import kotlinx.serialization.Serializable
-import model.market.TradeSymbol
 
 @Serializable
-data class Inventory(
+data class TradeGood(
     val symbol: TradeSymbol,
     val name: String,
     val description: String,
-    val units: Int,
 )

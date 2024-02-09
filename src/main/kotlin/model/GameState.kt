@@ -2,6 +2,8 @@ package model
 
 import Symbol
 import client.SpaceTradersClient
+import client.SpaceTradersClient.ignoredCallback
+import client.SpaceTradersClient.ignoredFailback
 import model.system.System
 import model.system.OrbitalNames
 import io.ktor.client.request.*
@@ -9,10 +11,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import model.GameState.GAME_API
+import model.GameState.shipsToScripts
 import model.exceptions.ProfileLoadingFailure
+import model.market.Market
 import model.ship.Ship
 import model.ship.listShips
+import model.system.SystemWaypoint
 import model.system.Waypoint
+import script.MessageableScriptExecutor
+import script.ScriptExecutor
 import script.repo.BasicMiningScript
 import java.io.File
 
@@ -30,6 +37,8 @@ object GameState {
     lateinit var waypoints: MutableMap<String, Waypoint>
     lateinit var shipyards: MutableMap<String, ShipyardResults>
     lateinit var ships: MutableMap<String, Ship>
+    val shipsToScripts: MutableMap<Ship, MessageableScriptExecutor<*, *>> = mutableMapOf()
+    lateinit var markets: MutableMap<String, Market>
 
     fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE): GameState {
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
@@ -41,13 +50,51 @@ object GameState {
         println("HQ @ ${agent.headquarters}")
         loadAllData()
         refreshSystem(OrbitalNames.getSectorSystem(agent.headquarters)) ?: failedToLoad("Headquarters")
+        if (waypoints.isEmpty()) {
+            refreshWaypoints(getHqSystem().symbol, getHqSystem().waypoints)
+        }
+        if (markets.isEmpty()) {
+            refreshMarkets()
+        }
         return this
+    }
+
+    private fun refreshMarkets() {
+        waypoints.values
+            .filter { w -> w.traits.find { t -> t.symbol == TraitTypes.MARKETPLACE } != null}
+            .forEach { w ->
+                SpaceTradersClient.enqueueRequest<Market>(::marketCb, ::ignoredFailback, request {
+                    url(api("systems/${getHqSystem().symbol}/waypoints/${w.symbol}/market"))
+                })
+            }
+    }
+
+    private fun refreshWaypoints(systemSymbol: String, waypoints: List<SystemWaypoint>) {
+        waypoints.forEach { w ->
+            SpaceTradersClient.enqueueRequest(::waypointCb, ::ignoredFailback, request {
+                url(api("systems/$systemSymbol/waypoints/${w.symbol}"))
+            })
+        }
+    }
+
+    suspend fun marketCb(market: Market) {
+        markets[market.symbol] = market
+        File("$DEFAULT_PROF_DIR/markets/${market.symbol}")
+            .writeText(Json.encodeToString(market))
+    }
+
+    suspend private fun waypointCb(waypoint: Waypoint) {
+        waypoints[waypoint.symbol] = waypoint
+        File("$DEFAULT_PROF_DIR/waypoints/${waypoint.symbol}")
+            .writeText(Json.encodeToString(waypoint))
     }
 
     private fun loadAllData() {
         systems = loadDataFromJsonFile<System>("systems")
         shipyards = loadDataFromJsonFile<ShipyardResults>("shipyards")
         ships = loadDataFromJsonFile<Ship>("ships")
+        waypoints = loadDataFromJsonFile<Waypoint>("waypoints")
+        markets = loadDataFromJsonFile<Market>("markets")
     }
 
     fun fetchAllShips() {
@@ -113,3 +160,5 @@ object GameState {
 }
 
 fun api(params: String): String = "$GAME_API/$params"
+
+fun getScriptForShip(ship: Ship): MessageableScriptExecutor<*, *>? = shipsToScripts[ship]

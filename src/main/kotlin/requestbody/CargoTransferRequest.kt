@@ -1,7 +1,7 @@
 package requestbody
 
 import kotlinx.serialization.Serializable
-import model.TradeSymbol
+import model.market.TradeSymbol
 
 @Serializable
 data class CargoTransferRequest(

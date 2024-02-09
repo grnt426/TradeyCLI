@@ -5,12 +5,13 @@ import io.ktor.client.request.*
 import model.ship.PurchasableShip
 import model.ship.ShipTypeContainer
 import kotlinx.serialization.Serializable
+import model.market.MarketTransaction
 
 @Serializable
 data class ShipyardResults(
     val symbol: String,
     val shipTypes: List<ShipTypeContainer>,
-    val transactions: List<Transaction>,
+    val transactions: List<MarketTransaction>,
     val ships: List<PurchasableShip>,
     val modificationsFee: Long,
 ): LastRead()

@@ -8,16 +8,18 @@ import model.ship.applyExtractResults
 import model.ship.components.cargoFull
 import model.ship.components.cargoNotFull
 import model.ship.isCooldownExpired
+import script.MessageableScriptExecutor
 import script.ScriptExecutor
 import script.actions.mine
 import script.actions.noop
 import script.repo.BasicMiningScript.*
+import script.repo.BasicMiningScript.MiningMessages.*
 import script.repo.BasicMiningScript.MiningStates.*
 import script.script
 import java.time.Instant
 
 
-class BasicMiningScript(val ship: Ship): ScriptExecutor<MiningStates>(
+class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates, MiningMessages>(
     MINING, "BasicMiningScript", ship.symbol
 ) {
 
@@ -28,6 +30,10 @@ class BasicMiningScript(val ship: Ship): ScriptExecutor<MiningStates>(
         STOP,
         KEEP_VALUABLES,
         FULL_AWAITING_PICKUP
+    }
+
+    enum class MiningMessages {
+        HAULER_FINISHED,
     }
 
     private var extractResult: Extract? = null
@@ -87,7 +93,9 @@ class BasicMiningScript(val ship: Ship): ScriptExecutor<MiningStates>(
             state(matchesState(FULL_AWAITING_PICKUP)){
                 println("Awaiting pickup")
 
-                if (cargoNotFull(ship)) {
+                // A hauler may have finished transferring cargo from us, but ran out of room to
+                // take it all. Regardless, go back to mining
+                if (cargoNotFull(ship) && consumeMessage(HAULER_FINISHED)) {
                     changeState(MINING)
                 }
             }

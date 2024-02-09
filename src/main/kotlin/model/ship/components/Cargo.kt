@@ -8,10 +8,8 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import model.ship.Ship
 import kotlinx.serialization.Serializable
-import model.TradeSymbol
+import model.market.TradeSymbol
 import model.api
-import model.ship.Navigation
-import model.system.WaypointSymbol
 import requestbody.CargoTransferRequest
 import requestbody.SellCargoRequest
 import responsebody.SellCargoResponse

@@ -10,10 +10,12 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import model.ship.components.*
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import model.GameState
 import model.actions.Extract
 import model.api
 import responsebody.RefuelResponse
+import script.MessageableScriptExecutor
 import kotlin.reflect.KSuspendFunction1
 import kotlin.reflect.KSuspendFunction2
 

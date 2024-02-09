@@ -1,11 +1,16 @@
 package script.repo
 
 import io.ktor.client.statement.*
+import model.getScriptForShip
 import model.ship.*
 import model.ship.components.*
+import model.system.Waypoint
+import script.MessageableScriptExecutor
 import script.ScriptExecutor
 import script.repo.BasicHaulerScript.*
 import script.repo.BasicHaulerScript.HaulingStates.*
+import script.repo.BasicMiningScript.*
+import script.repo.BasicMiningScript.MiningMessages.*
 import script.script
 import java.lang.Exception
 
@@ -21,6 +26,8 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
     private var transferredInventory: Inventory? = null
     private var transferFailed = false
     private var transferFromTarget: Ship? = null
+
+    private var targetMarket: Waypoint? = null
     enum class HaulingStates {
         FIND_ELIGIBLE,
         NAV_TO_DROP,
@@ -100,8 +107,8 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
                             changeState(AWAIT_TRANSFER_COMPLETE)
                             return@forEach
                         } else {
-
-                            // another hauler might have emptied the cargo before us
+                            val mailbox = getScriptForShip(target) as MessageableScriptExecutor<MiningStates, MiningMessages>
+                            mailbox.postMessage(HAULER_FINISHED)
                             routes.remove(target)
                         }
                     }
@@ -128,11 +135,22 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
 
             state(matchesState(CHOOSE_MARKET_TO_SELL)) {
 
+
+                // for now, a simple choice is just picking a market that can take all our cargo
+//                markets.forEach { m -> m. }
                 changeState(NAV_TO_MARKET)
             }
 
             state(matchesState(NAV_TO_MARKET)) {
-                changeState(AWAIT_NAV_TO_SHIP)
+                if (targetMarket != null) {
+                    navigateTo(ship, targetMarket!!.symbol)
+                    changeState(AWAIT_NAV_TO_MARKET)
+                }
+                else {
+                    // error, return to find eligible
+                    println("Hauler state nav_to_market with no market")
+                    changeState(FIND_ELIGIBLE)
+                }
             }
 
             state(matchesState(DOCK_WITH_MARKET)) {
