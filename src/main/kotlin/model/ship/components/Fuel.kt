@@ -8,3 +8,5 @@ data class Fuel(
     val capacity: Long,
     val consumed: FuelConsumed
 )
+
+fun hasfuelRatio(fuel: Fuel, ratio: Double): Boolean = fuel.current / fuel.capacity > ratio

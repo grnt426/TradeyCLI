@@ -4,6 +4,7 @@ import io.ktor.client.statement.*
 import model.GameState
 import model.getScriptForShip
 import model.market.TradeGood
+import model.market.findMarketForGood
 import model.ship.*
 import model.ship.components.*
 import model.system.Waypoint
@@ -19,7 +20,7 @@ import script.script
 import java.lang.Exception
 
 class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
-    FIND_ELIGIBLE, "BasicMiningScript", ship.symbol
+    UNKNOWN_START, "BasicMiningScript", ship.symbol
 ) {
 
     init {
@@ -38,6 +39,8 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
 
     private var targetMarket: String? = null
     enum class HaulingStates {
+        UNKNOWN_START,
+
         FIND_ELIGIBLE,
         NAV_TO_DROP,
         NAV_TO_COLLECT,
@@ -55,6 +58,13 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
 
     override fun execute() {
         script {
+
+            state(matchesState(UNKNOWN_START)) {
+                if (hasCargo(ship)) {
+                    changeState(SELL_CARGO)
+                }
+            }
+
             state(matchesState(FIND_ELIGIBLE)) {
 
                 // find excavators that are >=80% full
@@ -80,7 +90,7 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
                     shipTarget = routes.first()
 
                     // if we are already there, no need to try and burn
-                    if (shipTarget!!.nav.waypointSymbol == ship.nav.waypointSymbol) {
+                    if (shipsAtSameWaypoint(shipTarget!!, ship)) {
                         changeState(DOCK_WITH_SHIP)
                     }
                     else {
@@ -106,34 +116,22 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
             }
 
             state(matchesState(TRANSFER_CARGO)) {
-
                 // transfer cargo to this ship, one inventory transfer at a time
-                println("Transferring cargo...")
                 val shipsHere = routes.filter { shipsAtSameWaypoint(ship, it) }
                 if (shipsHere.isEmpty() || cargoFull(ship)) {
                     changeState(CHOOSE_NEXT_NAV)
                 }
                 else {
                     shipsHere.forEach { target ->
-                        println("Doing thing")
                         if (hasCargo(target)) {
                             val inv = findInventoryOfSizeMax(target, cargoSpaceLeft(ship)).toSortedSet { a, b ->
                                 b.units - a.units
                             }
-                            println("\t${cargoSpaceLeft(ship)} cargo space left")
-                            println("\t${inv.size} things in inventory match")
                             transferredInventory = inv.first()
                             val symbol = transferredInventory!!.symbol
                             val units = transferredInventory!!.units
                             resetAwaitTransfer()
-                            transferCargo(
-                                ship,
-                                target,
-                                symbol,
-                                units,
-                                ::transferCb,
-                                ::transferFb
-                            )
+                            transferCargo(ship, target, symbol, units, ::transferCb, ::transferFb)
                             transferFromTarget = target
                             changeState(AWAIT_TRANSFER_COMPLETE)
                             return@forEach
@@ -178,17 +176,26 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
                     changeState(NAV_TO_MARKET)
                 } else {
 
-                    // find an exchange market that will take everything we have
-                    println("No market with all imports to take our goods. Finish me!")
-                    changeState(NAV_TO_MARKET)
+                    // no smart routing for now. Just pick the first import market that will
+                    // buy our good
+                    val toSell = ship.cargo.inventory[0].symbol
+                    val market = findMarketForGood(toSell, ship.nav.systemSymbol)
+                    if (market != null) {
+                        targetMarket = market.symbol
+                        changeState(NAV_TO_MARKET)
+                    }
+                    else {
+                        // if nothing can take our good, jettison and try again
+                        println("Nothing will import ${toSell}; will jettison")
+                        jettisonCargo(ship, ship.cargo.inventory.removeFirst())
+                    }
                 }
-
             }
 
             state(matchesState(NAV_TO_MARKET)) {
                 println("Navigating to market")
                 if (targetMarket != null) {
-                    navigateTo(ship, targetMarket!!)
+                    navigateTo(ship, targetMarket!!, ::navShipCb)
                     changeState(AWAIT_NAV_TO_MARKET)
                 }
                 else {
@@ -214,14 +221,15 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
 
             state(matchesState(SELL_CARGO)) {
                 println("Selling cargo...")
-                if (hasCargo(ship)) {
-                    val inv = ship.cargo.inventory.removeFirst()
-                    sellCargo(ship, inv.symbol, inv.units)
 
-                    // stay in this state. Just enqueue next request without validating success/fail
+                // find things that can be sold
+                if (hasCargo(ship)) {
+                    val inv = removeLocalCargo(ship, ship.cargo.inventory.first())
+                    sellCargo(ship, inv.symbol, inv.units)
+                    // since we didn't change state, the next execution will return here
                 }
                 else {
-                    // buy fuel after selling everything. Best chance of affording it
+                    // buy fuel after selling everything.
                     buyFuel(ship)
                     changeState(FIND_ELIGIBLE)
                 }

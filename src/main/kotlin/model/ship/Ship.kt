@@ -14,6 +14,8 @@ import kotlinx.serialization.Transient
 import model.GameState
 import model.actions.Extract
 import model.api
+import model.market.TradeSymbol
+import requestbody.JettisonRequest
 import responsebody.RefuelResponse
 import script.MessageableScriptExecutor
 import script.ScriptExecutor
@@ -108,7 +110,6 @@ fun toDock(
 }
 
 fun hasfuelRatio(ship: Ship, ratio: Double): Boolean = hasfuelRatio(ship.fuel, ratio)
-fun hasfuelRatio(fuel: Fuel, ratio: Double): Boolean = fuel.current / fuel.capacity > ratio
 
 fun shipsAtSameWaypoint(first: Ship, second: Ship): Boolean = first.nav.waypointSymbol == second.nav.waypointSymbol
 fun shipsInSameSystem(first: Ship, second: Ship): Boolean = first.nav.systemSymbol == second.nav.systemSymbol
@@ -124,4 +125,31 @@ fun buyFuel(ship: Ship) {
             }
         )
     }
+}
+
+fun hasCargoRatio(ship: Ship, ratio: Double): Boolean = hasCargoRatio(ship.cargo, ratio)
+fun cargoFull(ship: Ship): Boolean = cargoFull(ship.cargo)
+fun cargoNotFull(ship: Ship): Boolean = cargoNotFull(ship.cargo)
+
+fun hasCargo(ship: Ship): Boolean = hasCargo(ship.cargo)
+fun cargoEmpty(ship: Ship): Boolean = cargoEmpty(ship.cargo)
+fun cargoSpaceLeft(ship: Ship): Int = cargoSpaceLeft(ship.cargo)
+fun findInventoryOfSizeMax(ship: Ship, size: Int): List<Inventory> = findInventoryOfSizeMax(ship.cargo, size)
+
+fun removeLocalCargo(ship: Ship, inventory: Inventory): Inventory = removeLocalCargo(ship.cargo, inventory)
+fun jettisonCargo(ship: Ship, inventory: Inventory) {
+    SpaceTradersClient.enqueueFafRequest(
+        request {
+            url(api("my/ships/${ship.symbol}/jettison"))
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(JettisonRequest(inventory.symbol, inventory.units))
+        }
+    )
+}
+
+fun jettisonCargo(ship: Ship, candidates: List<TradeSymbol>) {
+    ship.cargo.inventory
+        .filter { i -> candidates.contains(i.symbol) }
+        .forEach { i -> jettisonCargo(ship, i) }
 }

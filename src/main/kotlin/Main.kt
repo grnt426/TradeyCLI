@@ -30,17 +30,22 @@ import kotlinx.serialization.json.*
 import model.GameState.fetchAllShips
 import model.market.TradeGood
 import model.market.TradeSymbol
+import model.ship.ShipNavStatus
 import model.ship.components.Inventory
 import model.ship.getShips
 import model.system.Waypoint
 import java.awt.Color
 import java.io.File
 import java.lang.Thread.sleep
+import java.math.BigDecimal
+import java.math.RoundingMode
+import java.time.Instant
 import java.time.LocalDateTime
 import kotlin.collections.ArrayDeque
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.DurationUnit
 
 enum class Window {
     MAIN,
@@ -57,6 +62,8 @@ enum class RequestStatus {
     FAILED,
     NONE
 }
+
+val magnitudes = listOf("", "k", "M", "G", "T", "P")
 
 val ACTIONS = listOf("help", "contracts", "accept", "waypoints")
 val client = HttpClient(CIO) {
@@ -128,15 +135,24 @@ fun main() {
                             }
 
                             getShips().forEach { s ->
-                                text("${s.registration.name} - ${s.script?.currentState}")
+                                text("${s.registration.name} [")
+                                applyShipRoleColor(s.registration.role)
+                                text("] ${s.script?.currentState}")
                                 if (s.cooldown.remainingSeconds > 0)
                                     textLine(" (${s.cooldown.remainingSeconds})")
+                                else if (s.nav.status == ShipNavStatus.IN_TRANSIT) {
+                                    val arrival = Instant.parse(s.nav.route.arrival)
+                                    val secondsRemaining = arrival.epochSecond.minus(Instant.now().epochSecond).toDouble()
+
+                                    textLine("(${reduceToSiNotation(secondsRemaining, "s")})")
+                                }
                                 else
                                     textLine()
-                                if (s.cargo.capacity > 0) {
-                                    textLine(s.cargo.inventory.chunked(2).joinToString("\n", transform = { chunk ->
+                                if (s.cargo.inventory.isNotEmpty()) {
+                                    text(" * ")
+                                    textLine(s.cargo.inventory.chunked(2).joinToString("\n * ", transform = { chunk ->
                                         chunk.joinToString (", ", transform = { c: Inventory ->
-                                            " * ${c.units} ${c.name}"
+                                            "${c.units} ${c.name}"
                                         })
                                     }))
                                 }
@@ -485,4 +501,35 @@ fun RenderScope.makeHeader(text: String) {
     textLine()
 }
 
+fun RenderScope.applyShipRoleColor(role: String) {
+    val desig = role[0]
+    when(role) {
+        "EXCAVATOR" ->
+            rgb(Color(120, 80, 40).rgb) {
+                text(desig)
+            }
+        "TRANSPORT" ->
+            green {
+                text(desig)
+            }
+        "COMMAND" ->
+            red {
+                text(desig)
+            }
+        else ->
+            white {
+                text(desig)
+            }
+    }
+}
+
+fun reduceToSiNotation(number: Double, unit: String): String {
+    var res = number
+    var index = 0
+    while (res > 999) {
+        res /= 1000
+        index++
+    }
+    return "${BigDecimal(res).setScale(3, RoundingMode.UP)}${magnitudes[index]}$unit"
+}
 suspend fun readAgentData(): JsonObject = Json.decodeFromString(File("agentdata.secret").readText())

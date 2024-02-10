@@ -136,6 +136,33 @@ object SpaceTradersClient{
         }
     }
 
+    fun enqueueFafRequest(request: HttpRequestBuilder) {
+        pendingRequestJobs.add {
+            runBlocking(apiDispatcher) {
+                launch {
+                    try {
+                        withTimeout(2_000) {
+                            val response = if (request.method == HttpMethod.Post) {
+                                client.post(request)
+                            }
+                            else {
+                                client.get(request)
+                            }
+                            if (response.status.isSuccess() && response.bodyAsText().isNotEmpty()) {
+                                println("Success ${response.bodyAsText()}")
+
+                            } else {
+                                println("Failure ${response.status} - ${response.bodyAsText()}")
+                            }
+                        }
+                    } catch (e: TimeoutCancellationException) {
+                        println("Exception caught??")
+                    }
+                }
+            }
+        }
+    }
+
     suspend fun ignoredCallback(any: Any) {
 
     }

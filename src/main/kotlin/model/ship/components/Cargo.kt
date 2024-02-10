@@ -27,27 +27,25 @@ data class Cargo(
 fun hasCargoRatio(cargo: Cargo, ratio: Double): Boolean =
     if(cargo.capacity == 0) false
     else cargo.units / cargo.capacity >= ratio
-fun hasCargoRatio(ship: Ship, ratio: Double): Boolean = hasCargoRatio(ship.cargo, ratio)
+
 
 fun cargoFull(cargo: Cargo): Boolean = cargo.units >= cargo.capacity
-fun cargoFull(ship: Ship): Boolean = cargoFull(ship.cargo)
-
 fun cargoNotFull(cargo: Cargo): Boolean = !cargoFull(cargo)
-fun cargoNotFull(ship: Ship): Boolean = cargoNotFull(ship.cargo)
-
-fun hasCargo(ship: Ship): Boolean = hasCargo(ship.cargo)
 fun hasCargo(cargo: Cargo): Boolean = cargo.units > 0
-
-fun cargoEmpty(ship: Ship): Boolean = cargoEmpty(ship.cargo)
 fun cargoEmpty(cargo: Cargo): Boolean = cargo.units == 0
-
-fun findInventoryOfSizeMax(ship: Ship, size: Int): List<Inventory> = findInventoryOfSizeMax(ship.cargo, size)
 fun findInventoryOfSizeMax(cargo: Cargo, size: Int): List<Inventory> = findInventoryOfSizeMax(cargo.inventory, size)
 fun findInventoryOfSizeMax(inventory: List<Inventory>, size: Int): List<Inventory> = inventory.filter { it.units <= size }
-
-fun cargoSpaceLeft(ship: Ship): Int = cargoSpaceLeft(ship.cargo)
 fun cargoSpaceLeft(cargo: Cargo): Int = cargo.capacity - cargo.units
-
+fun removeLocalCargo(cargo: Cargo, inventory: Inventory): Inventory {
+    if (cargo.inventory.contains(inventory)) {
+        cargo.units -= inventory.units
+        cargo.inventory.remove(inventory)
+    }
+    else {
+        println("ERROR: Can't remove inventory we don't own????")
+    }
+    return inventory
+}
 fun transferCargo(
     toShip: Ship, fromShip: Ship,
     good: TradeSymbol, amount: Int,

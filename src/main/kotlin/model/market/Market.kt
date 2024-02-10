@@ -1,6 +1,7 @@
 package model.market
 
 import kotlinx.serialization.Serializable
+import model.GameState
 
 @Serializable
 data class Market(
@@ -13,3 +14,8 @@ data class Market(
     val tradeGoods: List<MarketTradeGood> = emptyList()
 )
 
+fun findMarketForGood(good: TradeSymbol, system: String): Market? {
+
+    // filter by system later
+    return GameState.markets.values.firstOrNull { m -> m.imports.find { i -> i.symbol == good } != null }
+}

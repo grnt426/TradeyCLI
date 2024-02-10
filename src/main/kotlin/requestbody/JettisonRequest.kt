@@ -1,10 +1,10 @@
-package model.actions
+package requestbody
 
 import kotlinx.serialization.Serializable
 import model.market.TradeSymbol
 
 @Serializable
-data class Yield(
+data class JettisonRequest(
     val symbol: TradeSymbol,
-    val units: Long,
+    val units: Int,
 )

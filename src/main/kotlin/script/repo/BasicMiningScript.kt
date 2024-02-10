@@ -3,17 +3,12 @@ package script.repo
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import model.actions.Extract
-import model.ship.Ship
-import model.ship.applyExtractResults
-import model.ship.components.cargoFull
-import model.ship.components.cargoNotFull
-import model.ship.isCooldownExpired
+import model.market.TradeSymbol
+import model.ship.*
 import script.MessageableScriptExecutor
-import script.ScriptExecutor
 import script.actions.mine
 import script.actions.noop
 import script.repo.BasicMiningScript.*
-import script.repo.BasicMiningScript.MiningMessages.*
 import script.repo.BasicMiningScript.MiningStates.*
 import script.script
 import java.time.Instant
@@ -39,6 +34,8 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
         HAULER_FINISHED,
     }
 
+    private val ALWAYS_WORTHLESS_GOODS = listOf(TradeSymbol.ICE_WATER)
+
     private var extractResult: Extract? = null
     private var failed = false
     var cooldownRemaining = 0L
@@ -55,13 +52,11 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
             }
 
             state(matchesState(MINING)) {
-
                 if (cargoFull(ship)) {
                     println("In mining state, but full; Going to await pickup")
                     changeState(FULL_AWAITING_PICKUP)
                 }
                 else {
-
                     extractResult = null
                     failed = false
                     println("Mining action")
@@ -87,9 +82,9 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
 
             state(matchesState(KEEP_VALUABLES)) {
                 println("Ejecting commons")
-                ship.cargo = extractResult!!.cargo
 
                 // eject garbage
+                jettisonCargo(ship, ALWAYS_WORTHLESS_GOODS)
 
                 if (cargoFull(ship)) {
                     changeState(FULL_AWAITING_PICKUP)
@@ -100,7 +95,6 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
             }
 
             state(matchesState(FULL_AWAITING_PICKUP)){
-                println("Awaiting pickup")
 
                 // Once our cargo isn't full anymore, resume mining
                 if (cargoNotFull(ship)) {
