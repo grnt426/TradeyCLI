@@ -8,7 +8,7 @@ import java.time.Instant
 data class Cooldown(
     val shipSymbol: String,
     val totalSeconds: Long,
-    val remainingSeconds: Long,
+    var remainingSeconds: Long,
     val expiration: String? = null,
     @Transient var expirationDateTime: Instant? = null,
 )
@@ -24,6 +24,6 @@ fun isCooldownExpired(cooldown: Cooldown): Boolean {
         Instant.now().toEpochMilli() >= cooldown.expirationDateTime!!.toEpochMilli()
     }
     else {
-        true
+        return cooldown.remainingSeconds  <= 0
     }
 }

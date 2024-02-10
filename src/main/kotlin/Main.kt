@@ -28,6 +28,10 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import model.GameState.fetchAllShips
+import model.market.TradeGood
+import model.market.TradeSymbol
+import model.ship.components.Inventory
+import model.ship.getShips
 import model.system.Waypoint
 import java.awt.Color
 import java.io.File
@@ -120,16 +124,23 @@ fun main() {
                     when (currentView) {
                         Window.MAIN -> {
                             rgb(headerColor.rgb) {
-                                makeHeader("HQ: ${hq.symbol}")
+                                makeHeader("Ship Status: ${hq.symbol}")
                             }
-                            var asteroids = 0
-                            hq.waypoints.forEach { o ->
-                                if (o.type == WaypointType.ASTEROID)
-                                    asteroids++
+
+                            getShips().forEach { s ->
+                                text("${s.registration.name} - ${s.script?.currentState}")
+                                if (s.cooldown.remainingSeconds > 0)
+                                    textLine(" (${s.cooldown.remainingSeconds})")
                                 else
-                                    textLine("${o.symbol} - ${o.type}")
+                                    textLine()
+                                if (s.cargo.capacity > 0) {
+                                    textLine(s.cargo.inventory.chunked(2).joinToString("\n", transform = { chunk ->
+                                        chunk.joinToString (", ", transform = { c: Inventory ->
+                                            " * ${c.units} ${c.name}"
+                                        })
+                                    }))
+                                }
                             }
-                            textLine("Asteroids - $asteroids")
                         }
 
                         Window.CONTRACT -> {

@@ -118,6 +118,9 @@ object SpaceTradersClient{
                                 }
                                 catch(e: Exception) {
                                     // prevent exceptions in callback from triggering anything else
+                                    println("Failure in handling callback")
+                                    println(e.message)
+                                    println(e.stackTraceToString())
                                 }
                             } else {
                                 failback(response, null)

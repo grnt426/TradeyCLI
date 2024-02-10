@@ -16,15 +16,16 @@ import model.actions.Extract
 import model.api
 import responsebody.RefuelResponse
 import script.MessageableScriptExecutor
+import script.ScriptExecutor
 import kotlin.reflect.KSuspendFunction1
 import kotlin.reflect.KSuspendFunction2
 
 @Serializable
 data class Ship(
     override val symbol: String,
-    val nav: Navigation,
+    var nav: Navigation,
     val crew: Crew,
-    val fuel: Fuel,
+    var fuel: Fuel,
     var cooldown: Cooldown,
     val frame: Frame,
     val engine: Engine,
@@ -33,6 +34,8 @@ data class Ship(
     val mounts: List<Mount>,
     val registration: Registration,
     var cargo: Cargo,
+
+    @Transient var script: ScriptExecutor<*>? = null
 ): Symbol
 
 fun listShips(): List<Ship>? = callGet<List<Ship>>(request {

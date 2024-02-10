@@ -13,6 +13,7 @@ import model.api
 import requestbody.CargoTransferRequest
 import requestbody.SellCargoRequest
 import responsebody.SellCargoResponse
+import responsebody.TransferResponse
 import kotlin.reflect.KSuspendFunction1
 import kotlin.reflect.KSuspendFunction2
 
@@ -50,17 +51,17 @@ fun cargoSpaceLeft(cargo: Cargo): Int = cargo.capacity - cargo.units
 fun transferCargo(
     toShip: Ship, fromShip: Ship,
     good: TradeSymbol, amount: Int,
-    cb: KSuspendFunction1<Cargo, Unit>,
+    cb: KSuspendFunction1<TransferResponse, Unit>,
     fb: KSuspendFunction2<HttpResponse?, Exception?, Unit>
 ) {
-    SpaceTradersClient.enqueueRequest<Cargo>(
+    SpaceTradersClient.enqueueRequest<TransferResponse>(
         cb,
         fb,
         request {
-            url(api("my/ships/${toShip.symbol}/transfer"))
+            url(api("my/ships/${fromShip.symbol}/transfer"))
             method = HttpMethod.Post
             contentType(ContentType.Application.Json)
-            setBody(CargoTransferRequest(good, amount, fromShip.symbol))
+            setBody(CargoTransferRequest(good, amount, toShip.symbol))
         }
     )
 }

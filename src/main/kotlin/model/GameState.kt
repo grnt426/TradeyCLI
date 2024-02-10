@@ -4,6 +4,8 @@ import Symbol
 import client.SpaceTradersClient
 import client.SpaceTradersClient.ignoredCallback
 import client.SpaceTradersClient.ignoredFailback
+import data.DbClient
+import data.SavedScripts
 import model.system.System
 import model.system.OrbitalNames
 import io.ktor.client.request.*
@@ -18,8 +20,10 @@ import model.ship.Ship
 import model.ship.listShips
 import model.system.SystemWaypoint
 import model.system.Waypoint
+import org.jetbrains.exposed.sql.selectAll
 import script.MessageableScriptExecutor
 import script.ScriptExecutor
+import script.repo.BasicHaulerScript
 import script.repo.BasicMiningScript
 import java.io.File
 
@@ -99,10 +103,17 @@ object GameState {
 
     fun fetchAllShips() {
         val shipList = listShips()
+        // pull from DB to get saved state
         shipList?.forEach { s ->
-            if (s.registration.role == "EXCAVATOR") {
-                val script = BasicMiningScript(s)
-                script.execute()
+            when(s.registration.role) {
+                "EXCAVATOR" -> {
+                    val script = BasicMiningScript(s)
+                    script.execute()
+                }
+                "TRANSPORT" -> {
+                    val script = BasicHaulerScript(s)
+                    script.execute()
+                }
             }
         }
         ships = convertToMap(shipList)

@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 import model.api
 import model.system.Waypoint
 import model.system.WaypointSymbol
+import responsebody.NavigationResponse
 import kotlin.reflect.KSuspendFunction1
 import kotlin.reflect.KSuspendFunction2
 
@@ -23,10 +24,10 @@ data class Navigation(
 fun navigateTo(
     ship: Ship,
     waypointSymbol: String,
-    cb: KSuspendFunction1<Navigation, Unit> = SpaceTradersClient::ignoredCallback,
+    cb: KSuspendFunction1<NavigationResponse, Unit> = SpaceTradersClient::ignoredCallback,
     fb: KSuspendFunction2<HttpResponse?, Exception?, Unit> = SpaceTradersClient::ignoredFailback
 ) {
-    SpaceTradersClient.enqueueRequest<Navigation>(
+    SpaceTradersClient.enqueueRequest<NavigationResponse>(
         cb,
         fb,
         request {

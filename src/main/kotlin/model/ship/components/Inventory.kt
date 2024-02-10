@@ -8,5 +8,5 @@ data class Inventory(
     val symbol: TradeSymbol,
     val name: String,
     val description: String,
-    val units: Int,
+    var units: Int,
 )

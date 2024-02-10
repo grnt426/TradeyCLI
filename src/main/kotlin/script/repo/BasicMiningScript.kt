@@ -23,6 +23,9 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
     MINING, "BasicMiningScript", ship.symbol
 ) {
 
+    init {
+        ship.script = this
+    }
     enum class MiningStates {
         MINING,
         AWAIT_MINING_RESPONSE,
@@ -38,27 +41,33 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
 
     private var extractResult: Extract? = null
     private var failed = false
+    var cooldownRemaining = 0L
 
     override fun execute() {
         script {
             state(matchesState(MINING_COOLDOWN)) {
-                print("Cooling state: ")
                 if (isCooldownExpired(ship.cooldown)) {
-                    println("Cooldown complete")
                     changeState(MINING)
                 } else {
-                    print("Cooldown has ")
-                    print((ship.cooldown.expirationDateTime?.epochSecond?.minus(Instant.now().epochSecond)))
-                    println(" seconds remain....")
+                    cooldownRemaining = ship.cooldown.expirationDateTime?.epochSecond?.minus(Instant.now().epochSecond)!!
+                    ship.cooldown.remainingSeconds = cooldownRemaining
                 }
             }
 
             state(matchesState(MINING)) {
-                extractResult = null
-                failed = false
-                println("Mining action")
-                mine(ship, ::mineCallback, ::failback)
-                changeState(AWAIT_MINING_RESPONSE)
+
+                if (cargoFull(ship)) {
+                    println("In mining state, but full; Going to await pickup")
+                    changeState(FULL_AWAITING_PICKUP)
+                }
+                else {
+
+                    extractResult = null
+                    failed = false
+                    println("Mining action")
+                    mine(ship, ::mineCallback, ::failback)
+                    changeState(AWAIT_MINING_RESPONSE)
+                }
             }
 
             state(matchesState(AWAIT_MINING_RESPONSE)) {
@@ -93,9 +102,8 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
             state(matchesState(FULL_AWAITING_PICKUP)){
                 println("Awaiting pickup")
 
-                // A hauler may have finished transferring cargo from us, but ran out of room to
-                // take it all. Regardless, go back to mining
-                if (cargoNotFull(ship) && consumeMessage(HAULER_FINISHED)) {
+                // Once our cargo isn't full anymore, resume mining
+                if (cargoNotFull(ship)) {
                     changeState(MINING)
                 }
             }
