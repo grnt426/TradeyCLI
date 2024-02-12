@@ -2,7 +2,7 @@ package script.repo
 
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import model.actions.Extract
+import responsebody.ExtractionResponse
 import model.market.TradeSymbol
 import model.ship.*
 import script.MessageableScriptExecutor
@@ -36,7 +36,7 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
 
     private val ALWAYS_WORTHLESS_GOODS = listOf(TradeSymbol.ICE_WATER)
 
-    private var extractResult: Extract? = null
+    private var extractResult: ExtractionResponse? = null
     private var failed = false
     var cooldownRemaining = 0L
 
@@ -112,13 +112,13 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
         }.runForever(500)
     }
 
-    private suspend fun mineCallback(res: Extract) {
+    suspend fun mineCallback(res: ExtractionResponse) {
         println("Extract response successful")
         extractResult = res
         failed = false
     }
 
-    private suspend fun failback(resp: HttpResponse?, ex: Exception?) {
+    suspend fun failback(resp: HttpResponse?, ex: Exception?) {
         println("Failback called")
         if (resp != null) {
             println(resp.bodyAsText())

@@ -1,9 +1,8 @@
 package model.system
 
-import client.SpaceTradersClient
-import io.ktor.client.request.*
 import kotlinx.serialization.Serializable
 import model.*
+import model.faction.Faction
 
 @Serializable
 data class System(

@@ -1,7 +1,7 @@
 package model.serializationtests
 
 import model.Agent
-import model.Faction
+import model.faction.Faction
 import model.ShipyardResults
 import model.contract.Contract
 import model.ship.Ship

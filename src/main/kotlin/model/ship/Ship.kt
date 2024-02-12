@@ -12,12 +12,11 @@ import model.ship.components.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import model.GameState
-import model.actions.Extract
+import responsebody.ExtractionResponse
 import model.api
 import model.market.TradeSymbol
 import requestbody.JettisonRequest
 import responsebody.RefuelResponse
-import script.MessageableScriptExecutor
 import script.ScriptExecutor
 import kotlin.reflect.KSuspendFunction1
 import kotlin.reflect.KSuspendFunction2
@@ -46,7 +45,7 @@ fun listShips(): List<Ship>? = callGet<List<Ship>>(request {
 
 fun getShips(): List<Ship> = GameState.ships.values.toList()
 
-fun applyExtractResults(ship: Ship, extract: Extract) {
+fun applyExtractResults(ship: Ship, extract: ExtractionResponse) {
     ship.cargo = extract.cargo
     ship.cooldown = extract.cooldown
 }
@@ -137,6 +136,7 @@ fun cargoSpaceLeft(ship: Ship): Int = cargoSpaceLeft(ship.cargo)
 fun findInventoryOfSizeMax(ship: Ship, size: Int): List<Inventory> = findInventoryOfSizeMax(ship.cargo, size)
 
 fun removeLocalCargo(ship: Ship, inventory: Inventory): Inventory = removeLocalCargo(ship.cargo, inventory)
+fun removeLocalCargo(ship: Ship, good: TradeSymbol): Inventory = removeLocalCargo(ship.cargo, good)
 fun jettisonCargo(ship: Ship, inventory: Inventory) {
     SpaceTradersClient.enqueueFafRequest(
         request {

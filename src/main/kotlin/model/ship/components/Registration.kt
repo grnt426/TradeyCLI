@@ -1,6 +1,7 @@
 package model.ship.components
 
 import kotlinx.serialization.Serializable
+import model.ship.Ship
 
 @Serializable
 data class Registration(
@@ -8,3 +9,5 @@ data class Registration(
     val factionSymbol: String,
     val role: String,
 )
+
+fun shortName(ship: Ship): String = ship.registration.name.substringAfterLast("-")

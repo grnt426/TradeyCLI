@@ -3,7 +3,7 @@ package model
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class ProfileData(val name: String, val termWidth: Int)
+data class ProfileData(var name: String, val termWidth: Int)
 
 object Profile {
     lateinit var profileData: ProfileData

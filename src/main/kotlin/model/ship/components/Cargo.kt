@@ -46,6 +46,9 @@ fun removeLocalCargo(cargo: Cargo, inventory: Inventory): Inventory {
     }
     return inventory
 }
+
+fun removeLocalCargo(cargo: Cargo, symbol: TradeSymbol): Inventory =
+    removeLocalCargo(cargo, cargo.inventory.first { i -> i.symbol == symbol })
 fun transferCargo(
     toShip: Ship, fromShip: Ship,
     good: TradeSymbol, amount: Int,

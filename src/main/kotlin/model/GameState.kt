@@ -14,6 +14,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import model.GameState.GAME_API
 import model.GameState.shipsToScripts
+import model.contract.Contract
 import model.exceptions.ProfileLoadingFailure
 import model.market.Market
 import model.ship.Ship
@@ -21,6 +22,7 @@ import model.ship.listShips
 import model.system.SystemWaypoint
 import model.system.Waypoint
 import org.jetbrains.exposed.sql.selectAll
+import responsebody.RegisterResponse
 import script.MessageableScriptExecutor
 import script.ScriptExecutor
 import script.repo.BasicHaulerScript
@@ -35,6 +37,10 @@ object GameState {
 
     val stateDispatcher = Dispatchers.Default
 
+    // we can only ever have one contract for now
+    var contract: Contract? = null
+    var commandShip: Ship? = null
+
     lateinit var profData: ProfileData
     lateinit var agent: Agent
     lateinit var systems: MutableMap<String, System>
@@ -44,13 +50,29 @@ object GameState {
     val shipsToScripts: MutableMap<Ship, MessageableScriptExecutor<*, *>> = mutableMapOf()
     lateinit var markets: MutableMap<String, Market>
 
-    fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE): GameState {
+    fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE) {
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
         Profile.createProfile(profData)
-        SpaceTradersClient.createClient("$DEFAULT_PROF_DIR/authtoken.secret")
+        SpaceTradersClient.createClient(File("$DEFAULT_PROF_DIR/authtoken.secret"))
         SpaceTradersClient.beginPollingRequests()
-        println("Name ${profData.name}")
         agent = (getAgentData() ?: failedToLoad("Agent")) as Agent
+        postInitGameLoading()
+    }
+
+    fun bootGameStateFromNewAgent(profileData: ProfileData, registerResponse: RegisterResponse) {
+        profData = profileData
+        Profile.createProfile(profileData)
+        SpaceTradersClient.createClient(registerResponse.token)
+        registerResponse.token = "" // clear auth token from our memory
+        SpaceTradersClient.beginPollingRequests()
+        agent = registerResponse.agent
+        contract = registerResponse.contract
+        commandShip = registerResponse.ship
+        postInitGameLoading()
+    }
+
+    private fun postInitGameLoading() {
+        println("Name ${profData.name}")
         println("HQ @ ${agent.headquarters}")
         loadAllData()
         refreshSystem(OrbitalNames.getSectorSystem(agent.headquarters)) ?: failedToLoad("Headquarters")
@@ -60,7 +82,6 @@ object GameState {
         if (markets.isEmpty()) {
             refreshMarkets()
         }
-        return this
     }
 
     private fun refreshMarkets() {

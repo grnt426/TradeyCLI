@@ -2,7 +2,7 @@ package model.system
 
 import model.Trait
 import kotlinx.serialization.Serializable
-import model.Faction
+import model.faction.Faction
 
 @Serializable
 data class Waypoint(

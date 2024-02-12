@@ -27,3 +27,10 @@ fun isCooldownExpired(cooldown: Cooldown): Boolean {
         return cooldown.remainingSeconds  <= 0
     }
 }
+
+fun hasCooldown(ship: Ship): Boolean = !isCooldownExpired(ship.cooldown)
+
+fun calculateExpirationSeconds(ship: Ship): Long {
+    val arrival = Instant.parse(ship.nav.route.arrival)
+    return arrival.epochSecond.minus(Instant.now().epochSecond)
+}

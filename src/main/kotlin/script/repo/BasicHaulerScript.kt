@@ -2,20 +2,15 @@ package script.repo
 
 import io.ktor.client.statement.*
 import model.GameState
-import model.getScriptForShip
-import model.market.TradeGood
+import model.market.findGoodsAcceptedHere
 import model.market.findMarketForGood
 import model.ship.*
 import model.ship.components.*
-import model.system.Waypoint
 import responsebody.NavigationResponse
 import responsebody.TransferResponse
-import script.MessageableScriptExecutor
 import script.ScriptExecutor
 import script.repo.BasicHaulerScript.*
 import script.repo.BasicHaulerScript.HaulingStates.*
-import script.repo.BasicMiningScript.*
-import script.repo.BasicMiningScript.MiningMessages.*
 import script.script
 import java.lang.Exception
 
@@ -60,8 +55,14 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
         script {
 
             state(matchesState(UNKNOWN_START)) {
+                if (hasCargo(ship) && ship.nav.status == ShipNavStatus.IN_TRANSIT) {
+                    changeState(AWAIT_NAV_TO_SHIP)
+                }
                 if (hasCargo(ship)) {
                     changeState(SELL_CARGO)
+                }
+                else {
+                    changeState(FIND_ELIGIBLE)
                 }
             }
 
@@ -162,6 +163,7 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
             }
 
             state(matchesState(CHOOSE_MARKET_TO_SELL)) {
+                toOrbit(ship)
                 println("Picking market to sell at")
                 // for now, a simple choice is just picking a market that can take all our cargo
                 val goods = ship.cargo.inventory.map { i -> i.symbol }
@@ -177,7 +179,7 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
                 } else {
 
                     // no smart routing for now. Just pick the first import market that will
-                    // buy our good
+                    // buy a good
                     val toSell = ship.cargo.inventory[0].symbol
                     val market = findMarketForGood(toSell, ship.nav.systemSymbol)
                     if (market != null) {
@@ -215,7 +217,10 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
 
             state(matchesState(DOCK_WITH_MARKET)) {
                 println("Docking with market")
+
+                // always buy fuel after docking
                 toDock(ship)
+                buyFuel(ship)
                 changeState(SELL_CARGO)
             }
 
@@ -224,13 +229,19 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
 
                 // find things that can be sold
                 if (hasCargo(ship)) {
-                    val inv = removeLocalCargo(ship, ship.cargo.inventory.first())
-                    sellCargo(ship, inv.symbol, inv.units)
-                    // since we didn't change state, the next execution will return here
+                    val accepted = findGoodsAcceptedHere(inv(ship), ship.nav.waypointSymbol)
+                    if (accepted.isNotEmpty()) {
+                        val inv = removeLocalCargo(ship, accepted.first())
+                        sellCargo(ship, inv.symbol, inv.units)
+                        if (accepted.size == 1)
+                            changeState(CHOOSE_MARKET_TO_SELL)
+                        // otherwise if we don't change state, the next good will be sold here
+                    }
+                    else {
+                        changeState(CHOOSE_MARKET_TO_SELL)
+                    }
                 }
                 else {
-                    // buy fuel after selling everything.
-                    buyFuel(ship)
                     changeState(FIND_ELIGIBLE)
                 }
             }

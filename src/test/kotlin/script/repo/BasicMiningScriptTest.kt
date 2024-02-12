@@ -1,7 +1,11 @@
 package script.repo
 
+import client.SpaceTradersClient
 import data.DbClient
 import data.SavedScripts
+import io.ktor.client.*
+import io.ktor.client.statement.*
+import io.mockk.*
 import kotlinx.coroutines.Job
 import model.Location
 import model.ship.*
@@ -9,6 +13,9 @@ import model.ship.components.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import model.actions.Extraction
+import model.actions.Yield
+import model.market.TradeSymbol
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.selectAll
@@ -18,6 +25,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
+import responsebody.ExtractionResponse
 import java.lang.Thread.sleep
 import kotlin.test.BeforeTest
 import kotlin.test.assertEquals
@@ -26,9 +34,12 @@ import kotlin.test.assertNotNull
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class BasicMiningScriptTest {
 
+    private val client = mockk<HttpClient>()
+
     @BeforeAll
     fun setup() {
         DbClient.createClient("unittests")
+        mockkObject(SpaceTradersClient)
     }
 
     @BeforeEach
@@ -40,9 +51,11 @@ class BasicMiningScriptTest {
     fun `testing the basic mining script`() = runBlocking {
         val ship = createShip()
         val bms = BasicMiningScript(ship)
+        every { SpaceTradersClient.enqueueRequest<ExtractionResponse>(any(), any(), any()) }
+            .apply { bms.mineCallback(buildExtractionResponse(ship)) }
         launch{bms.execute()}.join()
         sleep(5000)
-        assertEquals(100, ship.cargo.units)
+        assertEquals(1, ship.cargo.units)
         assertEquals(BasicMiningScript.MiningStates.FULL_AWAITING_PICKUP, bms.currentState)
         transaction {
             val res = SavedScripts.selectAll().where(SavedScripts.id eq bms.uuid).single()
@@ -78,6 +91,24 @@ class BasicMiningScriptTest {
         assertEquals(0, DbClient.writeQueue.size)
     }
 
+    private fun buildExtractionResponse(ship: Ship): ExtractionResponse {
+        return ExtractionResponse(
+            Extraction(
+                ship.symbol, Yield(TradeSymbol.ICE_WATER, 1),
+            ),
+            Cooldown(
+                ship.symbol,
+                1,
+                2
+            ),
+            Cargo(
+                ship.cargo.capacity,
+                1,
+                mutableListOf( Inventory(TradeSymbol.ICE_WATER, TradeSymbol.ICE_WATER.name, "water", 1))
+            )
+        )
+    }
+
     private fun createShip(symbol: String = "0"): Ship {
         return Ship(
             "Symbol-$symbol",
@@ -91,7 +122,7 @@ class BasicMiningScriptTest {
                     "",
                     ""
                 ),
-                "Status",
+                ShipNavStatus.IN_ORBIT,
                 "FlightMode"
             ),
             Crew(0L, 0L, 0L, "", 0L, 0L),
@@ -105,7 +136,7 @@ class BasicMiningScriptTest {
             emptyList(),
             emptyList(),
             Registration("", "", ""),
-            Cargo(100, 0, emptyList())
+            Cargo(100, 0, mutableListOf())
         )
 
     }

@@ -11,6 +11,7 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.*
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
@@ -38,13 +39,14 @@ object SpaceTradersClient{
         }
     }
 
-    fun createClient(authFile: String): HttpClient {
+    fun createClient(authFile: File): HttpClient = createClient(authFile.readText())
+
+    fun createClient(authToken: String): HttpClient {
         client = HttpClient(CIO) {
             install(Auth) {
                 bearer {
                     loadTokens {
-                        val token = File(authFile).readText()
-                        BearerTokens(token, token)
+                        BearerTokens(authToken, authToken)
                     }
                 }
             }
@@ -105,20 +107,26 @@ object SpaceTradersClient{
                             }
                             if (response.status.isSuccess() && response.bodyAsText().isNotEmpty()) {
                                 println("Success ${response.bodyAsText()}")
-                                val result = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
-                                    Json.decodeFromJsonElement<T>(
-                                        it
-                                    )
-                                }!!
-                                if (result is LastRead) {
-                                    (result as LastRead).timestamp = LocalDateTime.now().toString()
-                                }
                                 try {
-                                    callback(result)
+                                    val result = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
+                                        Json.decodeFromJsonElement<T>(
+                                            it
+                                        )
+                                    }!!
+                                    if (result is LastRead) {
+                                        (result as LastRead).timestamp = LocalDateTime.now().toString()
+                                    }
+                                    try {
+                                        callback(result)
+                                    } catch (e: Exception) {
+                                        // prevent exceptions in callback from triggering anything else
+                                        println("Failure in handling callback")
+                                        println(e.message)
+                                        println(e.stackTraceToString())
+                                    }
                                 }
-                                catch(e: Exception) {
-                                    // prevent exceptions in callback from triggering anything else
-                                    println("Failure in handling callback")
+                                catch(e: SerializationException) {
+                                    println("Failure in parsing response of type ${T::class}")
                                     println(e.message)
                                     println(e.stackTraceToString())
                                 }
