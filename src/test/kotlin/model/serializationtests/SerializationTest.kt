@@ -2,7 +2,7 @@ package model.serializationtests
 
 import model.Agent
 import model.faction.Faction
-import model.ShipyardResults
+import model.Shipyard
 import model.contract.Contract
 import model.ship.Ship
 import model.system.System
@@ -19,7 +19,7 @@ class SerializationTest {
     fun `can read results from checking waypoint info of a shipyard`() {
         val file = File("src/test/resources/shipyard_result.json").readText()
         Json.decodeFromString<JsonObject>(file)["model"]?.let {
-            Json.decodeFromJsonElement<ShipyardResults>(
+            Json.decodeFromJsonElement<Shipyard>(
                 it
             )
         }!!

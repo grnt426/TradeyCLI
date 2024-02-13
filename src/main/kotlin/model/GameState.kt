@@ -2,10 +2,8 @@ package model
 
 import Symbol
 import client.SpaceTradersClient
-import client.SpaceTradersClient.ignoredCallback
+import client.SpaceTradersClient.callGet
 import client.SpaceTradersClient.ignoredFailback
-import data.DbClient
-import data.SavedScripts
 import model.system.System
 import model.system.OrbitalNames
 import io.ktor.client.request.*
@@ -21,16 +19,16 @@ import model.ship.Ship
 import model.ship.listShips
 import model.system.SystemWaypoint
 import model.system.Waypoint
-import org.jetbrains.exposed.sql.selectAll
 import responsebody.RegisterResponse
 import script.MessageableScriptExecutor
-import script.ScriptExecutor
 import script.repo.BasicHaulerScript
 import script.repo.BasicMiningScript
 import java.io.File
+import kotlin.reflect.KSuspendFunction1
 
 const val DEFAULT_PROF_DIR = "profile"
 const val DEFAULT_PROF_FILE = "$DEFAULT_PROF_DIR/profile.settings.json"
+
 object GameState {
 
     const val GAME_API = "https://api.spacetraders.io/v2/"
@@ -45,7 +43,7 @@ object GameState {
     lateinit var agent: Agent
     lateinit var systems: MutableMap<String, System>
     lateinit var waypoints: MutableMap<String, Waypoint>
-    lateinit var shipyards: MutableMap<String, ShipyardResults>
+    lateinit var shipyards: MutableMap<String, Shipyard>
     lateinit var ships: MutableMap<String, Ship>
     val shipsToScripts: MutableMap<Ship, MessageableScriptExecutor<*, *>> = mutableMapOf()
     lateinit var markets: MutableMap<String, Market>
@@ -82,17 +80,35 @@ object GameState {
         if (markets.isEmpty()) {
             refreshMarkets()
         }
+        if (shipyards.isEmpty()) {
+            refreshShipyards()
+        }
     }
 
-    private fun refreshMarkets() {
+    private inline fun <reified T> fetchSystemsForWaypointsWithTraits(
+        systemSymbol: String, traitType: TraitTypes,
+        endpoint: String, callback: KSuspendFunction1<T, Unit>
+    ) {
         waypoints.values
-            .filter { w -> w.traits.find { t -> t.symbol == TraitTypes.MARKETPLACE } != null}
+            .filter { w ->
+                w.systemSymbol == systemSymbol && w.traits.find { t -> t.symbol == traitType } != null
+            }
             .forEach { w ->
-                SpaceTradersClient.enqueueRequest<Market>(::marketCb, ::ignoredFailback, request {
-                    url(api("systems/${getHqSystem().symbol}/waypoints/${w.symbol}/market"))
+                SpaceTradersClient.enqueueRequest<T>(callback, ::ignoredFailback, request {
+                    url(api("systems/$systemSymbol/waypoints/${w.symbol}/$endpoint"))
                 })
             }
     }
+
+    private fun refreshShipyards() = fetchSystemsForWaypointsWithTraits(
+        getHqSystem().symbol, TraitTypes.SHIPYARD,
+        "shipyard", ::shipyardCb
+    )
+
+    private fun refreshMarkets() = fetchSystemsForWaypointsWithTraits(
+        getHqSystem().symbol, TraitTypes.MARKETPLACE,
+        "market", ::marketCb
+    )
 
     private fun refreshWaypoints(systemSymbol: String, waypoints: List<SystemWaypoint>) {
         waypoints.forEach { w ->
@@ -100,6 +116,12 @@ object GameState {
                 url(api("systems/$systemSymbol/waypoints/${w.symbol}"))
             })
         }
+    }
+
+    suspend fun shipyardCb(shipyardResults: Shipyard) {
+        shipyards[shipyardResults.symbol] = shipyardResults
+        File("$DEFAULT_PROF_DIR/shipyards/${shipyardResults.symbol}")
+            .writeText(Json.encodeToString(shipyardResults))
     }
 
     suspend fun marketCb(market: Market) {
@@ -116,8 +138,7 @@ object GameState {
 
     private fun loadAllData() {
         systems = loadDataFromJsonFile<System>("systems")
-        shipyards = loadDataFromJsonFile<ShipyardResults>("shipyards")
-        ships = loadDataFromJsonFile<Ship>("ships")
+        shipyards = loadDataFromJsonFile<Shipyard>("shipyards")
         waypoints = loadDataFromJsonFile<Waypoint>("waypoints")
         markets = loadDataFromJsonFile<Market>("markets")
     }
@@ -126,11 +147,12 @@ object GameState {
         val shipList = listShips()
         // pull from DB to get saved state
         shipList?.forEach { s ->
-            when(s.registration.role) {
+            when (s.registration.role) {
                 "EXCAVATOR" -> {
                     val script = BasicMiningScript(s)
                     script.execute()
                 }
+
                 "TRANSPORT" -> {
                     val script = BasicHaulerScript(s)
                     script.execute()
@@ -143,8 +165,8 @@ object GameState {
     private fun <T> convertToMap(list: List<T>?): MutableMap<String, T> where T : Symbol {
         if (list != null) {
             return list.associateBy(
-                keySelector = {it.symbol},
-                valueTransform = {it}
+                keySelector = { it.symbol },
+                valueTransform = { it }
             ).toMutableMap()
         }
 
@@ -157,8 +179,8 @@ object GameState {
             .walk()
             .filter { f -> f.isFile && f.canRead() }
             .associateBy(
-                keySelector = {it.nameWithoutExtension.uppercase()},
-                valueTransform = {Json.decodeFromString<T>(it.readText())}
+                keySelector = { it.nameWithoutExtension.uppercase() },
+                valueTransform = { Json.decodeFromString<T>(it.readText()) }
             )
             .toMutableMap()
 

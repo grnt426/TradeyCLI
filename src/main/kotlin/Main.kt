@@ -1,4 +1,5 @@
 import AppState.*
+import client.SpaceTradersClient
 import com.varabyte.kotter.foundation.anim.TextAnim
 import com.varabyte.kotter.foundation.anim.text
 import com.varabyte.kotter.foundation.anim.textAnimOf
@@ -12,18 +13,6 @@ import com.varabyte.kotter.runtime.render.RenderScope
 import com.varabyte.kotterx.grid.Cols
 import com.varabyte.kotterx.grid.grid
 import model.*
-import model.system.System
-import io.ktor.client.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.client.plugins.auth.*
-import io.ktor.client.plugins.auth.providers.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.*
-import kotlinx.coroutines.*
-import kotlinx.serialization.json.*
 import model.GameState.agent
 import model.GameState.getHqSystem
 import model.ship.*
@@ -33,7 +22,6 @@ import startup.BootManager.bootstrapNew
 import startup.BootManager.debugStart
 import startup.BootManager.normalStart
 import java.awt.Color
-import java.io.File
 import java.time.Instant
 import kotlin.collections.ArrayDeque
 import kotlin.math.max
@@ -50,37 +38,12 @@ enum class Window {
     WAYPOINTS_INFO,
 }
 
-enum class RequestStatus {
-    STARTED,
-    SUCCESS,
-    TIMEOUT,
-    FAILED,
-    NONE
-}
-
 val magnitudes = listOf("", "k", "M", "G", "T", "P")
 
 val ACTIONS = listOf("help", "contracts", "accept", "waypoints")
-val client = HttpClient(CIO) {
-    install(Auth) {
-        bearer {
-            loadTokens {
-                val token = File("profile/authtoken.secret").readText()
-                BearerTokens(token, token)
-            }
-        }
-    }
-    install(ContentNegotiation) {
-        json()
-    }
-}
 
-var awaitContract = RequestStatus.NONE
-lateinit var renderScope: MainRenderScope
-var waypointsInSystem: List<System> = emptyList()
 val commandHistory = ArrayDeque<String>(emptyList())
 var commandHistoryIndex = 0
-var shipsInShipyard: ShipyardResults? = null
 
 val notifications = mutableListOf("Nothing to report...")
 
@@ -118,7 +81,7 @@ fun main() {
             delegateToInputManagers()
         }
     }
-    client.close()
+    SpaceTradersClient.client.close()
 }
 
 private fun RunScope.delegateToInputManagers() {
@@ -152,16 +115,6 @@ fun OnInputEnteredScope.runningOnInputManager() {
             2 -> {
                 when (command) {
                     "SHIP" -> runningRenderContext.selectedShip = args[1].toInt()
-                }
-                this.clearInput()
-            }
-
-            3 -> {
-                when (command) {
-                    "WAYPOINTS" -> {
-                        runningRenderContext.selectedView = Window.WAYPOINTS
-                        getWaypoints(args[1], args[2])
-                    }
                 }
                 this.clearInput()
             }
@@ -211,26 +164,12 @@ fun MainRenderScope.renderRunningSection() {
                 }
 
                 Window.CONTRACT -> {
-                    
-                    textLine("id - type - ${if (true) "Accepted" else "Waiting"}")
-//                            val deliveryTerms = contract.terms.deliver[0]
-//                            textLine("${deliveryTerms.unitsRequired} ${deliveryTerms.tradeSymbol} to ${deliveryTerms.destinationSymbol}")
-
-                    when (awaitContract) {
-                        RequestStatus.STARTED -> textLine("Awaiting Response to contract acceptance")
-                        RequestStatus.SUCCESS -> textLine("Contract accepted")
-                        RequestStatus.TIMEOUT -> textLine("Contract timeout")
-                        RequestStatus.FAILED -> textLine("Failed to accept contract")
-                        RequestStatus.NONE -> textLine("No contracts in process")
-                    }
-                }
+               }
 
                 Window.SHIP -> TODO()
                 Window.WAYPOINTS -> {
                     
-                    waypointsInSystem.forEach { wp ->
-                        textLine("${wp.type} ${wp.symbol}")
-                    }
+
                 }
 
                 Window.WAYPOINTS_INFO -> TODO()
@@ -389,37 +328,6 @@ fun MainRenderScope.renderBootSection() {
     input()
 }
 
-/**
- * TODO: Paginated API
- */
-fun getWaypoints(systemSymbol: String, trait: String) {
-    runBlocking {
-        launch {
-            try {
-                withTimeout(2_000) {
-                    val response = client.get {
-                        url("https://api.spacetraders.io/v2/systems/$systemSymbol/waypoints")
-                        parameter("traits", trait)
-                        println("Built URL ${this.url}")
-                    }
-                    if (response.status == HttpStatusCode.OK && response.bodyAsText().isNotEmpty()) {
-                        waypointsInSystem = Json.decodeFromString<JsonObject>(response.bodyAsText())["model"]?.let {
-                            Json.decodeFromJsonElement<List<System>>(
-                                it
-                            )
-                        }!!
-                        println(response.bodyAsText())
-                    } else {
-                        println("${response.status} - ${response.bodyAsText()}")
-                    }
-                }
-            } catch (e: TimeoutCancellationException) {
-                println("Timeout getting waypoints @ $systemSymbol for $trait")
-            }
-        }
-    }
-}
-
 fun RenderScope.makeHeader(text: String) {
     underline {
         text(text)
@@ -443,6 +351,10 @@ fun RenderScope.applyShipRoleColor(role: String, shorten: Boolean = true) {
             red {
                 text(desig)
             }
+        "SATELLITE" ->
+            magenta {
+                text(desig)
+            }
         else ->
             white {
                 text(desig)
@@ -459,7 +371,6 @@ fun reduceToSiNotation(number: Double, unit: String): String {
     }
     return "${round(res)}${magnitudes[index]}$unit"
 }
-suspend fun readAgentData(): JsonObject = Json.decodeFromString(File("agentdata.secret").readText())
 
 data class BootRenderContext(var userAskedNew:Boolean = false)
 
