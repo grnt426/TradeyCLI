@@ -1,3 +1,4 @@
+
 import AppState.BOOT
 import AppState.RUNNING
 import client.SpaceTradersClient
@@ -28,6 +29,7 @@ import java.time.Instant
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round
+import kotlin.math.roundToInt
 import kotlin.system.exitProcess
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -71,6 +73,7 @@ val columns = 3
 val notificationBlink = TextAnim.Template(listOf(" + ", " - "), 500.milliseconds)
 
 var firstRender = true
+var showSystemScreen = false
 fun main() {
 
     // The below needs to come from the profile.settings.json file
@@ -118,6 +121,8 @@ fun OnInputEnteredScope.runningOnInputManager() {
             1 -> {
                 when (command) {
                     "CONTRACTS" -> runningRenderContext.selectedView = Window.CONTRACT
+                    "SYSTEM" -> showSystemScreen = true
+                    "CONSOLE" -> showSystemScreen = false
                 }
                 this.clearInput()
             }
@@ -135,6 +140,62 @@ fun OnInputEnteredScope.runningOnInputManager() {
     }
 }
 fun MainRenderScope.renderRunningSection() {
+
+    if (showSystemScreen) {
+        showSystemScreen()
+    } else {
+        showConsole()
+    }
+}
+
+fun MainRenderScope.showSystemScreen() {
+
+    data class Point(var x: Double, var y: Double) {
+        operator fun plus(point: Point): Point = Point(this.x + point.x, this.y + point.y)
+        operator fun minus(point: Point): Point = Point(this.x - point.x, this.y - point.y)
+        operator fun times(point: Point): Point = Point(this.x * point.x, this.y * point.y)
+        operator fun div(point: Point): Point = Point(this.x / point.x, this.y / point.y)
+        override operator fun equals(other: Any?): Boolean {
+            if (other is Point) return this.x == other.x && this.y == other.y
+            return false
+        }
+
+        override fun hashCode(): Int {
+            return ((31 * x) + (y * 17)).roundToInt()
+        }
+    }
+
+    val wp = GameState.waypoints.values
+    val centerVector = Point(50.0, 50.0)
+//    val maxX = abs(wp.maxBy { w -> abs(w.x) }.x) / 1000.0
+//    val maxY = abs(wp.maxBy { w -> abs(w.y) }.y) / 1000.0
+    val normalize = Point(50.0, 50.0)
+
+    // initialize empty grid
+    val map = Array(100) {
+        Array(100) {
+            " "
+        }
+    }
+
+    wp.forEach { w ->
+        val pos = (Point(w.x.toDouble(), w.y.toDouble()) / normalize) + centerVector
+        if (pos.x in 0.0..100.0 && pos.y in 0.0..100.0)
+            map[pos.x.roundToInt()][pos.y.roundToInt()] = w.type.name[0].toString()
+    }
+
+    println("Here is final map: $map")
+
+    map.forEach { row ->
+        textLine(row.joinToString(""))
+    }
+
+    text("> ")
+    input(Completions(*ACTIONS.toTypedArray()))
+}
+
+fun MainRenderScope.showConsole() {
+
     val selectedQuad = runningRenderContext.selectedQuad
     val currentView = runningRenderContext.selectedView
     val selectedShip = runningRenderContext.selectedShip
