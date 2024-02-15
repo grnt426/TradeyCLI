@@ -1,47 +1,34 @@
 package screen
 
 import ACTIONS
-import Window
-import com.varabyte.kotter.foundation.input.Completions
-import com.varabyte.kotter.foundation.input.OnInputEnteredScope
-import com.varabyte.kotter.foundation.input.OnKeyPressedScope
-import com.varabyte.kotter.foundation.input.input
-import com.varabyte.kotter.foundation.text.text
-import com.varabyte.kotter.foundation.text.textLine
+import HEADER_COLOR
+import com.varabyte.kotter.foundation.input.*
+import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.MainRenderScope
 import com.varabyte.kotter.runtime.RunScope
 import commandHistory
 import commandHistoryIndex
 import model.GameState
+import model.Profile
+import model.system.WaypointType
 import runningRenderContext
 import screen.RunningScreen.SelectedScreen
 import kotlin.math.roundToInt
 
 class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(parent) {
     private val self = this
-    override fun MainRenderScope.render() {
-        data class Point(var x: Double, var y: Double) {
-            operator fun plus(point: Point): Point = Point(this.x + point.x, this.y + point.y)
-            operator fun minus(point: Point): Point = Point(this.x - point.x, this.y - point.y)
-            operator fun times(point: Point): Point = Point(this.x * point.x, this.y * point.y)
-            operator fun div(point: Point): Point = Point(this.x / point.x, this.y / point.y)
-            override operator fun equals(other: Any?): Boolean {
-                if (other is Point) return this.x == other.x && this.y == other.y
-                return false
-            }
+    private var zoom = Point(1.0, 1.0)
+    private var translate = Point(0.0, 0.0)
 
-            override fun hashCode(): Int {
-                return ((31 * x) + (y * 17)).roundToInt()
-            }
-        }
+    // fonts are taller than wide, so an aspect ratio is needed of 3:5
+    private val aspectRatio = Point(3.0, 5.0)
+    override fun MainRenderScope.render() {
 
         val wp = GameState.waypoints.values
-        val centerVector = Point(35.0, 20.0)
+        val centerVector = Point(35.0, 20.0) + translate
 
-        // fonts are taller than wide, so an aspect ratio is needed of 3:5
-        // we divide by a factor of 10 of that ratio to shrink the large coordinates
-        // to something that fits a console screen
-        val normalize = Point(30.0, 50.0)
+        // a good starting zoom is 10
+        val zoom = (Point(10.0, 10.0) + self.zoom) * aspectRatio
 
         // initialize empty grid
         val rows = 40
@@ -52,21 +39,38 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
             }
         }
 
-        wp.forEach { w ->
-            val pos = (Point(w.x.toDouble(), w.y.toDouble()) / normalize) + centerVector
+        // put a star in the center
+        map[centerVector.y.toInt()][centerVector.x.toInt()] = "S"
+        val waypointNames = mutableListOf<() -> Unit>()
 
-            // guard to prevent index out of bounds
-            if (pos.x in 0.0..cols.toDouble() && pos.y in 0.0..rows.toDouble())
-                map[pos.y.roundToInt()][pos.x.roundToInt()] = w.type.name[0].toString()
+        wp.forEach { w ->
+            val pos = (Point(w.x.toDouble(), w.y.toDouble()) / zoom) + centerVector
+            val y = pos.y.roundToInt()
+            val x = pos.x.roundToInt()
+
+            // cull out of bounds objects
+            if (x in 0..<cols && y in 0..<rows) {
+                waypointNames.add {
+                    text("${w.symbol} - ")
+                    rgb(w.type.color.rgb) { text(w.type.name) }
+                    text(" @ ${w.x},${w.y}")
+                }
+                map[y][x] = w.type.name[0].toString()
+            }
         }
 
         repeat(cols + 2) { text("_") }
-        textLine()
-        map.forEach { row ->
-            textLine("|${row.joinToString("")}|")
+        text(" ")
+        rgb(HEADER_COLOR.rgb) {
+            underline {
+                val header = "Waypoints in ${wp.first().systemSymbol}"
+                text(header)
+                repeat(Profile.profileData.termWidth - header.length - 75) { text(" ") }
+            }
         }
+        textLine()
+        applyEffects(map, waypointNames)
         repeat(cols + 2) { text("-") }
-
         textLine()
         text("> ")
         input(Completions(*ACTIONS.toTypedArray()))
@@ -81,11 +85,16 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
             when (args.size) {
                 1 -> {
                     when (command) {
-                        "CONTRACTS" -> runningRenderContext.selectedView = Window.CONTRACT
-                        "SYSTEM" -> return SelectedScreen.SYSTEM
-                        "CONSOLE" -> return SelectedScreen.CONSOLE
+                        "SYSTEM" -> {
+                            this.clearInput()
+                            return SelectedScreen.SYSTEM
+                        }
+
+                        "CONSOLE" -> {
+                            this.clearInput()
+                            return SelectedScreen.CONSOLE
+                        }
                     }
-                    this.clearInput()
                 }
 
                 2 -> {
@@ -103,9 +112,110 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
 
     override fun OnKeyPressedScope.onKeyPressed(runScope: RunScope): SelectedScreen {
         if (parent.isActiveSubScreen(self)) {
+            runScope.setInput("")
+            when (key) {
+                Keys.PLUS -> {
+                    zoom -= Point(1.0, 1.0)
+                }
+
+                Keys.MINUS -> {
+                    zoom += Point(1.0, 1.0)
+                }
+
+                Keys.LEFT -> {
+                    translate -= Point(1.0, 0.0)
+                }
+
+                Keys.RIGHT -> {
+                    translate += Point(1.0, 0.0)
+                }
+
+                Keys.UP -> {
+                    translate -= Point(0.0, 1.0)
+                }
+
+                Keys.DOWN -> {
+                    translate += Point(0.0, 1.0)
+                }
+            }
             return SelectedScreen.SYSTEM
         }
         return parent.getActiveSelectedScreen() as SelectedScreen
     }
 
+    private fun MainRenderScope.applyEffects(map: Array<Array<String>>, waypointNames: MutableList<() -> Unit>) {
+        map.forEachIndexed { index, row ->
+            text("|")
+            row.forEach { c ->
+                when (c) {
+                    "A" -> {
+                        rgb(WaypointType.ASTEROID.color.rgb) {
+                            text(c)
+                        }
+                    }
+
+                    "J" -> {
+                        magenta {
+                            text(c)
+                        }
+                    }
+
+                    "P" -> {
+                        green {
+                            text(c)
+                        }
+                    }
+
+                    "F" -> {
+                        yellow {
+                            text(c)
+                        }
+                    }
+
+                    "O" -> {
+                        blue {
+                            text(c)
+                        }
+                    }
+
+                    "S" -> {
+                        red {
+                            text(c)
+                        }
+                    }
+
+                    "M" -> {
+                        rgb(WaypointType.MOON.color.rgb) {
+                            text(c)
+                        }
+                    }
+
+                    else -> {
+                        text(c)
+                    }
+                }
+            }
+            if (waypointNames.size > index) {
+                text("| ")
+                waypointNames[index]()
+                textLine()
+            } else
+                textLine("|")
+        }
+    }
+
+    data class Point(var x: Double, var y: Double) {
+        operator fun plus(point: Point): Point = Point(this.x + point.x, this.y + point.y)
+        operator fun minus(point: Point): Point = Point(this.x - point.x, this.y - point.y)
+        operator fun times(point: Point): Point = Point(this.x * point.x, this.y * point.y)
+        operator fun div(point: Point): Point = Point(this.x / point.x, this.y / point.y)
+        override operator fun equals(other: Any?): Boolean {
+            if (other is Point) return this.x == other.x && this.y == other.y
+            return false
+        }
+
+        override fun hashCode(): Int {
+            return ((31 * x) + (y * 17)).roundToInt()
+        }
+    }
 }

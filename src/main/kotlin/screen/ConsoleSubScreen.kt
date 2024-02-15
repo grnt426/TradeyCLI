@@ -204,8 +204,15 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 1 -> {
                     when (command) {
                         "CONTRACTS" -> runningRenderContext.selectedView = Window.CONTRACT
-                        "SYSTEM" -> return SelectedScreen.SYSTEM
-                        "CONSOLE" -> return SelectedScreen.CONSOLE
+                        "SYSTEM" -> {
+                            this.clearInput()
+                            return SelectedScreen.SYSTEM
+                        }
+
+                        "CONSOLE" -> {
+                            this.clearInput()
+                            return SelectedScreen.CONSOLE
+                        }
                     }
                     this.clearInput()
                 }
@@ -290,6 +297,4 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
             return parent.getActiveSelectedScreen() as SelectedScreen
         }
     }
-
-
 }

@@ -52,6 +52,7 @@ var appState = BOOT
 
 val HEADER_COLOR = Color(149, 149, 240)
 val SELECTED_HEADER_COLOR = Color(26, 208, 222)
+val BROWN_EXCAVATOR_COLOR = Color(120, 80, 40)
 val bootContext = BootRenderContext()
 val runningRenderContext = RunningRenderContext()
 
@@ -99,7 +100,7 @@ fun RenderScope.applyShipRoleColor(role: ShipRole, shorten: Boolean = true) {
     val desig = if (shorten) role.name[0].toString() else role.name
     when(role) {
         ShipRole.EXCAVATOR ->
-            rgb(Color(120, 80, 40).rgb) {
+            rgb(BROWN_EXCAVATOR_COLOR.rgb) {
                 text(desig)
             }
 

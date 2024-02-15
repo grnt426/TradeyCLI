@@ -1,18 +1,24 @@
 package model.system
 
-enum class WaypointType {
-    PLANET,
-    GAS_GIANT,
-    MOON,
-    ORBITAL_STATION,
-    JUMP_GATE,
-    ASTEROID_FIELD,
-    ASTEROID,
-    ENGINEERED_ASTEROID,
-    ASTEROID_BASE,
-    NEBULA,
-    DEBRIS_FIELD,
-    GRAVITY_WELL,
-    ARTIFICIAL_GRAVITY_WELL,
-    FUEL_STATION
+import BROWN_EXCAVATOR_COLOR
+import kotlinx.serialization.Serializable
+import java.awt.Color
+
+@Serializable
+enum class WaypointType(@Transient val color: Color) {
+    PLANET(Color.GREEN),
+    GAS_GIANT(Color.ORANGE),
+    MOON(Color.GRAY),
+    ORBITAL_STATION(Color.BLUE),
+    JUMP_GATE(Color.MAGENTA),
+    ASTEROID_FIELD(BROWN_EXCAVATOR_COLOR),
+    ASTEROID(Color.DARK_GRAY),
+    ENGINEERED_ASTEROID(Color.DARK_GRAY),
+    ASTEROID_BASE(Color.DARK_GRAY),
+    NEBULA(Color.PINK),
+    DEBRIS_FIELD(BROWN_EXCAVATOR_COLOR),
+    GRAVITY_WELL(Color.WHITE),
+    ARTIFICIAL_GRAVITY_WELL(Color.CYAN),
+    FUEL_STATION(Color.YELLOW),
+    EMPTY(Color.black)
 }
