@@ -1,7 +1,10 @@
 package model.market
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 import model.GameState
+import model.extension.LastRead
+import model.ship.Ship
 import model.ship.components.Inventory
 
 @Serializable
@@ -12,8 +15,14 @@ data class Market(
     val exchange: List<TradeGood>,
 
     val transactions: List<MarketTransaction> = emptyList(),
-    val tradeGoods: List<MarketTradeGood> = emptyList()
-)
+    val tradeGoods: List<MarketTradeGood> = emptyList(),
+
+    @Transient var shipAssignedToGetPrices: Ship? = null
+) : LastRead()
+
+fun refreshMarket(market: Market) {
+
+}
 
 fun findMarketForGood(good: TradeSymbol, system: String): Market? {
 

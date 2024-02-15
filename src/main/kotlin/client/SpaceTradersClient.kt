@@ -1,6 +1,5 @@
 package client
 
-import model.LastRead
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.auth.*
@@ -15,8 +14,9 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
+import model.extension.LastRead
 import java.io.File
-import java.time.LocalDateTime
+import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.concurrent.timer
 import kotlin.reflect.KSuspendFunction1
@@ -26,12 +26,30 @@ object SpaceTradersClient{
 
     lateinit var client: HttpClient
 
+    var errors = 0
+
     val apiDispatcher = Dispatchers.IO
 
     val pendingRequestJobs = ConcurrentLinkedQueue<() -> Job>()
 
+    var jobPressureWindow = IntArray(20) { 20 - it }
+    var jobPressureUpdate = 0
+
+    enum class JobPressure {
+        LOW,
+        OK,
+        HIGH,
+    }
+
     fun beginPollingRequests() {
         timer("ApiRequestQueue", true, 0, 500) {
+            if (jobPressureUpdate % 3 == 0) {
+                jobPressureWindow = with(jobPressureWindow.drop(1).toMutableList()) {
+                    add(pendingRequestJobs.size)
+                    toIntArray()
+                }
+            }
+            jobPressureUpdate = (jobPressureUpdate + 1) % 6
             if(pendingRequestJobs.isNotEmpty()) {
                 println("${pendingRequestJobs.size} Enqueued. Executing")
                 pendingRequestJobs.poll()().start()
@@ -75,7 +93,7 @@ object SpaceTradersClient{
                                 )
                             }!!
                             if (result is LastRead) {
-                                (result as LastRead).timestamp = LocalDateTime.now().toString()
+                                (result as LastRead).lastRead = Instant.now()
                             }
                         } else {
                             println("${response.status} - ${response.bodyAsText()}")
@@ -114,7 +132,7 @@ object SpaceTradersClient{
                                         )
                                     }!!
                                     if (result is LastRead) {
-                                        (result as LastRead).timestamp = LocalDateTime.now().toString()
+                                        (result as LastRead).lastRead = Instant.now()
                                     }
                                     try {
                                         callback(result)
@@ -177,5 +195,22 @@ object SpaceTradersClient{
 
     suspend fun ignoredFailback(resp: HttpResponse?, ex: Exception?) {
 
+    }
+
+    fun getJobPressure(): JobPressure {
+        return with(pendingRequestJobs.size) {
+            return@with getJobPressure(this)
+        }
+    }
+
+    fun getJobPressure(amount: Int): JobPressure {
+        return with(amount) {
+            if (this <= 7)
+                JobPressure.LOW
+            else if (this <= 15)
+                JobPressure.OK
+            else
+                JobPressure.HIGH
+        }
     }
 }

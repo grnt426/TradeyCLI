@@ -4,8 +4,8 @@ import Symbol
 import client.SpaceTradersClient
 import client.SpaceTradersClient.callGet
 import client.SpaceTradersClient.ignoredFailback
-import model.system.System
-import model.system.OrbitalNames
+import data.DbClient
+import data.SavedScripts
 import io.ktor.client.request.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.encodeToString
@@ -16,13 +16,20 @@ import model.contract.Contract
 import model.exceptions.ProfileLoadingFailure
 import model.market.Market
 import model.ship.Ship
+import model.ship.ShipRole
 import model.ship.listShips
+import model.system.OrbitalNames
+import model.system.System
 import model.system.SystemWaypoint
 import model.system.Waypoint
+import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.transactions.transaction
 import responsebody.RegisterResponse
-import script.MessageableScriptExecutor
+import script.ScriptExecutor
 import script.repo.BasicHaulerScript
 import script.repo.BasicMiningScript
+import script.repo.PriceDiscoveryScript
+import script.repo.PriceFetcherScript
 import java.io.File
 import kotlin.reflect.KSuspendFunction1
 
@@ -44,23 +51,30 @@ object GameState {
     lateinit var systems: MutableMap<String, System>
     lateinit var waypoints: MutableMap<String, Waypoint>
     lateinit var shipyards: MutableMap<String, Shipyard>
-    lateinit var ships: MutableMap<String, Ship>
-    val shipsToScripts: MutableMap<Ship, MessageableScriptExecutor<*, *>> = mutableMapOf()
+    var ships = mutableMapOf<String, Ship>()
+    val shipsToScripts: MutableMap<Ship, ScriptExecutor<*>> = mutableMapOf()
     lateinit var markets: MutableMap<String, Market>
+    val marketsBySystem = mutableMapOf<String, MutableList<Market>>()
+    val shipyardsBySystem = mutableMapOf<String, MutableList<Shipyard>>()
 
     fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE) {
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
         Profile.createProfile(profData)
         SpaceTradersClient.createClient(File("$DEFAULT_PROF_DIR/authtoken.secret"))
+        DbClient.createClient()
+
         SpaceTradersClient.beginPollingRequests()
         agent = (getAgentData() ?: failedToLoad("Agent")) as Agent
         postInitGameLoading()
+        loadScripts()
     }
 
     fun bootGameStateFromNewAgent(profileData: ProfileData, registerResponse: RegisterResponse) {
         profData = profileData
         Profile.createProfile(profileData)
         SpaceTradersClient.createClient(registerResponse.token)
+        DbClient.createClient()
+
         registerResponse.token = "" // clear auth token from our memory
         SpaceTradersClient.beginPollingRequests()
         agent = registerResponse.agent
@@ -72,6 +86,7 @@ object GameState {
     private fun postInitGameLoading() {
         println("Name ${profData.name}")
         println("HQ @ ${agent.headquarters}")
+        File("$DEFAULT_PROF_DIR/agent/${profData.name}").writeText(Json.encodeToString(agent))
         loadAllData()
         refreshSystem(OrbitalNames.getSectorSystem(agent.headquarters)) ?: failedToLoad("Headquarters")
         if (waypoints.isEmpty()) {
@@ -100,6 +115,11 @@ object GameState {
             }
     }
 
+    private fun loadScripts() {
+        fetchAllShips()
+        PriceDiscoveryScript(getHqSystem().symbol).execute()
+    }
+
     private fun refreshShipyards() = fetchSystemsForWaypointsWithTraits(
         getHqSystem().symbol, TraitTypes.SHIPYARD,
         "shipyard", ::shipyardCb
@@ -119,18 +139,22 @@ object GameState {
     }
 
     suspend fun shipyardCb(shipyardResults: Shipyard) {
+        val system = OrbitalNames.getSectorSystem(shipyardResults.symbol)
         shipyards[shipyardResults.symbol] = shipyardResults
+        shipyardsBySystem.getOrPut(system) { mutableListOf() }.add(shipyardResults)
         File("$DEFAULT_PROF_DIR/shipyards/${shipyardResults.symbol}")
             .writeText(Json.encodeToString(shipyardResults))
     }
 
     suspend fun marketCb(market: Market) {
+        val system = OrbitalNames.getSectorSystem(market.symbol)
         markets[market.symbol] = market
+        marketsBySystem.getOrPut(system) { mutableListOf() }.add(market)
         File("$DEFAULT_PROF_DIR/markets/${market.symbol}")
             .writeText(Json.encodeToString(market))
     }
 
-    suspend private fun waypointCb(waypoint: Waypoint) {
+    private suspend fun waypointCb(waypoint: Waypoint) {
         waypoints[waypoint.symbol] = waypoint
         File("$DEFAULT_PROF_DIR/waypoints/${waypoint.symbol}")
             .writeText(Json.encodeToString(waypoint))
@@ -141,25 +165,75 @@ object GameState {
         shipyards = loadDataFromJsonFile<Shipyard>("shipyards")
         waypoints = loadDataFromJsonFile<Waypoint>("waypoints")
         markets = loadDataFromJsonFile<Market>("markets")
+        markets.values.forEach { m ->
+            marketsBySystem.getOrPut(OrbitalNames.getSectorSystem(m.symbol)) {
+                mutableListOf()
+            }.add(m)
+        }
     }
 
-    fun fetchAllShips() {
+    private fun fetchAllShips() {
         val shipList = listShips()
-        // pull from DB to get saved state
         shipList?.forEach { s ->
-            when (s.registration.role) {
-                "EXCAVATOR" -> {
+            val shipState = transaction {
+                SavedScripts.selectAll().where { SavedScripts.entityId eq s.symbol }.singleOrNull()
+            }
+
+            // TODO: the below script state recovery sucks. Figure out how to make it better
+            val script = when (s.registration.role) {
+                ShipRole.EXCAVATOR -> {
+                    println("Found excavator")
                     val script = BasicMiningScript(s)
-                    script.execute()
+                    if (shipState != null)
+                        script.updateState(
+                            BasicMiningScript.MiningStates.valueOf(
+                                shipState[SavedScripts.scriptState].toString()
+                            )
+                        )
+                    script
                 }
 
-                "TRANSPORT" -> {
+                ShipRole.TRANSPORT -> {
+                    println("Found transport")
                     val script = BasicHaulerScript(s)
-                    script.execute()
+                    if (shipState != null)
+                        script.updateState(
+                            BasicHaulerScript.HaulingStates.valueOf(
+                                shipState[SavedScripts.scriptState].toString()
+                            )
+                        )
+                    script
+                }
+
+                ShipRole.SATELLITE -> {
+                    println("Found satellite")
+                    val script = PriceFetcherScript(s)
+                    if (shipState != null)
+                        script.updateState(
+                            PriceFetcherScript.PriceFetcherState.valueOf(
+                                shipState[SavedScripts.scriptState].toString()
+                            )
+                        )
+                    script
+                }
+
+                else -> {
+                    // nothing for now
+                    null
                 }
             }
+            if (shipState != null) {
+                if (script != null && shipState.hasValue(SavedScripts.scriptState)) {
+                    script.uuid = shipState[SavedScripts.entityId].toString()
+                }
+            }
+            if (script != null) {
+                println("Started")
+                shipsToScripts[s] = script
+                script.execute()
+            }
         }
-        ships = convertToMap(shipList)
+        ships.putAll(convertToMap(shipList))
     }
 
     private fun <T> convertToMap(list: List<T>?): MutableMap<String, T> where T : Symbol {
@@ -190,13 +264,13 @@ object GameState {
         throw ProfileLoadingFailure("Failed to load '$what' data.")
     }
 
-    private fun getAgentData(): Agent? = SpaceTradersClient.callGet<Agent>(request {
+    private fun getAgentData(): Agent? = callGet<Agent>(request {
         url(api("my/agent"))
     })
 
-    fun refreshSystem(systemName: String): System? {
-        println("Loading ${systemName}")
-        val system = SpaceTradersClient.callGet<System>(request {
+    private fun refreshSystem(systemName: String): System? {
+        println("Loading $systemName")
+        val system = callGet<System>(request {
             url(api("systems/$systemName"))
         })
 
@@ -215,4 +289,4 @@ object GameState {
 
 fun api(params: String): String = "$GAME_API/$params"
 
-fun getScriptForShip(ship: Ship): MessageableScriptExecutor<*, *>? = shipsToScripts[ship]
+fun getScriptForShip(ship: Ship): ScriptExecutor<*>? = shipsToScripts[ship]

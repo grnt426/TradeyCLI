@@ -8,14 +8,15 @@ import client.SpaceTradersClient.ignoredFailback
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import model.ship.components.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import model.GameState
-import responsebody.ExtractionResponse
 import model.api
+import model.extension.LastRead
 import model.market.TradeSymbol
+import model.ship.components.*
 import requestbody.JettisonRequest
+import responsebody.ExtractionResponse
 import responsebody.RefuelResponse
 import script.ScriptExecutor
 import kotlin.reflect.KSuspendFunction1
@@ -37,7 +38,7 @@ data class Ship(
     var cargo: Cargo,
 
     @Transient var script: ScriptExecutor<*>? = null
-): Symbol
+) : Symbol, LastRead()
 
 fun listShips(): List<Ship>? = callGet<List<Ship>>(request {
     url(api("my/ships"))
@@ -153,3 +154,9 @@ fun jettisonCargo(ship: Ship, candidates: List<TradeSymbol>) {
         .filter { i -> candidates.contains(i.symbol) }
         .forEach { i -> jettisonCargo(ship, i) }
 }
+
+fun systemOf(ship: Ship): String = ship.nav.systemSymbol
+
+fun isNavigating(ship: Ship): Boolean = isNavigating(ship.nav)
+fun isOrbiting(ship: Ship): Boolean = isOrbiting(ship.nav)
+fun isDocked(ship: Ship): Boolean = isDocked(ship.nav)

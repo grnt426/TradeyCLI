@@ -4,30 +4,29 @@ import client.SpaceTradersClient
 import data.DbClient
 import data.SavedScripts
 import io.ktor.client.*
-import io.ktor.client.statement.*
-import io.mockk.*
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.mockkObject
 import kotlinx.coroutines.Job
-import model.Location
-import model.ship.*
-import model.ship.components.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.runTest
+import model.Location
 import model.actions.Extraction
 import model.actions.Yield
+import model.faction.FactionSymbol
 import model.market.TradeSymbol
+import model.ship.*
+import model.ship.components.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
-import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import responsebody.ExtractionResponse
 import java.lang.Thread.sleep
-import kotlin.test.BeforeTest
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
@@ -135,7 +134,7 @@ class BasicMiningScriptTest {
             Reactor("", "", "", 0L, 0L, Requirements()),
             emptyList(),
             emptyList(),
-            Registration("", "", ""),
+            Registration("", FactionSymbol.VOID.toString(), ShipRole.TRANSPORT),
             Cargo(100, 0, mutableListOf())
         )
 

@@ -6,7 +6,6 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
 import model.api
-import model.system.Waypoint
 import model.system.WaypointSymbol
 import responsebody.NavigationResponse
 import kotlin.reflect.KSuspendFunction1
@@ -38,3 +37,7 @@ fun navigateTo(
         }
     )
 }
+
+fun isNavigating(navigation: Navigation): Boolean = navigation.status == ShipNavStatus.IN_TRANSIT
+fun isOrbiting(navigation: Navigation): Boolean = navigation.status == ShipNavStatus.IN_ORBIT
+fun isDocked(navigation: Navigation): Boolean = navigation.status == ShipNavStatus.DOCKED

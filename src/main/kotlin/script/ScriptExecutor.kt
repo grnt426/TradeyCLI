@@ -7,7 +7,7 @@ abstract class ScriptExecutor<T>(
     var currentState: T,
     val scriptType: String,
     val entityId: String? = null,
-    val uuid: String = UUID.randomUUID().toString(),
+    var uuid: String = UUID.randomUUID().toString(),
 ) {
     abstract fun execute()
 
@@ -18,6 +18,10 @@ abstract class ScriptExecutor<T>(
     fun changeState(newState: T) {
         currentState = newState
         saveState()
+    }
+
+    fun updateState(state: T) {
+        currentState = state
     }
 
     fun <T> matchesState(transition: T): () -> Boolean {

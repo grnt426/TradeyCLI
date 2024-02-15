@@ -1,0 +1,35 @@
+{
+  "data": {
+    "nav": {
+      "systemSymbol": "X1-UG31",
+      "waypointSymbol": "X1-UG31-H49",
+      "route": {
+        "departure": {
+          "symbol": "X1-UG31-H49",
+          "type": "MOON",
+          "systemSymbol": "X1-UG31",
+          "x": -31,
+          "y": -34
+        },
+        "origin": {
+          "symbol": "X1-UG31-H49",
+          "type": "MOON",
+          "systemSymbol": "X1-UG31",
+          "x": -31,
+          "y": -34
+        },
+        "destination": {
+          "symbol": "X1-UG31-H49",
+          "type": "MOON",
+          "systemSymbol": "X1-UG31",
+          "x": -31,
+          "y": -34
+        },
+        "arrival": "2024-02-12T21:35:07.548Z",
+        "departureTime": "2024-02-12T21:35:07.548Z"
+      },
+      "status": "IN_ORBIT",
+      "flightMode": "CRUISE"
+    }
+  }
+}

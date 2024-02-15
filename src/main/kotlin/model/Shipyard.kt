@@ -2,10 +2,11 @@ package model
 
 import client.SpaceTradersClient.callGet
 import io.ktor.client.request.*
+import kotlinx.serialization.Serializable
+import model.extension.LastRead
+import model.market.MarketTransaction
 import model.ship.PurchasableShip
 import model.ship.ShipTypeContainer
-import kotlinx.serialization.Serializable
-import model.market.MarketTransaction
 
 @Serializable
 data class Shipyard(

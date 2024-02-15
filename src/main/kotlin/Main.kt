@@ -1,4 +1,5 @@
-import AppState.*
+import AppState.BOOT
+import AppState.RUNNING
 import client.SpaceTradersClient
 import com.varabyte.kotter.foundation.anim.TextAnim
 import com.varabyte.kotter.foundation.anim.text
@@ -12,9 +13,10 @@ import com.varabyte.kotter.runtime.RunScope
 import com.varabyte.kotter.runtime.render.RenderScope
 import com.varabyte.kotterx.grid.Cols
 import com.varabyte.kotterx.grid.grid
-import model.*
+import model.GameState
 import model.GameState.agent
 import model.GameState.getHqSystem
+import model.Profile
 import model.ship.*
 import model.ship.components.Inventory
 import model.ship.components.shortName
@@ -23,7 +25,6 @@ import startup.BootManager.debugStart
 import startup.BootManager.normalStart
 import java.awt.Color
 import java.time.Instant
-import kotlin.collections.ArrayDeque
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round
@@ -65,9 +66,14 @@ val HEADER_COLOR = Color(149, 149, 240)
 val SELECTED_HEADER_COLOR = Color(26, 208, 222)
 val bootContext = BootRenderContext()
 val runningRenderContext = RunningRenderContext()
+val columns = 3
 
 val notificationBlink = TextAnim.Template(listOf(" + ", " - "), 500.milliseconds)
+
+var firstRender = true
 fun main() {
+
+    // The below needs to come from the profile.settings.json file
     session {
         runningRenderContext.textAnim = textAnimOf(notificationBlink)
         section {
@@ -75,6 +81,10 @@ fun main() {
                 renderBootSection()
             }
             else if (appState == RUNNING) {
+                if (firstRender) {
+                    firstRender = false
+                    text("\\e[8;50;144t")
+                }
                 renderRunningSection()
             }
         }.runUntilKeyPressed(Keys.ESC) {
@@ -129,7 +139,7 @@ fun MainRenderScope.renderRunningSection() {
     val currentView = runningRenderContext.selectedView
     val selectedShip = runningRenderContext.selectedShip
 
-    grid(cols = Cols.uniform(2, GameState.profData.termWidth / 2)) {
+    grid(cols = Cols.uniform(columns, GameState.profData.termWidth / columns)) {
         cell {
             val headerColor = if (selectedQuad != QuadSelect.MAIN) HEADER_COLOR else SELECTED_HEADER_COLOR
             when (currentView) {
@@ -182,9 +192,63 @@ fun MainRenderScope.renderRunningSection() {
             rgb(headerColor.rgb) {
                 makeHeader("Agent")
             }
-            textLine("${GameState.agent.symbol} - $${agent.credits}")
-            textLine(" - ")
-            textLine(" flying with  in ")
+            textLine("${agent.symbol} - $${agent.credits}")
+        }
+
+        cell {
+            val blocks = arrayOf(" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█")
+            val FULL_BLOCK = blocks[8]
+            rgb(HEADER_COLOR.rgb) {
+                makeHeader("Job Pressure")
+            }
+            val pressureWindow = SpaceTradersClient.jobPressureWindow
+            (0..4).forEach { h ->
+                if (h < 4)
+                    text(" |")
+                else
+                    text("  ")
+                if (h != 3) {
+                    pressureWindow.forEach { w ->
+                        if (h < 4) {
+                            val pressure = SpaceTradersClient.getJobPressure(w)
+                            when (pressure) {
+                                SpaceTradersClient.JobPressure.LOW -> {
+                                    if (h == 2) {
+                                        green {
+                                            text(blocks[w])
+                                        }
+                                    }
+                                }
+
+                                SpaceTradersClient.JobPressure.OK -> {
+                                    yellow {
+                                        if (h == 1) {
+                                            text(blocks[w - 8])
+                                        } else if (h > 1) {
+                                            text(FULL_BLOCK)
+                                        }
+                                    }
+                                }
+
+                                SpaceTradersClient.JobPressure.HIGH -> {
+                                    red {
+                                        if (h > 0) {
+                                            text(FULL_BLOCK)
+                                        } else {
+                                            text(blocks[min(w - 16, 8)])
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            text(if (w > 9) "C" else w.toString())
+                        }
+                    }
+                } else {
+                    repeat(pressureWindow.size) { text("=") }
+                }
+                textLine()
+            }
         }
 
         cell {
@@ -223,9 +287,13 @@ fun MainRenderScope.renderRunningSection() {
             green { if (anim != null) text(anim) else text("+") }
             textLine("New Notification")
         }
+
+        cell {
+
+        }
     }
-    text("> ");
-    input(Completions(*ACTIONS.toTypedArray()), "help")
+    text("> ")
+    input(Completions(*ACTIONS.toTypedArray()))
 }
 
 fun OnInputEnteredScope.bootOnInputManager(runScope: RunScope) {
@@ -331,27 +399,30 @@ fun MainRenderScope.renderBootSection() {
 fun RenderScope.makeHeader(text: String) {
     underline {
         text(text)
-        repeat(Profile.profileData.termWidth / 2 - text.length) { text(" ") }
+        repeat(Profile.profileData.termWidth / columns - text.length) { text(" ") }
     }
     textLine()
 }
 
-fun RenderScope.applyShipRoleColor(role: String, shorten: Boolean = true) {
-    val desig = if (shorten) role[0].toString() else role
+fun RenderScope.applyShipRoleColor(role: ShipRole, shorten: Boolean = true) {
+    val desig = if (shorten) role.name[0].toString() else role.name
     when(role) {
-        "EXCAVATOR" ->
+        ShipRole.EXCAVATOR ->
             rgb(Color(120, 80, 40).rgb) {
                 text(desig)
             }
-        "TRANSPORT" ->
+
+        ShipRole.TRANSPORT ->
             green {
                 text(desig)
             }
-        "COMMAND" ->
+
+        ShipRole.COMMAND ->
             red {
                 text(desig)
             }
-        "SATELLITE" ->
+
+        ShipRole.SATELLITE ->
             magenta {
                 text(desig)
             }

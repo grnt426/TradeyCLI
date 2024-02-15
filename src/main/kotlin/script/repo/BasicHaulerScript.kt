@@ -5,14 +5,16 @@ import model.GameState
 import model.market.findGoodsAcceptedHere
 import model.market.findMarketForGood
 import model.ship.*
-import model.ship.components.*
+import model.ship.components.Inventory
+import model.ship.components.inv
+import model.ship.components.sellCargo
+import model.ship.components.transferCargo
 import responsebody.NavigationResponse
 import responsebody.TransferResponse
 import script.ScriptExecutor
-import script.repo.BasicHaulerScript.*
+import script.repo.BasicHaulerScript.HaulingStates
 import script.repo.BasicHaulerScript.HaulingStates.*
 import script.script
-import java.lang.Exception
 
 class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
     UNKNOWN_START, "BasicMiningScript", ship.symbol
@@ -250,7 +252,7 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
 
     suspend fun navShipCb(nav: NavigationResponse) {
         ship.nav = nav.nav
-        ship.fuel = nav.fuel
+        ship.fuel = nav.fuel!!
         navComplete = true
         shipTarget = null
     }

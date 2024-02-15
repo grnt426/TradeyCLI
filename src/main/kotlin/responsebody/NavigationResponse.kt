@@ -7,5 +7,7 @@ import model.ship.components.Fuel
 @Serializable
 data class NavigationResponse(
     val nav: Navigation,
-    val fuel: Fuel,
+
+    // not all ships have fuel, such as satellites
+    val fuel: Fuel? = null,
 )

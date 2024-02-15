@@ -14,8 +14,11 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
-import model.*
+import model.DEFAULT_PROF_DIR
+import model.GameState
 import model.GameState.bootGameStateFromNewAgent
+import model.ProfileData
+import model.api
 import model.faction.FactionSymbol
 import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -54,7 +57,6 @@ object BootManager {
 
     fun normalStart() {
         GameState.initializeGameState()
-        GameState.fetchAllShips()
     }
 
     fun debugStart() {

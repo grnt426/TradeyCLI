@@ -52,9 +52,7 @@ fun script(init: Script.() -> Unit): Script {
     return Script().apply{ init() }
 }
 
-class StateScope {
-
-}
+class StateScope
 
 enum class ScriptStatus {
 

@@ -1,7 +1,8 @@
 package model.system
 
 import kotlinx.serialization.Serializable
-import model.*
+import model.Trait
+import model.extension.LastRead
 import model.faction.Faction
 
 @Serializable

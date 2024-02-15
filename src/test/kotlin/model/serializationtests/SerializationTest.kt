@@ -1,15 +1,16 @@
 package model.serializationtests
 
-import model.Agent
-import model.faction.Faction
-import model.Shipyard
-import model.contract.Contract
-import model.ship.Ship
-import model.system.System
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
+import model.Agent
+import model.Shipyard
+import model.contract.Contract
+import model.faction.Faction
+import model.ship.Ship
+import model.system.System
+import responsebody.NavigationResponse
 import java.io.File
 import kotlin.test.Test
 
@@ -33,6 +34,16 @@ class SerializationTest {
         agentData?.get("faction")?.let { Json.decodeFromJsonElement<Faction>(it.jsonObject) }
         agentData?.get("ship")?.let { Json.decodeFromJsonElement<Ship>(it.jsonObject) }
         agentData?.get("contract")?.let { Json.decodeFromJsonElement<Contract>(it) }
+    }
+
+    @Test
+    fun `can read navigation response with no fuel`() {
+        val file = File("src/test/resources/navigation_response.json").readText()
+        Json.decodeFromString<JsonObject>(file)["data"]?.let {
+            Json.decodeFromJsonElement<NavigationResponse>(
+                it
+            )
+        }!!
     }
 
     @Test
