@@ -167,9 +167,9 @@ fun MainRenderScope.showSystemScreen() {
 
     val wp = GameState.waypoints.values
     val centerVector = Point(50.0, 50.0)
-//    val maxX = abs(wp.maxBy { w -> abs(w.x) }.x) / 1000.0
-//    val maxY = abs(wp.maxBy { w -> abs(w.y) }.y) / 1000.0
-    val normalize = Point(50.0, 50.0)
+
+    // fonts are taller than wide, so an aspect ratio is needed
+    val normalize = Point(50.0, 30.0)
 
     // initialize empty grid
     val map = Array(100) {
@@ -180,11 +180,11 @@ fun MainRenderScope.showSystemScreen() {
 
     wp.forEach { w ->
         val pos = (Point(w.x.toDouble(), w.y.toDouble()) / normalize) + centerVector
+
+        // guard to prevent index out of bounds
         if (pos.x in 0.0..100.0 && pos.y in 0.0..100.0)
             map[pos.x.roundToInt()][pos.y.roundToInt()] = w.type.name[0].toString()
     }
-
-    println("Here is final map: $map")
 
     map.forEach { row ->
         textLine(row.joinToString(""))
