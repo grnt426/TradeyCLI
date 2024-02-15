@@ -103,7 +103,7 @@ class PriceFetcherScript(val ship: Ship, state: PriceFetcherState = INITIAL) :
                     if (!isDocked(ship)) {
                         changeState(DOCK)
                     } else {
-                        refreshMarket(market!!)
+                        refreshMarket(systemOf(ship), market!!)
                         changeState(ORBIT)
                     }
                 }

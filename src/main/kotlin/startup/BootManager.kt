@@ -15,8 +15,8 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import model.DEFAULT_PROF_DIR
-import model.GameState
 import model.GameState.bootGameStateFromNewAgent
+import model.GameState.initializeGameState
 import model.ProfileData
 import model.api
 import model.faction.FactionSymbol
@@ -28,7 +28,7 @@ import java.io.File
 
 object BootManager {
 
-    fun bootstrapNew() {
+    suspend fun bootstrapNew() {
 
         // delete all previous data
         deleteAllData()
@@ -56,10 +56,10 @@ object BootManager {
     }
 
     fun normalStart() {
-        GameState.initializeGameState()
+        initializeGameState()
     }
 
-    fun debugStart() {
+    suspend fun debugStart() {
 
     }
 

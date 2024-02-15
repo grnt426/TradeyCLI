@@ -1,27 +1,46 @@
 package model.market
 
+import client.SpaceTradersClient
+import client.SpaceTradersClient.ignoredFailback
+import data.FileWritingQueue
+import io.ktor.client.request.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import model.GameState
+import model.api
 import model.extension.LastRead
+import model.responsebody.MarketResponse
 import model.ship.Ship
 import model.ship.components.Inventory
+import java.io.File
 
 @Serializable
 data class Market(
     val symbol: String,
-    val exports: List<TradeGood>,
-    val imports: List<TradeGood>,
-    val exchange: List<TradeGood>,
+    val exports: MutableList<TradeGood>,
+    val imports: MutableList<TradeGood>,
+    val exchange: MutableList<TradeGood>,
 
-    val transactions: List<MarketTransaction> = emptyList(),
-    val tradeGoods: List<MarketTradeGood> = emptyList(),
+    val transactions: MutableList<MarketTransaction> = mutableListOf(),
+    val tradeGoods: MutableList<MarketTradeGood> = mutableListOf(),
 
     @Transient var shipAssignedToGetPrices: Ship? = null
 ) : LastRead()
 
-fun refreshMarket(market: Market) {
+fun refreshMarket(systemSymbol: String, market: Market) {
+    SpaceTradersClient.enqueueRequest<MarketResponse>(
+        ::writeMarket, ::ignoredFailback, request {
+            url(api("systems/$systemSymbol/waypoints/${market.symbol}/market"))
+        }
+    )
+}
 
+suspend fun writeMarket(resp: MarketResponse) {
+    val symbol = resp.data.symbol
+    val market = resp.data
+    GameState.markets[symbol] = market
+    println("Market $symbol updated @ ${market.lastRead}")
+    FileWritingQueue.enqueue(File(FileWritingQueue.marketDir(symbol)), market)
 }
 
 fun findMarketForGood(good: TradeSymbol, system: String): Market? {

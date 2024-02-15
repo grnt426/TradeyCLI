@@ -61,7 +61,7 @@ object GameState {
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
         Profile.createProfile(profData)
         SpaceTradersClient.createClient(File("$DEFAULT_PROF_DIR/authtoken.secret"))
-        DbClient.createClient()
+        initializeDataManagers()
 
         SpaceTradersClient.beginPollingRequests()
         agent = (getAgentData() ?: failedToLoad("Agent")) as Agent
@@ -69,11 +69,11 @@ object GameState {
         loadScripts()
     }
 
-    fun bootGameStateFromNewAgent(profileData: ProfileData, registerResponse: RegisterResponse) {
+    suspend fun bootGameStateFromNewAgent(profileData: ProfileData, registerResponse: RegisterResponse) {
         profData = profileData
         Profile.createProfile(profileData)
         SpaceTradersClient.createClient(registerResponse.token)
-        DbClient.createClient()
+        initializeDataManagers()
 
         registerResponse.token = "" // clear auth token from our memory
         SpaceTradersClient.beginPollingRequests()
@@ -81,6 +81,11 @@ object GameState {
         contract = registerResponse.contract
         commandShip = registerResponse.ship
         postInitGameLoading()
+    }
+
+    private fun initializeDataManagers() {
+        DbClient.createClient()
+//        FileWritingQueue.createFileWrite()
     }
 
     private fun postInitGameLoading() {
