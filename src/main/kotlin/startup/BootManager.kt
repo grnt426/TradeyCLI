@@ -20,10 +20,10 @@ import model.GameState.bootGameStateFromNewAgent
 import model.ProfileData
 import model.api
 import model.faction.FactionSymbol
+import model.requestbody.RegisterRequest
+import model.responsebody.RegisterResponse
 import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.transactions.transaction
-import requestbody.RegisterRequest
-import responsebody.RegisterResponse
 import java.io.File
 
 object BootManager {

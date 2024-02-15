@@ -1,9 +1,9 @@
-package responsebody
+package model.responsebody
 
 import kotlinx.serialization.Serializable
 import model.Agent
-import model.faction.Faction
 import model.contract.Contract
+import model.faction.Faction
 import model.ship.Ship
 
 @Serializable

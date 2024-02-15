@@ -8,9 +8,9 @@ import model.Agent
 import model.Shipyard
 import model.contract.Contract
 import model.faction.Faction
+import model.responsebody.NavigationResponse
 import model.ship.Ship
 import model.system.System
-import responsebody.NavigationResponse
 import java.io.File
 import kotlin.test.Test
 

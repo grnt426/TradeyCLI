@@ -6,14 +6,14 @@ import client.SpaceTradersClient.ignoredFailback
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import model.ship.Ship
 import kotlinx.serialization.Serializable
-import model.market.TradeSymbol
 import model.api
-import requestbody.CargoTransferRequest
-import requestbody.SellCargoRequest
-import responsebody.SellCargoResponse
-import responsebody.TransferResponse
+import model.market.TradeSymbol
+import model.requestbody.CargoTransferRequest
+import model.requestbody.SellCargoRequest
+import model.responsebody.SellCargoResponse
+import model.responsebody.TransferResponse
+import model.ship.Ship
 import kotlin.reflect.KSuspendFunction1
 import kotlin.reflect.KSuspendFunction2
 

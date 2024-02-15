@@ -1,4 +1,4 @@
-package responsebody
+package model.responsebody
 
 import kotlinx.serialization.Serializable
 import model.Agent

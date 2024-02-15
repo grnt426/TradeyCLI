@@ -1,10 +1,10 @@
-package requestbody
+package model.requestbody
 
 import kotlinx.serialization.Serializable
 import model.market.TradeSymbol
 
 @Serializable
-data class JettisonRequest(
+data class SellCargoRequest(
     val symbol: TradeSymbol,
     val units: Int,
 )

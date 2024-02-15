@@ -1,4 +1,4 @@
-package requestbody
+package model.requestbody
 
 import kotlinx.serialization.Serializable
 import model.market.TradeSymbol

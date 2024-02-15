@@ -15,6 +15,7 @@ import model.GameState.shipsToScripts
 import model.contract.Contract
 import model.exceptions.ProfileLoadingFailure
 import model.market.Market
+import model.responsebody.RegisterResponse
 import model.ship.Ship
 import model.ship.ShipRole
 import model.ship.listShips
@@ -24,7 +25,6 @@ import model.system.SystemWaypoint
 import model.system.Waypoint
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
-import responsebody.RegisterResponse
 import script.ScriptExecutor
 import script.repo.BasicHaulerScript
 import script.repo.BasicMiningScript

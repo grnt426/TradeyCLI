@@ -14,10 +14,10 @@ import model.GameState
 import model.api
 import model.extension.LastRead
 import model.market.TradeSymbol
+import model.requestbody.JettisonRequest
+import model.responsebody.ExtractionResponse
+import model.responsebody.RefuelResponse
 import model.ship.components.*
-import requestbody.JettisonRequest
-import responsebody.ExtractionResponse
-import responsebody.RefuelResponse
 import script.ScriptExecutor
 import kotlin.reflect.KSuspendFunction1
 import kotlin.reflect.KSuspendFunction2

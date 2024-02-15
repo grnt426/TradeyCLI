@@ -15,6 +15,7 @@ import model.actions.Extraction
 import model.actions.Yield
 import model.faction.FactionSymbol
 import model.market.TradeSymbol
+import model.responsebody.ExtractionResponse
 import model.ship.*
 import model.ship.components.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -25,7 +26,6 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import responsebody.ExtractionResponse
 import java.lang.Thread.sleep
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

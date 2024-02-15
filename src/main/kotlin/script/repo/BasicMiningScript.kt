@@ -2,13 +2,14 @@ package script.repo
 
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import responsebody.ExtractionResponse
 import model.market.TradeSymbol
+import model.responsebody.ExtractionResponse
 import model.ship.*
 import script.MessageableScriptExecutor
 import script.actions.mine
 import script.actions.noop
-import script.repo.BasicMiningScript.*
+import script.repo.BasicMiningScript.MiningMessages
+import script.repo.BasicMiningScript.MiningStates
 import script.repo.BasicMiningScript.MiningStates.*
 import script.script
 import java.time.Instant

@@ -166,14 +166,16 @@ fun MainRenderScope.showSystemScreen() {
     }
 
     val wp = GameState.waypoints.values
-    val centerVector = Point(50.0, 50.0)
+    val centerVector = Point(35.0, 20.0)
 
     // fonts are taller than wide, so an aspect ratio is needed
-    val normalize = Point(50.0, 30.0)
+    val normalize = Point(30.0, 50.0)
 
     // initialize empty grid
-    val map = Array(100) {
-        Array(100) {
+    val rows = 40
+    val cols = 75
+    val map = Array(rows) { // number of rows
+        Array(cols) { // number of columns
             " "
         }
     }
@@ -182,14 +184,18 @@ fun MainRenderScope.showSystemScreen() {
         val pos = (Point(w.x.toDouble(), w.y.toDouble()) / normalize) + centerVector
 
         // guard to prevent index out of bounds
-        if (pos.x in 0.0..100.0 && pos.y in 0.0..100.0)
-            map[pos.x.roundToInt()][pos.y.roundToInt()] = w.type.name[0].toString()
+        if (pos.x in 0.0..cols.toDouble() && pos.y in 0.0..rows.toDouble())
+            map[pos.y.roundToInt()][pos.x.roundToInt()] = w.type.name[0].toString()
     }
 
+    repeat(cols + 2) { text("_") }
+    textLine()
     map.forEach { row ->
-        textLine(row.joinToString(""))
+        textLine("|${row.joinToString("")}|")
     }
+    repeat(cols + 2) { text("-") }
 
+    textLine()
     text("> ")
     input(Completions(*ACTIONS.toTypedArray()))
 }
@@ -362,22 +368,26 @@ fun OnInputEnteredScope.bootOnInputManager(runScope: RunScope) {
         when (input.uppercase()) {
             "NEW" -> {
                 if (bootContext.userAskedNew) {
+                    clearInput()
                     println("NEW AGENT")
                     bootstrapNew()
                     appState = RUNNING
                 } else {
+                    clearInput()
                     runScope.aside { textLine("Type NEW again to confirm") }
                     bootContext.userAskedNew = true
                 }
             }
 
             "START" -> {
+                clearInput()
                 println("NORMAL START")
                 normalStart()
                 appState = RUNNING
             }
 
             "DEBUG" -> {
+                clearInput()
                 println("DEBUG START")
                 debugStart()
                 appState = RUNNING

@@ -4,8 +4,8 @@ import client.SpaceTradersClient
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import responsebody.ExtractionResponse
 import model.api
+import model.responsebody.ExtractionResponse
 import model.ship.Ship
 import script.StateScope
 import kotlin.reflect.KSuspendFunction1

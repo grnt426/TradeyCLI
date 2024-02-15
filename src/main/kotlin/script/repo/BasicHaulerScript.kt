@@ -4,13 +4,13 @@ import io.ktor.client.statement.*
 import model.GameState
 import model.market.findGoodsAcceptedHere
 import model.market.findMarketForGood
+import model.responsebody.NavigationResponse
+import model.responsebody.TransferResponse
 import model.ship.*
 import model.ship.components.Inventory
 import model.ship.components.inv
 import model.ship.components.sellCargo
 import model.ship.components.transferCargo
-import responsebody.NavigationResponse
-import responsebody.TransferResponse
 import script.ScriptExecutor
 import script.repo.BasicHaulerScript.HaulingStates
 import script.repo.BasicHaulerScript.HaulingStates.*

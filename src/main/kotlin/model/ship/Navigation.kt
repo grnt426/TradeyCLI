@@ -6,8 +6,8 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
 import model.api
+import model.responsebody.NavigationResponse
 import model.system.WaypointSymbol
-import responsebody.NavigationResponse
 import kotlin.reflect.KSuspendFunction1
 import kotlin.reflect.KSuspendFunction2
 
