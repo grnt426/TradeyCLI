@@ -20,5 +20,4 @@ enum class WaypointType(@Transient val color: Color) {
     GRAVITY_WELL(Color.WHITE),
     ARTIFICIAL_GRAVITY_WELL(Color.CYAN),
     FUEL_STATION(Color.YELLOW),
-    EMPTY(Color.black)
 }

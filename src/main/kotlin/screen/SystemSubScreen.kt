@@ -6,24 +6,25 @@ import com.varabyte.kotter.foundation.input.*
 import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.MainRenderScope
 import com.varabyte.kotter.runtime.RunScope
-import commandHistory
-import commandHistoryIndex
 import model.GameState
 import model.Profile
-import model.system.WaypointType
-import runningRenderContext
 import screen.RunningScreen.SelectedScreen
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(parent) {
     private val self = this
     private var zoom = Point(1.0, 1.0)
     private var translate = Point(0.0, 0.0)
+    private var selectIndex = 0
+    private var objectsOnScreen = 0
 
     // fonts are taller than wide, so an aspect ratio is needed of 3:5
     private val aspectRatio = Point(3.0, 5.0)
     override fun MainRenderScope.render() {
-
+        selectIndex = min(selectIndex, objectsOnScreen)
+        objectsOnScreen = 0
         val wp = GameState.waypoints.values
         val centerVector = Point(35.0, 20.0) + translate
 
@@ -33,14 +34,15 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
         // initialize empty grid
         val rows = 40
         val cols = 75
-        val map = Array(rows) { // number of rows
-            Array(cols) { // number of columns
-                " "
+        val EMPTY_RENDER = { text(" ") }
+        val map = MutableList(rows) { // number of rows
+            MutableList(cols) { // number of columns
+                EMPTY_RENDER
             }
         }
 
         // put a star in the center
-        map[centerVector.y.toInt()][centerVector.x.toInt()] = "S"
+        map[centerVector.y.toInt()][centerVector.x.toInt()] = { red { text("S") } }
         val waypointNames = mutableListOf<() -> Unit>()
 
         wp.forEach { w ->
@@ -50,12 +52,38 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
 
             // cull out of bounds objects
             if (x in 0..<cols && y in 0..<rows) {
+                objectsOnScreen++
+                val selected = waypointNames.size == selectIndex
                 waypointNames.add {
-                    text("${w.symbol} - ")
-                    rgb(w.type.color.rgb) { text(w.type.name) }
-                    text(" @ ${w.x},${w.y}")
+                    val entry = {
+                        text("${w.symbol} - ")
+                        rgb(w.type.color.rgb) { text(w.type.name) }
+                        text(" @ ${w.x},${w.y}")
+                    }
+                    if (selected) {
+                        bold {
+                            underline {
+                                entry()
+                            }
+                        }
+                    } else {
+                        entry()
+                    }
                 }
-                map[y][x] = w.type.name[0].toString()
+                map[y][x] = {
+                    val entry = {
+                        rgb(w.type.color.rgb) {
+                            text(w.type.name[0].toString())
+                        }
+                    }
+                    if (selected) {
+                        white(layer = ColorLayer.BG) {
+                            entry()
+                        }
+                    } else {
+                        entry()
+                    }
+                }
             }
         }
 
@@ -77,123 +105,39 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
     }
 
     override fun OnInputEnteredScope.onInput(runScope: RunScope): SelectedScreen {
-        if (parent.isActiveSubScreen(self)) {
-            commandHistoryIndex = 0
-            commandHistory.addFirst(input)
-            val args = input.split(" ").map { str -> str.uppercase() }
-            val command = args[0]
-            when (args.size) {
-                1 -> {
-                    when (command) {
-                        "SYSTEM" -> {
-                            this.clearInput()
-                            return SelectedScreen.SYSTEM
-                        }
-
-                        "CONSOLE" -> {
-                            this.clearInput()
-                            return SelectedScreen.CONSOLE
-                        }
-                    }
-                }
-
-                2 -> {
-                    when (command) {
-                        "SHIP" -> runningRenderContext.selectedShip = args[1].toInt()
-                    }
-                    this.clearInput()
-                }
-            }
-            return parent.getActiveSelectedScreen() as SelectedScreen
-        } else {
-            return parent.getActiveSelectedScreen() as SelectedScreen
-        }
+        return parent.getActiveSelectedScreen() as SelectedScreen
     }
 
     override fun OnKeyPressedScope.onKeyPressed(runScope: RunScope): SelectedScreen {
         if (parent.isActiveSubScreen(self)) {
             runScope.setInput("")
             when (key) {
-                Keys.PLUS -> {
-                    zoom -= Point(1.0, 1.0)
-                }
-
-                Keys.MINUS -> {
-                    zoom += Point(1.0, 1.0)
-                }
-
-                Keys.LEFT -> {
-                    translate -= Point(1.0, 0.0)
-                }
-
-                Keys.RIGHT -> {
-                    translate += Point(1.0, 0.0)
-                }
-
-                Keys.UP -> {
-                    translate -= Point(0.0, 1.0)
-                }
-
-                Keys.DOWN -> {
-                    translate += Point(0.0, 1.0)
+                Keys.PLUS -> zoom -= Point(0.5, 0.5)
+                Keys.MINUS -> zoom += Point(0.5, 0.5)
+                Keys.LEFT -> translate -= Point(0.5, 0.5)
+                Keys.RIGHT -> translate += Point(0.5, 0.5)
+                Keys.UP -> translate -= Point(0.0, 1.0)
+                Keys.DOWN -> translate += Point(0.0, 1.0)
+                Keys.PAGE_UP -> selectIndex = max(0, selectIndex - 1)
+                Keys.PAGE_DOWN -> selectIndex = min(objectsOnScreen, selectIndex + 1)
+                Keys.TICK -> {
+                    return SelectedScreen.CONSOLE
                 }
             }
+            runScope.rerender()
             return SelectedScreen.SYSTEM
         }
         return parent.getActiveSelectedScreen() as SelectedScreen
     }
 
-    private fun MainRenderScope.applyEffects(map: Array<Array<String>>, waypointNames: MutableList<() -> Unit>) {
+    private fun MainRenderScope.applyEffects(
+        map: MutableList<MutableList<() -> Unit>>,
+        waypointNames: MutableList<() -> Unit>
+    ) {
         map.forEachIndexed { index, row ->
             text("|")
             row.forEach { c ->
-                when (c) {
-                    "A" -> {
-                        rgb(WaypointType.ASTEROID.color.rgb) {
-                            text(c)
-                        }
-                    }
-
-                    "J" -> {
-                        magenta {
-                            text(c)
-                        }
-                    }
-
-                    "P" -> {
-                        green {
-                            text(c)
-                        }
-                    }
-
-                    "F" -> {
-                        yellow {
-                            text(c)
-                        }
-                    }
-
-                    "O" -> {
-                        blue {
-                            text(c)
-                        }
-                    }
-
-                    "S" -> {
-                        red {
-                            text(c)
-                        }
-                    }
-
-                    "M" -> {
-                        rgb(WaypointType.MOON.color.rgb) {
-                            text(c)
-                        }
-                    }
-
-                    else -> {
-                        text(c)
-                    }
-                }
+                c()
             }
             if (waypointNames.size > index) {
                 text("| ")
