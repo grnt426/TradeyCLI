@@ -82,10 +82,11 @@ suspend fun main() {
     SpaceTradersClient.client.close()
 }
 
-fun RenderScope.makeHeader(text: String, columns: Int) {
+fun RenderScope.makeHeader(text: String, spansColumns: Int = 1) {
+    val columnWidth = Profile.profileData.termWidth / 3
     underline {
         text(text)
-        repeat(Profile.profileData.termWidth / columns - text.length) { text(" ") }
+        repeat(columnWidth * spansColumns - text.length + (spansColumns - 1)) { text(" ") }
     }
     textLine()
 }

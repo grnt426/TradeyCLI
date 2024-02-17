@@ -12,7 +12,9 @@ import com.varabyte.kotter.foundation.input.*
 import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.MainRenderScope
 import com.varabyte.kotter.runtime.RunScope
+import com.varabyte.kotter.runtime.render.OffscreenRenderScope
 import com.varabyte.kotterx.grid.Cols
+import com.varabyte.kotterx.grid.GridCharacters
 import com.varabyte.kotterx.grid.grid
 import commandHistory
 import commandHistoryIndex
@@ -26,6 +28,7 @@ import model.ship.components.Inventory
 import model.ship.components.shortName
 import model.ship.getShips
 import model.ship.hasCooldown
+import model.system.Waypoint
 import notification.NotificationManager
 import reduceToSiNotation
 import runningRenderContext
@@ -34,22 +37,94 @@ import script.ScriptExecutor
 import java.time.Instant
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(parent) {
     val self = this
     val columns = 3
+
+    private var zoom = SystemSubScreen.Point(1.0, 1.0)
+    private var translate = SystemSubScreen.Point(0.0, 0.0)
+    private var selectIndex = 0
+    private var objectsOnScreen = 0
+
+    // fonts are taller than wide, so an aspect ratio is needed of 3:5
+    private val aspectRatio = SystemSubScreen.Point(3.0, 5.0)
+
     override fun MainRenderScope.render() {
         val selectedQuad = runningRenderContext.selectedQuad
         val currentView = runningRenderContext.selectedView
         val selectedShip = runningRenderContext.selectedShip
 
-        grid(Cols.uniform(columns, GameState.profData.termWidth / columns)) {
+        grid(Cols.uniform(columns, GameState.profData.termWidth / columns), characters = GridCharacters.CURVED) {
+            val visibleWaypoints = mutableListOf<Waypoint>()
+            selectIndex = min(selectIndex, objectsOnScreen)
+            cell(colSpan = 2) {
+                rgb(HEADER_COLOR.rgb) { makeHeader("System View", 2) }
+                objectsOnScreen = 0
+                val wp = GameState.waypoints.values
+
+                // a good starting zoom is 10
+                val zoom = (SystemSubScreen.Point(3.0, 3.0) + self.zoom) * aspectRatio
+
+                // initialize empty grid
+                val rows = 30
+                val cols = 80
+                val centerVector = SystemSubScreen.Point(cols / 2.0, rows / 2.0) + translate
+                val EMPTY_RENDER = { text(" ") }
+                val map = MutableList(rows) { // number of rows
+                    MutableList(cols) { // number of columns
+                        EMPTY_RENDER
+                    }
+                }
+
+                // put a star in the center
+                map[centerVector.y.toInt()][centerVector.x.toInt()] = { red { text("S") } }
+                wp.forEach { w ->
+                    val pos = (SystemSubScreen.Point(w.x.toDouble(), w.y.toDouble()) / zoom) + centerVector
+                    val y = pos.y.roundToInt()
+                    val x = pos.x.roundToInt()
+
+                    // cull out of bounds objects
+                    if (x in 0..<cols && y in 0..<rows) {
+                        objectsOnScreen++
+                        val selected = visibleWaypoints.size == selectIndex
+                        visibleWaypoints.add(w)
+                        map[y][x] = {
+                            val entry = {
+                                rgb(w.type.color.rgb) {
+                                    text(w.type.name[0].toString())
+                                }
+                            }
+                            if (selected) {
+                                white(layer = ColorLayer.BG) {
+                                    entry()
+                                }
+                            } else {
+                                entry()
+                            }
+                        }
+                    }
+                }
+                applyEffects(map)
+            }
+
+            cell {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Waypoints In ${getHqSystem().symbol}") }
+                visibleWaypoints.take(30).forEach { w ->
+                    text("${w.symbol} - ")
+                    rgb(w.type.color.rgb) { text(w.type.name) }
+                    text(" @ ${w.x},${w.y}")
+                    textLine()
+                }
+            }
+
             cell {
                 val headerColor = if (selectedQuad != QuadSelect.MAIN) HEADER_COLOR else SELECTED_HEADER_COLOR
                 when (currentView) {
                     Window.MAIN -> {
                         rgb(headerColor.rgb) {
-                            makeHeader("Fleet Status: ${getHqSystem().symbol}", columns)
+                            makeHeader("Fleet Status: ${getHqSystem().symbol}")
                         }
 
                         getShips().forEach { s ->
@@ -92,7 +167,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
             cell {
                 val headerColor = if (selectedQuad != QuadSelect.SUMM) HEADER_COLOR else SELECTED_HEADER_COLOR
                 rgb(headerColor.rgb) {
-                    makeHeader("Agent", columns)
+                    makeHeader("Agent")
                 }
                 textLine("${GameState.agent.symbol} - $${GameState.agent.credits}")
                 textLine("${GameState.ships.size} ships and ${GameState.scriptsRunning.size} scripts")
@@ -102,7 +177,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 val blocks = arrayOf(" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█")
                 val FULL_BLOCK = blocks[8]
                 rgb(HEADER_COLOR.rgb) {
-                    makeHeader("Job Pressure", columns)
+                    makeHeader("Job Pressure")
                 }
                 val pressureWindow = SpaceTradersClient.jobPressureWindow
                 (0..4).forEach { h ->
@@ -158,7 +233,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
 
                 val headerColor = if (selectedQuad != QuadSelect.COMM) HEADER_COLOR else SELECTED_HEADER_COLOR
                 rgb(headerColor.rgb) {
-                    makeHeader("Command", columns)
+                    makeHeader("Command")
                 }
                 val ship = getShips()[selectedShip - 1]
                 text("${ship.registration.name}#")
@@ -180,7 +255,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
 
                 val headerColor = if (selectedQuad != QuadSelect.NOTF) HEADER_COLOR else SELECTED_HEADER_COLOR
                 rgb(headerColor.rgb) {
-                    makeHeader("Notifications", columns)
+                    makeHeader("Notifications")
                 }
                 NotificationManager.notifications.forEach { n ->
                     rgb(n.animColor.rgb) {
@@ -191,7 +266,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
             }
 
             cell {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Console Stats", columns) }
+                rgb(HEADER_COLOR.rgb) { makeHeader("Console Stats") }
                 val writes = FileWritingQueue.totalFileWrites
                 val states = ScriptExecutor.totalStateChanges
                 val errors = SpaceTradersClient.totalErrors
@@ -303,6 +378,32 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
             return SelectedScreen.CONSOLE
         } else {
             return parent.getActiveSelectedScreen() as SelectedScreen
+        }
+    }
+
+    private fun OffscreenRenderScope.applyEffects(
+        map: MutableList<MutableList<() -> Unit>>,
+    ) {
+        map.forEach { row ->
+            row.forEach { c ->
+                c()
+            }
+            textLine()
+        }
+    }
+
+    data class Point(var x: Double, var y: Double) {
+        operator fun plus(point: Point): Point = Point(this.x + point.x, this.y + point.y)
+        operator fun minus(point: Point): Point = Point(this.x - point.x, this.y - point.y)
+        operator fun times(point: Point): Point = Point(this.x * point.x, this.y * point.y)
+        operator fun div(point: Point): Point = Point(this.x / point.x, this.y / point.y)
+        override operator fun equals(other: Any?): Boolean {
+            if (other is Point) return this.x == other.x && this.y == other.y
+            return false
+        }
+
+        override fun hashCode(): Int {
+            return ((31 * x) + (y * 17)).roundToInt()
         }
     }
 }

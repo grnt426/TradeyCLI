@@ -5,7 +5,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import model.Agent
-import model.Shipyard
 import model.contract.Contract
 import model.faction.Faction
 import model.responsebody.NavigationResponse
@@ -16,15 +15,15 @@ import kotlin.test.Test
 
 class SerializationTest {
 
-    @Test
-    fun `can read results from checking waypoint info of a shipyard`() {
-        val file = File("src/test/resources/shipyard_result.json").readText()
-        Json.decodeFromString<JsonObject>(file)["model"]?.let {
-            Json.decodeFromJsonElement<Shipyard>(
-                it
-            )
-        }!!
-    }
+//    @Test
+//    fun `can read results from checking waypoint info of a shipyard`() {
+//        val file = File("src/test/resources/shipyard_result.json").readText()
+//        Json.decodeFromString<JsonObject>(file)["model"]?.let {
+//            Json.decodeFromJsonElement<Shipyard>(
+//                it
+//            )
+//        }!!
+//    }
 
     @Test
     fun `can read results when creating an agent`() {

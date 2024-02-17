@@ -3,6 +3,7 @@ import model.faction.FactionSymbol
 import model.market.Market
 import model.ship.*
 import model.ship.components.*
+import java.time.Instant
 
 class TestUtil {
 }
@@ -17,8 +18,8 @@ fun createShip(symbol: String = "0"): Ship {
                 createLocation(),
                 createLocation(),
                 createLocation(),
-                "",
-                ""
+                Instant.now(),
+                Instant.now()
             ),
             ShipNavStatus.IN_ORBIT,
             "FlightMode"

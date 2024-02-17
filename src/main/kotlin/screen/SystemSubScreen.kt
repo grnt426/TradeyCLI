@@ -26,14 +26,14 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
         selectIndex = min(selectIndex, objectsOnScreen)
         objectsOnScreen = 0
         val wp = GameState.waypoints.values
-        val centerVector = Point(35.0, 20.0) + translate
 
         // a good starting zoom is 10
-        val zoom = (Point(10.0, 10.0) + self.zoom) * aspectRatio
+        val zoom = (Point(15.0, 15.0) + self.zoom) * aspectRatio
 
         // initialize empty grid
-        val rows = 40
-        val cols = 75
+        val rows = 20
+        val cols = 40
+        val centerVector = Point(cols / 2.0, rows / 2.0) + translate
         val EMPTY_RENDER = { text(" ") }
         val map = MutableList(rows) { // number of rows
             MutableList(cols) { // number of columns
