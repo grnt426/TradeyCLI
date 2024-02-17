@@ -16,6 +16,7 @@ import model.extension.LastRead
 import model.market.TradeSymbol
 import model.requestbody.JettisonRequest
 import model.responsebody.ExtractionResponse
+import model.responsebody.NavigationResponse
 import model.responsebody.RefuelResponse
 import model.ship.components.*
 import script.ScriptExecutor
@@ -61,11 +62,11 @@ fun applyExtractResults(ship: Ship, extract: ExtractionResponse) {
  */
 fun toOrbit(
     ship: Ship,
-    cb: KSuspendFunction1<Navigation, Unit> = ::ignoredCallback,
+    cb: KSuspendFunction1<NavigationResponse, Unit> = ::ignoredCallback,
     fb: KSuspendFunction2<HttpResponse?, Exception?, Unit> = ::ignoredFailback
 ): Boolean {
     if (ship.nav.status != ShipNavStatus.IN_ORBIT) {
-        SpaceTradersClient.enqueueRequest<Navigation>(
+        SpaceTradersClient.enqueueRequest<NavigationResponse>(
             cb,
             fb,
             request {
@@ -73,7 +74,7 @@ fun toOrbit(
                 method = HttpMethod.Post
             }
         )
-
+        ship.nav.status = ShipNavStatus.IN_ORBIT
         return true
     }
 
@@ -90,11 +91,12 @@ fun toOrbit(
  */
 fun toDock(
     ship: Ship,
-    cb: KSuspendFunction1<Navigation, Unit> = ::ignoredCallback,
+    cb: KSuspendFunction1<NavigationResponse, Unit> = ::ignoredCallback,
     fb: KSuspendFunction2<HttpResponse?, Exception?, Unit> = ::ignoredFailback
 ): Boolean {
     if (ship.nav.status != ShipNavStatus.DOCKED) {
-        SpaceTradersClient.enqueueRequest<Navigation>(
+        println("Making dock request")
+        SpaceTradersClient.enqueueRequest<NavigationResponse>(
             cb,
             fb,
             request {
@@ -102,7 +104,7 @@ fun toDock(
                 method = HttpMethod.Post
             }
         )
-
+        ship.nav.status = ShipNavStatus.DOCKED
         return true
     }
 
@@ -114,6 +116,7 @@ fun hasfuelRatio(ship: Ship, ratio: Double): Boolean = hasfuelRatio(ship.fuel, r
 fun shipsAtSameWaypoint(first: Ship, second: Ship): Boolean = first.nav.waypointSymbol == second.nav.waypointSymbol
 fun shipsInSameSystem(first: Ship, second: Ship): Boolean = first.nav.systemSymbol == second.nav.systemSymbol
 
+fun refuel(ship: Ship) = buyFuel(ship)
 fun buyFuel(ship: Ship) {
     if (ship.fuel.consumed.amount != 0L) {
         SpaceTradersClient.enqueueRequest<RefuelResponse>(

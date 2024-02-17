@@ -1,9 +1,12 @@
 package script.repo
 
 import io.ktor.client.statement.*
+import model.GameState
 import model.market.Market
 import model.market.refreshMarket
+import model.responsebody.NavigationResponse
 import model.ship.*
+import notification.NotificationManager
 import script.ScriptExecutor
 import script.repo.PriceFetcherScript.PriceFetcherState
 import script.repo.PriceFetcherScript.PriceFetcherState.*
@@ -21,10 +24,10 @@ class PriceFetcherScript(val ship: Ship, state: PriceFetcherState = INITIAL) :
         AWAIT_ASSIGNMENT,
         ASSIGNED_AWAIT_NAV,
         NAV,
+        AWAIT_NAV_RESP,
         DOCK,
         GET_PRICE,
         ORBIT,
-        NAV_NO_ASSIGN,
         ERROR,
     }
 
@@ -37,13 +40,14 @@ class PriceFetcherScript(val ship: Ship, state: PriceFetcherState = INITIAL) :
                 // resumed while in flight
                 if (isNavigating(ship)) {
                     println("Navigating, awaiting arrival")
-                    changeState(NAV_NO_ASSIGN)
+                    changeState(DOCK)
                 }
 
                 // resumed waiting to orbit or about to fetch price
                 else if (isDocked(ship)) {
-                    println("Changing to in orbit")
-                    changeState(ORBIT)
+                    changeState(GET_PRICE)
+                } else if (isOrbiting(ship)) {
+                    changeState(GET_PRICE)
                 } else {
                     println("Going to await assignment")
                     changeState(AWAIT_ASSIGNMENT)
@@ -51,19 +55,38 @@ class PriceFetcherScript(val ship: Ship, state: PriceFetcherState = INITIAL) :
             }
 
             state(matchesState(AWAIT_ASSIGNMENT)) {
-                println("Awaiting assignment")
+                if (isNavigating(ship)) {
+                    changeState(AWAIT_NAV_RESP)
+                } else
+                    println("Awaiting assignment")
                 // do nothing
             }
 
             state(matchesState(ASSIGNED_AWAIT_NAV)) {
-                println("Assigned awaiting nav")
-                if (market == null) {
-                    changeState(AWAIT_ASSIGNMENT)
+                if (isNavigating(ship)) {
+                    changeState(AWAIT_NAV_RESP)
                 } else {
-                    if (stillExpired()) {
-                        changeState(NAV)
-                        navigateTo(ship, market!!.symbol, fb = ::failNavCb)
+                    println("Assigned awaiting nav")
+                    if (market == null) {
+                        changeState(AWAIT_ASSIGNMENT)
+                    } else {
+                        if (ship.nav.waypointSymbol == market?.symbol) {
+                            changeState(DOCK)
+                        } else if (stillExpired()) {
+                            navigateTo(ship, market!!.symbol, cb = ::navCb, fb = ::failNavCb)
+                            changeState(AWAIT_NAV_RESP)
+                        }
                     }
+                }
+            }
+
+            state(matchesState(AWAIT_NAV_RESP)) {
+                if (isNavigating(ship)) {
+                    changeState(NAV)
+                } else if (isDocked(ship)) {
+                    changeState(GET_PRICE)
+                } else if (isOrbiting(ship)) {
+                    changeState(AWAIT_ASSIGNMENT)
                 }
             }
 
@@ -72,20 +95,18 @@ class PriceFetcherScript(val ship: Ship, state: PriceFetcherState = INITIAL) :
 
                 // resumed in middle of nav
                 if (market == null) {
-                    changeState(AWAIT_ASSIGNMENT)
-                }
+                    market = GameState.markets[ship.nav.route.destination.symbol]
 
-                // odd state to get stuck in
-                else if (isDocked(ship)) {
-                    changeState(ORBIT)
-                } else if (isOrbiting(ship)) {
-                    changeState(AWAIT_ASSIGNMENT)
-                } else {
-                    if (stillExpired()) {
-                        if (isOrbiting(ship)) {
-                            changeState(DOCK)
-                        }
+                    // why still null?
+                    if (market == null) {
+                        changeState(ERROR)
                     }
+                }
+                else if (isDocked(ship)) {
+                    changeState(GET_PRICE)
+                } else {
+                    if (!isNavigating(ship))
+                        changeState(DOCK)
                 }
             }
 
@@ -98,31 +119,38 @@ class PriceFetcherScript(val ship: Ship, state: PriceFetcherState = INITIAL) :
             }
 
             state(matchesState(GET_PRICE)) {
+                if (market == null) {
+                    getLocalMarket()
+                }
+
                 println("getting price")
                 if (passGuard() && stillExpired()) {
                     if (!isDocked(ship)) {
                         changeState(DOCK)
                     } else {
+                        if (market == null) {
+                            getLocalMarket()
+                            if (market == null) {
+                                changeState(ERROR)
+                                return@state
+                            }
+                        }
                         refreshMarket(systemOf(ship), market!!)
                         changeState(ORBIT)
                     }
+                } else {
+                    changeState(ORBIT)
                 }
             }
 
             state(matchesState(ORBIT)) {
                 println("orbiting")
                 if (isNavigating(ship)) {
-                    changeState(NAV_NO_ASSIGN)
+                    changeState(AWAIT_NAV_RESP)
                 } else {
                     toOrbit(ship)
                     changeState(AWAIT_ASSIGNMENT)
                 }
-            }
-
-            state(matchesState(NAV_NO_ASSIGN)) {
-                println("nav no assignment")
-                if (isOrbiting(ship))
-                    changeState(AWAIT_ASSIGNMENT)
             }
 
             state(matchesState(ERROR)) {
@@ -134,15 +162,12 @@ class PriceFetcherScript(val ship: Ship, state: PriceFetcherState = INITIAL) :
 
     private fun passGuard(): Boolean {
         return if (isNavigating(ship)) {
-            changeState(NAV_NO_ASSIGN)
-            false
-        } else if (market == null) {
-            changeState(AWAIT_ASSIGNMENT)
+            changeState(DOCK)
             false
         } else true
     }
 
-    private fun stillExpired(): Boolean {
+    fun stillExpired(): Boolean {
         return with(market) {
             if (this != null) {
                 val res = lastRead < getCutoff()
@@ -156,12 +181,24 @@ class PriceFetcherScript(val ship: Ship, state: PriceFetcherState = INITIAL) :
         }
     }
 
+    suspend fun navCb(nav: NavigationResponse) {
+        ship.nav = nav.nav
+    }
+
+    fun getLocalMarket() {
+        market = GameState.markets[ship.nav.waypointSymbol]
+    }
+
     fun setTarget(target: Market) {
+        NotificationManager.createNotification("Fetching Price @ ${target.symbol}", "Nothing more")
         market = target
         changeState(ASSIGNED_AWAIT_NAV)
     }
 
     private suspend fun failNavCb(resp: HttpResponse?, exception: Exception?) {
+        NotificationManager.createErrorNotification(
+            "${ship.symbol} failed navigating to ${market?.symbol}", "uhhhh"
+        )
         // try again
         changeState(ASSIGNED_AWAIT_NAV)
     }

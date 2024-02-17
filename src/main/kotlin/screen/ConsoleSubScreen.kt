@@ -16,6 +16,7 @@ import com.varabyte.kotterx.grid.Cols
 import com.varabyte.kotterx.grid.grid
 import commandHistory
 import commandHistoryIndex
+import data.FileWritingQueue
 import makeHeader
 import model.GameState
 import model.GameState.getHqSystem
@@ -25,9 +26,11 @@ import model.ship.components.Inventory
 import model.ship.components.shortName
 import model.ship.getShips
 import model.ship.hasCooldown
+import notification.NotificationManager
 import reduceToSiNotation
 import runningRenderContext
 import screen.RunningScreen.SelectedScreen
+import script.ScriptExecutor
 import java.time.Instant
 import kotlin.math.max
 import kotlin.math.min
@@ -56,10 +59,10 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                             if (s.cooldown.remainingSeconds > 0)
                                 textLine(" (${s.cooldown.remainingSeconds})")
                             else if (s.nav.status == ShipNavStatus.IN_TRANSIT) {
-                                val arrival = Instant.parse(s.nav.route.arrival)
+                                val arrival = s.nav.route.arrival
                                 val secondsRemaining = arrival.epochSecond.minus(Instant.now().epochSecond).toDouble()
-
                                 textLine(" (${reduceToSiNotation(secondsRemaining, "s")})")
+                                textLine(" Destination @ ${s.nav.route.destination.symbol}")
                             } else
                                 textLine()
                             if (s.cargo.inventory.isNotEmpty()) {
@@ -92,6 +95,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                     makeHeader("Agent", columns)
                 }
                 textLine("${GameState.agent.symbol} - $${GameState.agent.credits}")
+                textLine("${GameState.ships.size} ships and ${GameState.scriptsRunning.size} scripts")
             }
 
             cell {
@@ -157,9 +161,9 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                     makeHeader("Command", columns)
                 }
                 val ship = getShips()[selectedShip - 1]
-                text("${ship.registration.name} [")
+                text("${ship.registration.name}#")
                 applyShipRoleColor(ship.registration.role, false)
-                textLine("] - ${ship.nav.flightMode}")
+                textLine(" ${ship.nav.status}@${ship.nav.waypointSymbol}")
                 text(" C: ${ship.cargo.units}/${ship.cargo.capacity} F: ${ship.fuel.current}/${ship.fuel.capacity} ")
                 textLine(if (ship.script != null) "${ship.script!!.currentState}" else "NS")
                 if (hasCooldown(ship)) {
@@ -175,19 +179,23 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
             cell {
 
                 val headerColor = if (selectedQuad != QuadSelect.NOTF) HEADER_COLOR else SELECTED_HEADER_COLOR
-                val anim = runningRenderContext.textAnim
                 rgb(headerColor.rgb) {
                     makeHeader("Notifications", columns)
                 }
-                textLine(" * Old Notification")
-                green { if (anim != null) text(anim) else text("+") }
-                textLine("New Notification")
-                green { if (anim != null) text(anim) else text("+") }
-                textLine("New Notification")
+                NotificationManager.notifications.forEach { n ->
+                    rgb(n.animColor.rgb) {
+                        text(n.textAnim)
+                    }
+                    textLine(n.toast)
+                }
             }
 
             cell {
-
+                rgb(HEADER_COLOR.rgb) { makeHeader("Console Stats", columns) }
+                val writes = FileWritingQueue.totalFileWrites
+                val states = ScriptExecutor.totalStateChanges
+                val errors = SpaceTradersClient.totalErrors
+                textLine("Writes $writes | Errors $errors | State => $states")
             }
         }
         text("> ")

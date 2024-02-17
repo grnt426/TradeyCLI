@@ -1,7 +1,6 @@
 package script.repo
 
 import io.ktor.client.statement.*
-import io.ktor.http.*
 import model.market.TradeSymbol
 import model.responsebody.ExtractionResponse
 import model.ship.*
@@ -38,7 +37,6 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
     private val ALWAYS_WORTHLESS_GOODS = listOf(TradeSymbol.ICE_WATER)
 
     private var extractResult: ExtractionResponse? = null
-    private var failed = false
     var cooldownRemaining = 0L
 
     override fun execute() {
@@ -59,7 +57,6 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
                 }
                 else {
                     extractResult = null
-                    failed = false
                     println("Mining action")
                     mine(ship, ::mineCallback, ::failback)
                     changeState(AWAIT_MINING_RESPONSE)
@@ -73,11 +70,6 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
                     val yield = extractResult!!.extraction.yield
                     println("Mined ${yield.units} ${yield.symbol}")
                     changeState(KEEP_VALUABLES)
-                }
-                else if (failed) {
-                    println("Mining failed! Retrying....")
-                    failed = false
-                    changeState(MINING_COOLDOWN)
                 }
             }
 
@@ -116,25 +108,10 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
     suspend fun mineCallback(res: ExtractionResponse) {
         println("Extract response successful")
         extractResult = res
-        failed = false
     }
 
     suspend fun failback(resp: HttpResponse?, ex: Exception?) {
         println("Failback called")
-        if (resp != null) {
-            println(resp.bodyAsText())
-
-            // it could also be traveling, should handle
-            if (resp.status == HttpStatusCode.Conflict) {
-                changeState(MINING_COOLDOWN)
-            }
-            else {
-                failed = true
-            }
-        }
-        else if (ex != null){
-            println(ex.message)
-            failed = true
-        }
+        changeState(MINING)
     }
 }

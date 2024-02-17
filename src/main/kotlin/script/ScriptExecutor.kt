@@ -9,6 +9,10 @@ abstract class ScriptExecutor<T>(
     val entityId: String? = null,
     var uuid: String = UUID.randomUUID().toString(),
 ) {
+
+    companion object {
+        var totalStateChanges = 0
+    }
     abstract fun execute()
 
     fun saveState() {
@@ -16,6 +20,7 @@ abstract class ScriptExecutor<T>(
     }
 
     fun changeState(newState: T) {
+        totalStateChanges++
         currentState = newState
         saveState()
     }

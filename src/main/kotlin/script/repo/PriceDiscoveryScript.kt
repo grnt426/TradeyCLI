@@ -15,7 +15,7 @@ import java.time.temporal.ChronoUnit
 import java.util.*
 import kotlin.math.pow
 
-private const val LAST_READ_TTL_MINUTES = 30L
+private const val LAST_READ_TTL_MINUTES = 15L
 private val LAST_READ_TTL_UNIT = ChronoUnit.MINUTES
 
 class PriceDiscoveryScript(val system: String, state: PriceDiscoveryState = INITIAL) :
@@ -30,12 +30,10 @@ class PriceDiscoveryScript(val system: String, state: PriceDiscoveryState = INIT
         ERROR,
     }
 
-    private val markets: PriorityQueue<Market> = with(GameState.marketsBySystem[system]) {
-        if (this != null) PriorityQueue(this) else PriorityQueue()
-    }
-    private val ships: List<Ship> = GameState.ships.values
+    private var markets: PriorityQueue<Market> = fetchMarkets()
+    private var ships: List<Ship> = GameState.ships.values
         .filter { s -> s.nav.systemSymbol == system && s.registration.role == ShipRole.SATELLITE }
-    private val scripts: Map<Ship, PriceFetcherScript> =
+    private var scripts: Map<Ship, PriceFetcherScript> =
         GameState.shipsToScripts.filter { (k, v) -> ships.contains(k) && v is PriceFetcherScript }
                 as Map<Ship, PriceFetcherScript>
 
@@ -51,16 +49,17 @@ class PriceDiscoveryScript(val system: String, state: PriceDiscoveryState = INIT
             }
 
             state(matchesState(FIND_MARKET)) {
-                // guard check
+                markets = fetchMarkets()
                 if (markets.isEmpty()) {
                     changeState(ERROR)
-                }
-                println("Finding markets")
-                if (markets.peek().lastRead < getCutoff()) {
-                    changeState(FIND_SHIP)
                 } else {
-                    println("Cutoff ${getCutoff()}")
-                    println("Next market to fetch ${markets.peek().lastRead} most recent ${markets.last().lastRead}")
+                    println("Finding markets")
+                    if (markets.peek().lastRead < getCutoff()) {
+                        changeState(FIND_SHIP)
+                    } else {
+                        println("Cutoff ${getCutoff()}")
+                        println("Next market to fetch ${markets.peek().lastRead} most recent ${markets.last().lastRead}")
+                    }
                 }
             }
 
@@ -101,6 +100,12 @@ class PriceDiscoveryScript(val system: String, state: PriceDiscoveryState = INIT
                 println("Discovery in error")
             }
         }.runForever(10_000)
+    }
+
+    private fun fetchMarkets(): PriorityQueue<Market> {
+        return with(GameState.marketsBySystem[system]) {
+            if (this != null) PriorityQueue(this) else PriorityQueue()
+        }
     }
 }
 

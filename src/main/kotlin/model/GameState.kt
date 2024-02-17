@@ -5,6 +5,7 @@ import client.SpaceTradersClient
 import client.SpaceTradersClient.callGet
 import client.SpaceTradersClient.ignoredFailback
 import data.DbClient
+import data.FileWritingQueue
 import data.SavedScripts
 import io.ktor.client.request.*
 import kotlinx.coroutines.Dispatchers
@@ -17,7 +18,6 @@ import model.exceptions.ProfileLoadingFailure
 import model.market.Market
 import model.responsebody.RegisterResponse
 import model.ship.Ship
-import model.ship.ShipRole
 import model.ship.listShips
 import model.system.OrbitalNames
 import model.system.System
@@ -26,8 +26,6 @@ import model.system.Waypoint
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import script.ScriptExecutor
-import script.repo.BasicHaulerScript
-import script.repo.BasicMiningScript
 import script.repo.PriceDiscoveryScript
 import script.repo.PriceFetcherScript
 import java.io.File
@@ -56,6 +54,7 @@ object GameState {
     lateinit var markets: MutableMap<String, Market>
     val marketsBySystem = mutableMapOf<String, MutableList<Market>>()
     val shipyardsBySystem = mutableMapOf<String, MutableList<Shipyard>>()
+    val scriptsRunning = mutableListOf<ScriptExecutor<*>>()
 
     fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE) {
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
@@ -85,7 +84,7 @@ object GameState {
 
     private fun initializeDataManagers() {
         DbClient.createClient()
-//        FileWritingQueue.createFileWrite()
+        FileWritingQueue.createFileWritingQueue()
     }
 
     private fun postInitGameLoading() {
@@ -122,7 +121,6 @@ object GameState {
 
     private fun loadScripts() {
         fetchAllShips()
-        PriceDiscoveryScript(getHqSystem().symbol).execute()
     }
 
     private fun refreshShipyards() = fetchSystemsForWaypointsWithTraits(
@@ -179,66 +177,64 @@ object GameState {
 
     private fun fetchAllShips() {
         val shipList = listShips()
-        shipList?.forEach { s ->
-            val shipState = transaction {
-                SavedScripts.selectAll().where { SavedScripts.entityId eq s.symbol }.singleOrNull()
-            }
+        ships.putAll(convertToMap(shipList))
 
-            // TODO: the below script state recovery sucks. Figure out how to make it better
-            val script = when (s.registration.role) {
-                ShipRole.EXCAVATOR -> {
-                    println("Found excavator")
-                    val script = BasicMiningScript(s)
-                    if (shipState != null)
-                        script.updateState(
-                            BasicMiningScript.MiningStates.valueOf(
-                                shipState[SavedScripts.scriptState].toString()
-                            )
+        transaction {
+            SavedScripts.selectAll().where { SavedScripts.entityId like "${agent.symbol}%" }.forEach { s ->
+                val ship = ships[s[SavedScripts.entityId]] ?: return@forEach
+                val shipScript = when (s[SavedScripts.scriptType]) {
+                    "BasicMiningScript" -> {
+                        null
+                    }
+
+                    "PriceFetcherScript" -> {
+                        val script = PriceFetcherScript(
+                            ship, PriceFetcherScript.PriceFetcherState.valueOf(s[SavedScripts.scriptState])
                         )
-                    script
-                }
+                        script.uuid = s[SavedScripts.id]
+                        script
+                    }
 
-                ShipRole.TRANSPORT -> {
-                    println("Found transport")
-                    val script = BasicHaulerScript(s)
-                    if (shipState != null)
-                        script.updateState(
-                            BasicHaulerScript.HaulingStates.valueOf(
-                                shipState[SavedScripts.scriptState].toString()
-                            )
-                        )
-                    script
-                }
+                    "BasicHaulerScript" -> {
+                        null
+                    }
 
-                ShipRole.SATELLITE -> {
-                    println("Found satellite")
-                    val script = PriceFetcherScript(s)
-                    if (shipState != null)
-                        script.updateState(
-                            PriceFetcherScript.PriceFetcherState.valueOf(
-                                shipState[SavedScripts.scriptState].toString()
-                            )
-                        )
-                    script
-                }
+                    "TradingHaulerScript" -> {
+                        null
+                    }
 
-                else -> {
-                    // nothing for now
-                    null
+                    else -> {
+                        null
+                    }
                 }
-            }
-            if (shipState != null) {
-                if (script != null && shipState.hasValue(SavedScripts.scriptState)) {
-                    script.uuid = shipState[SavedScripts.entityId].toString()
+                if (shipScript != null) {
+                    shipScript.execute()
+                    shipsToScripts[ship] = shipScript
+                    scriptsRunning.add(shipScript)
                 }
-            }
-            if (script != null) {
-                println("Started")
-                shipsToScripts[s] = script
-                script.execute()
             }
         }
-        ships.putAll(convertToMap(shipList))
+
+        transaction {
+            SavedScripts.selectAll().where { SavedScripts.entityId notInList ships.keys }.forEach { s ->
+                val managerScript = when (s[SavedScripts.scriptType]) {
+                    "PriceDiscoveryScript" -> {
+                        val script = PriceDiscoveryScript(
+                            s[SavedScripts.entityId]!!,
+                            PriceDiscoveryScript.PriceDiscoveryState.valueOf(s[SavedScripts.scriptState])
+                        )
+                        script.uuid = s[SavedScripts.id]
+                        script
+                    }
+
+                    else -> null
+                }
+                if (managerScript != null) {
+                    managerScript.execute()
+                    scriptsRunning.add(managerScript as ScriptExecutor<*>)
+                }
+            }
+        }
     }
 
     private fun <T> convertToMap(list: List<T>?): MutableMap<String, T> where T : Symbol {

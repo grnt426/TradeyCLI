@@ -2,6 +2,7 @@ package model.ship
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import notification.NotificationManager
 import java.time.Instant
 
 @Serializable
@@ -24,6 +25,9 @@ fun isCooldownExpired(cooldown: Cooldown): Boolean {
         Instant.now().toEpochMilli() >= cooldown.expirationDateTime!!.toEpochMilli()
     }
     else {
+        if (cooldown.remainingSeconds < -120) {
+            NotificationManager.createErrorNotification("Negative cooldown of over 2 mins", "Why")
+        }
         return cooldown.remainingSeconds  <= 0
     }
 }
@@ -31,6 +35,5 @@ fun isCooldownExpired(cooldown: Cooldown): Boolean {
 fun hasCooldown(ship: Ship): Boolean = !isCooldownExpired(ship.cooldown)
 
 fun calculateExpirationSeconds(ship: Ship): Long {
-    val arrival = Instant.parse(ship.nav.route.arrival)
-    return arrival.epochSecond.minus(Instant.now().epochSecond)
+    return ship.nav.route.arrival.epochSecond.minus(Instant.now().epochSecond)
 }

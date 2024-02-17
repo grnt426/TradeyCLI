@@ -22,9 +22,7 @@ object RunningScreen : Screen() {
     var selectedScreen = CONSOLE
     override fun MainRenderScope.render() {
         with(selectedScreen.screen) {
-            println("Rendering")
             render()
-            println("Rendering done")
         }
     }
 

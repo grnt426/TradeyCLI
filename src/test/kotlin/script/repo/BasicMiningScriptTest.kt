@@ -1,6 +1,7 @@
 package script.repo
 
 import client.SpaceTradersClient
+import createShip
 import data.DbClient
 import data.SavedScripts
 import io.ktor.client.*
@@ -10,14 +11,14 @@ import io.mockk.mockkObject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import model.Location
 import model.actions.Extraction
 import model.actions.Yield
-import model.faction.FactionSymbol
 import model.market.TradeSymbol
 import model.responsebody.ExtractionResponse
-import model.ship.*
-import model.ship.components.*
+import model.ship.Cooldown
+import model.ship.Ship
+import model.ship.components.Cargo
+import model.ship.components.Inventory
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.selectAll
@@ -105,48 +106,6 @@ class BasicMiningScriptTest {
                 1,
                 mutableListOf( Inventory(TradeSymbol.ICE_WATER, TradeSymbol.ICE_WATER.name, "water", 1))
             )
-        )
-    }
-
-    private fun createShip(symbol: String = "0"): Ship {
-        return Ship(
-            "Symbol-$symbol",
-            Navigation(
-                "SystemSymbol",
-                "WaypointSymbol",
-                Route(
-                    createLocation(),
-                    createLocation(),
-                    createLocation(),
-                    "",
-                    ""
-                ),
-                ShipNavStatus.IN_ORBIT,
-                "FlightMode"
-            ),
-            Crew(0L, 0L, 0L, "", 0L, 0L),
-            Fuel(0L, 0L, FuelConsumed(0L, "")),
-            Cooldown("", 0L, 0L),
-            Frame("", "", "", 0L, 0L, 0L, 0L,
-                Requirements()
-            ),
-            Engine("", "", "", 0L, 0L, Requirements()),
-            Reactor("", "", "", 0L, 0L, Requirements()),
-            emptyList(),
-            emptyList(),
-            Registration("", FactionSymbol.VOID.toString(), ShipRole.TRANSPORT),
-            Cargo(100, 0, mutableListOf())
-        )
-
-    }
-
-    private fun createLocation(): Location {
-        return Location(
-            "",
-            "",
-            "",
-            0L,
-            0L
         )
     }
 }

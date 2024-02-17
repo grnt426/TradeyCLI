@@ -1,8 +1,6 @@
 
 import AppState.BOOT
 import client.SpaceTradersClient
-import com.varabyte.kotter.foundation.anim.TextAnim
-import com.varabyte.kotter.foundation.anim.textAnimOf
 import com.varabyte.kotter.foundation.input.Keys
 import com.varabyte.kotter.foundation.input.onInputEntered
 import com.varabyte.kotter.foundation.input.onKeyPressed
@@ -15,9 +13,9 @@ import model.ship.ShipRole
 import screen.BootScreen
 import screen.RunningScreen
 import screen.Screen
+import screen.TextAnimationContainer
 import java.awt.Color
 import kotlin.math.round
-import kotlin.time.Duration.Companion.milliseconds
 
 enum class Window {
     MAIN,
@@ -33,8 +31,6 @@ val ACTIONS = listOf("help", "contracts", "accept", "waypoints")
 
 val commandHistory = ArrayDeque<String>(emptyList())
 var commandHistoryIndex = 0
-
-val notifications = mutableListOf("Nothing to report...")
 
 enum class AppState(val screen: Screen) {
     BOOT(BootScreen()),
@@ -56,17 +52,15 @@ val BROWN_EXCAVATOR_COLOR = Color(120, 80, 40)
 val bootContext = BootRenderContext()
 val runningRenderContext = RunningRenderContext()
 
-val notificationBlink = TextAnim.Template(listOf(" + ", " - "), 500.milliseconds)
-
-var showSystemScreen = false
-
 fun isActiveScreen(screen: Screen): Boolean = screen == appState.screen
 fun getActiveAppState(): AppState = appState
 suspend fun main() {
 
     // The below needs to come from the profile.settings.json file
     session {
-        runningRenderContext.textAnim = textAnimOf(notificationBlink)
+        with(TextAnimationContainer) {
+            createAnimations()
+        }
         section {
             with(appState.screen) {
                 render()
@@ -141,5 +135,4 @@ data class RunningRenderContext (
     var selectedQuad: QuadSelect = QuadSelect.NONE,
     var selectedView: Window = Window.MAIN,
     var selectedShip: Int = 1,
-    var textAnim: TextAnim? = null
 )

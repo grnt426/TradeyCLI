@@ -6,40 +6,56 @@ import data.FileWritingQueue
 import io.ktor.client.request.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import model.GameState
 import model.api
 import model.extension.LastRead
-import model.responsebody.MarketResponse
 import model.ship.Ship
 import model.ship.components.Inventory
+import model.system.OrbitalNames
 import java.io.File
+import java.time.ZoneId
 
 @Serializable
 data class Market(
     val symbol: String,
-    val exports: MutableList<TradeGood>,
-    val imports: MutableList<TradeGood>,
-    val exchange: MutableList<TradeGood>,
+    var exports: MutableList<TradeGood>,
+    var imports: MutableList<TradeGood>,
+    var exchange: MutableList<TradeGood>,
 
-    val transactions: MutableList<MarketTransaction> = mutableListOf(),
-    val tradeGoods: MutableList<MarketTradeGood> = mutableListOf(),
+    var transactions: MutableList<MarketTransaction> = mutableListOf(),
+    var tradeGoods: MutableList<MarketTradeGood> = mutableListOf(),
 
     @Transient var shipAssignedToGetPrices: Ship? = null
 ) : LastRead()
 
 fun refreshMarket(systemSymbol: String, market: Market) {
-    SpaceTradersClient.enqueueRequest<MarketResponse>(
+    SpaceTradersClient.enqueueRequest<Market>(
         ::writeMarket, ::ignoredFailback, request {
             url(api("systems/$systemSymbol/waypoints/${market.symbol}/market"))
         }
     )
 }
 
-suspend fun writeMarket(resp: MarketResponse) {
-    val symbol = resp.data.symbol
-    val market = resp.data
-    GameState.markets[symbol] = market
-    println("Market $symbol updated @ ${market.lastRead}")
+suspend fun writeMarket(resp: Market) {
+    val symbol = resp.symbol
+    val market = resp
+    val orig = GameState.markets[symbol]
+    if (orig == null) {
+        GameState.markets[symbol] = market
+        GameState.marketsBySystem.getOrPut(OrbitalNames.getSectorSystem(symbol)) { mutableListOf() }.add(market)
+    } else {
+        orig.imports = market.imports
+        orig.exports = market.imports
+        orig.exchange = market.exchange
+        orig.lastRead = market.lastRead
+
+        if (market.tradeGoods != null) orig.tradeGoods = market.tradeGoods
+        if (market.transactions != null) orig.transactions = market.transactions
+    }
+    println("Market $symbol updated @ ${market.lastRead.atZone(ZoneId.systemDefault())}")
+    println(Json.encodeToString(market))
     FileWritingQueue.enqueue(File(FileWritingQueue.marketDir(symbol)), market)
 }
 

@@ -15,6 +15,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import model.extension.LastRead
+import notification.NotificationManager
 import java.io.File
 import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -26,7 +27,7 @@ object SpaceTradersClient{
 
     lateinit var client: HttpClient
 
-    var errors = 0
+    var totalErrors = 0
 
     val apiDispatcher = Dispatchers.IO
 
@@ -96,10 +97,12 @@ object SpaceTradersClient{
                                 (result as LastRead).lastRead = Instant.now()
                             }
                         } else {
+                            totalErrors++
                             println("${response.status} - ${response.bodyAsText()}")
                         }
                     }
                 } catch (e: TimeoutCancellationException) {
+                    totalErrors++
                     println("Timeout")
                 }
             }
@@ -138,22 +141,26 @@ object SpaceTradersClient{
                                         callback(result)
                                     } catch (e: Exception) {
                                         // prevent exceptions in callback from triggering anything else
+                                        totalErrors++
                                         println("Failure in handling callback")
                                         println(e.message)
                                         println(e.stackTraceToString())
                                     }
                                 }
                                 catch(e: SerializationException) {
+                                    totalErrors++
                                     println("Failure in parsing response of type ${T::class}")
                                     println(e.message)
                                     println(e.stackTraceToString())
                                 }
                             } else {
+                                totalErrors++
                                 failback(response, null)
                                 println("Failure ${response.status} - ${response.bodyAsText()}")
                             }
                         }
                     } catch (e: TimeoutCancellationException) {
+                        totalErrors++
                         println("Exception caught??")
                         failback(null, e)
                     }
@@ -178,10 +185,12 @@ object SpaceTradersClient{
                                 println("Success ${response.bodyAsText()}")
 
                             } else {
+                                totalErrors++
                                 println("Failure ${response.status} - ${response.bodyAsText()}")
                             }
                         }
                     } catch (e: TimeoutCancellationException) {
+                        totalErrors++
                         println("Exception caught??")
                     }
                 }
@@ -190,11 +199,17 @@ object SpaceTradersClient{
     }
 
     suspend fun ignoredCallback(any: Any) {
-
     }
 
     suspend fun ignoredFailback(resp: HttpResponse?, ex: Exception?) {
-
+        val msg = resp?.bodyAsText() ?: if (ex != null) {
+            ex.message
+        } else {
+            "No data"
+        }
+        NotificationManager.createErrorNotification(
+            "IE: $msg", "BAD BAD BAD"
+        )
     }
 
     fun getJobPressure(): JobPressure {

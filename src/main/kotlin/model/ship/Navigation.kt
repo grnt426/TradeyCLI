@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 import model.api
 import model.responsebody.NavigationResponse
 import model.system.WaypointSymbol
+import java.time.Instant
 import kotlin.reflect.KSuspendFunction1
 import kotlin.reflect.KSuspendFunction2
 
@@ -16,7 +17,7 @@ data class Navigation(
     val systemSymbol: String,
     val waypointSymbol: String,
     val route: Route,
-    val status: ShipNavStatus,
+    var status: ShipNavStatus,
     val flightMode: String
 )
 
@@ -38,6 +39,14 @@ fun navigateTo(
     )
 }
 
-fun isNavigating(navigation: Navigation): Boolean = navigation.status == ShipNavStatus.IN_TRANSIT
+/**
+ * A ship is navigating if its status flag is set to that, and if its
+ * arrival is still in the future, plus a small epsilon to account for
+ * clock drift.
+ */
+fun isNavigating(navigation: Navigation): Boolean {
+    return navigation.status == ShipNavStatus.IN_TRANSIT &&
+            navigation.route.arrival > (Instant.now().plusSeconds(6))
+}
 fun isOrbiting(navigation: Navigation): Boolean = navigation.status == ShipNavStatus.IN_ORBIT
 fun isDocked(navigation: Navigation): Boolean = navigation.status == ShipNavStatus.DOCKED
