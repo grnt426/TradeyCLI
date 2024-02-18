@@ -6,19 +6,13 @@ import java.time.Instant
 
 object NotificationManager {
     private const val MAX_NOTIFICATIONS = 5
-    val notifications = mutableListOf(
-        Notification(
-            "Welcome, Emperox", Instant.now(),
-            TextAnimationContainer.newNotification, ColorPalette.secondaryInfoBlue,
-            "Welcome to the command console"
-        )
-    )
+    val notifications = mutableListOf<Notification>()
 
     fun createErrorNotification(short: String, long: String) {
         addNotification(
             Notification(
                 short, Instant.now(),
-                TextAnimationContainer.errorNotification, ColorPalette.errorRed,
+                TextAnimationContainer.errorNotification!!, ColorPalette.errorRed,
                 long
             )
         )
@@ -28,7 +22,7 @@ object NotificationManager {
         addNotification(
             Notification(
                 short, Instant.now(),
-                TextAnimationContainer.positiveNotification, ColorPalette.informationGreen,
+                TextAnimationContainer.positiveNotification!!, ColorPalette.informationGreen,
                 long
             )
         )

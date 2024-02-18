@@ -11,9 +11,10 @@ object TextAnimationContainer {
     val newNotificationBlink = TextAnim.Template(listOf(" o ", " - "), 500.milliseconds)
     val errorNotificationBlink = TextAnim.Template(listOf(" ! ", " - "), 250.milliseconds)
 
-    lateinit var positiveNotification: TextAnim
-    lateinit var errorNotification: TextAnim
-    lateinit var newNotification: TextAnim
+    var positiveNotification: TextAnim? = null
+    var errorNotification: TextAnim? = null
+    var newNotification: TextAnim? = null
+
     fun Session.createAnimations() {
         positiveNotification = textAnimOf(positiveNotificationBlink)
         errorNotification = textAnimOf(errorNotificationBlink)

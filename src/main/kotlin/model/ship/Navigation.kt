@@ -15,7 +15,7 @@ import kotlin.reflect.KSuspendFunction2
 @Serializable
 data class Navigation(
     val systemSymbol: String,
-    val waypointSymbol: String,
+    var waypointSymbol: String,
     val route: Route,
     var status: ShipNavStatus,
     val flightMode: String
@@ -46,7 +46,7 @@ fun navigateTo(
  */
 fun isNavigating(navigation: Navigation): Boolean {
     return navigation.status == ShipNavStatus.IN_TRANSIT &&
-            navigation.route.arrival > (Instant.now().plusSeconds(6))
+            navigation.route.arrival > Instant.now()
 }
 fun isOrbiting(navigation: Navigation): Boolean = navigation.status == ShipNavStatus.IN_ORBIT
 fun isDocked(navigation: Navigation): Boolean = navigation.status == ShipNavStatus.DOCKED

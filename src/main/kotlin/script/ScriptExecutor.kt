@@ -10,6 +10,7 @@ abstract class ScriptExecutor<T>(
     var uuid: String = UUID.randomUUID().toString(),
 ) {
 
+    var execDelayMs = 1_000L
     companion object {
         var totalStateChanges = 0
     }

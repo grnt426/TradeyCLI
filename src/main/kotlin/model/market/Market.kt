@@ -19,7 +19,7 @@ import java.time.ZoneId
 
 @Serializable
 data class Market(
-    val symbol: String,
+    var symbol: String,
     var exports: MutableList<TradeGood>,
     var imports: MutableList<TradeGood>,
     var exchange: MutableList<TradeGood>,

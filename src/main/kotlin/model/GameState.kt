@@ -23,12 +23,17 @@ import model.system.OrbitalNames
 import model.system.System
 import model.system.SystemWaypoint
 import model.system.Waypoint
+import notification.Notification
+import notification.NotificationManager
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
+import screen.ColorPalette
+import screen.TextAnimationContainer
 import script.ScriptExecutor
 import script.repo.PriceDiscoveryScript
 import script.repo.PriceFetcherScript
 import java.io.File
+import java.time.Instant
 import kotlin.reflect.KSuspendFunction1
 
 const val DEFAULT_PROF_DIR = "profile"
@@ -88,6 +93,13 @@ object GameState {
     }
 
     private fun postInitGameLoading() {
+        NotificationManager.notifications.add(
+            Notification(
+                "Welcome, Emperox", Instant.now(),
+                TextAnimationContainer.newNotification!!, ColorPalette.secondaryInfoBlue,
+                "Welcome to the command console"
+            )
+        )
         println("Name ${profData.name}")
         println("HQ @ ${agent.headquarters}")
         File("$DEFAULT_PROF_DIR/agent/${profData.name}").writeText(Json.encodeToString(agent))
