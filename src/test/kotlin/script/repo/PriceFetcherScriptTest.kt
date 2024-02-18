@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
 import kotlinx.coroutines.runBlocking
+import model.GameState
 import model.market.Market
 import model.ship.*
 import notification.NotificationManager
@@ -85,6 +86,10 @@ class PriceFetcherScriptTest {
         sleep(100)
     }
 
+    /**
+     * Assigned Await Nav
+     */
+
     @Test
     fun `assigned await nav changes to nav if navigating`() = runBlocking {
         script.currentState = ASSIGNED_AWAIT_NAV
@@ -128,6 +133,10 @@ class PriceFetcherScriptTest {
         assertEquals(AWAIT_NAV_RESP, script.currentState)
     }
 
+    /**
+     * Await Nav Resp
+     */
+
     @Test
     fun `await nav resp causes error changes back to nav`() = runBlocking {
         script.currentState = AWAIT_NAV_RESP
@@ -165,5 +174,122 @@ class PriceFetcherScriptTest {
         sleep(50)
 
         assertEquals(NAV, script.currentState)
+    }
+
+    /**
+     * Nav
+     */
+
+    @Test
+    fun `in nav but no market will get new market and stay in nav`() = runBlocking {
+        script.currentState = NAV
+        ship.nav.route.destination.symbol = "destination"
+        ship.nav.status = ShipNavStatus.IN_TRANSIT
+        ship.nav.route.arrival = Instant.now().plusSeconds(60)
+        market.symbol = "destination"
+        GameState.markets = mutableMapOf("destination" to market)
+
+        script.execute()
+        sleep(50)
+
+        assertEquals(NAV, script.currentState)
+    }
+
+    @Test
+    fun `in nav but no market will fail to get new market and change to error`() = runBlocking {
+        script.currentState = NAV
+        ship.nav.route.destination.symbol = "destination"
+        ship.nav.status = ShipNavStatus.IN_TRANSIT
+        ship.nav.route.arrival = Instant.now().plusSeconds(60)
+        GameState.markets = mutableMapOf()
+
+        script.execute()
+        sleep(50)
+
+        assertEquals(ERROR, script.currentState)
+    }
+
+    @Test
+    fun `in nav but docked will change to get price`() = runBlocking {
+        script.currentState = NAV
+        ship.nav.route.destination.symbol = "destination"
+        ship.nav.status = ShipNavStatus.DOCKED
+        script.market = market
+
+        script.execute()
+        sleep(5)
+
+        assertEquals(GET_PRICE, script.currentState)
+    }
+
+    @Test
+    fun `in nav and arrival far in future stays in nav`() = runBlocking {
+        script.currentState = NAV
+        ship.nav.route.destination.symbol = "destination"
+        ship.nav.status = ShipNavStatus.IN_TRANSIT
+        ship.nav.route.arrival = Instant.now().plusSeconds(60)
+        script.market = market
+
+        script.execute()
+        sleep(100)
+
+        assertEquals(NAV, script.currentState)
+    }
+
+    @Test
+    fun `in nav and arrival passes, then change to dock`() = runBlocking {
+        script.currentState = NAV
+        ship.nav.route.destination.symbol = "destination"
+        ship.nav.status = ShipNavStatus.IN_TRANSIT
+        ship.nav.route.arrival = Instant.now().plusMillis(20)
+        script.market = market
+
+        script.execute()
+        sleep(20)
+
+        assertEquals(DOCK, script.currentState)
+    }
+
+    @Test
+    fun `in nav but arrival already passed, change to dock`() = runBlocking {
+        script.currentState = NAV
+        ship.nav.route.destination.symbol = "destination"
+        ship.nav.status = ShipNavStatus.IN_ORBIT
+        ship.nav.route.arrival = Instant.now().minusSeconds(60)
+        script.market = market
+
+        script.execute()
+        sleep(5)
+
+        assertEquals(DOCK, script.currentState)
+    }
+
+    /**
+     * Dock
+     */
+
+    @Test
+    fun `in dock but navigating changes to nav`() = runBlocking {
+        script.currentState = DOCK
+        ship.nav.route.destination.symbol = "destination"
+        ship.nav.status = ShipNavStatus.IN_TRANSIT
+        ship.nav.route.arrival = Instant.now().plusSeconds(60)
+        script.market = market
+
+        script.execute()
+        sleep(5)
+
+        assertEquals(NAV, script.currentState)
+    }
+
+    @Test
+    fun `in dock and orbiting, market is null changes to await assign`() = runBlocking {
+        script.currentState = DOCK
+        ship.nav.status = ShipNavStatus.IN_ORBIT
+
+        script.execute()
+        sleep(5)
+
+        assertEquals(AWAIT_ASSIGNMENT, script.currentState)
     }
 }

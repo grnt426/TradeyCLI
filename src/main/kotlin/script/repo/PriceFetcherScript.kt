@@ -165,7 +165,7 @@ class PriceFetcherScript(val ship: Ship, state: PriceFetcherState = INITIAL) :
 
     private fun passGuard(): Boolean {
         return if (isNavigating(ship)) {
-            changeState(DOCK)
+            changeState(NAV)
             false
         } else true
     }
