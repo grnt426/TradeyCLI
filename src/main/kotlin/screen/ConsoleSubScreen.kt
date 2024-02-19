@@ -161,16 +161,9 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                         for (j in 0..<cols) {
                             if (random.nextInt(39) == 0) {
                                 map[i][j] = {
-                                    val star = if (random.nextInt(4) == 0) {
-                                        { bold { text(".") } }
-                                    } else {
-                                        { bold { text("·") } }
-                                    }
-
-                                    if (Random.nextInt(64) == 0) {
-                                        rgb(Color.gray.rgb) { star() }
-                                    } else {
-                                        star()
+                                    scopedState {
+                                        if (Random.nextInt(64) == 0) rgb(Color.gray.rgb)
+                                        bold { text(".") }
                                     }
                                 }
                             }
@@ -188,6 +181,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                     while (y <= bot) {
                         val dy = y - centerVector.y
                         val dx = sqrt(radius * radius - dy * dy)
+
+                        // we apply a "fattening" along the x-axis to compensate for font-height/width ratio
                         val left = ceil(centerVector.x * 1.667 - dx * 1.667) - centerVector.x / 1.5
                         val right = floor(centerVector.x * 1.667 + dx * 1.667) - centerVector.x / 1.5
                         var x = left
