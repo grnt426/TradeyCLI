@@ -155,7 +155,11 @@ fun jettisonCargo(ship: Ship, inventory: Inventory) {
 fun jettisonCargo(ship: Ship, candidates: List<TradeSymbol>) {
     ship.cargo.inventory
         .filter { i -> candidates.contains(i.symbol) }
-        .forEach { i -> jettisonCargo(ship, i) }
+        .forEach { i ->
+            jettisonCargo(ship, i)
+            ship.cargo.units -= i.units
+            ship.cargo.inventory.remove(i)
+        }
 }
 
 fun systemOf(ship: Ship): String = ship.nav.systemSymbol

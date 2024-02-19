@@ -10,10 +10,7 @@ import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.render.RenderScope
 import model.Profile
 import model.ship.ShipRole
-import screen.BootScreen
-import screen.RunningScreen
-import screen.Screen
-import screen.TextAnimationContainer
+import screen.*
 import java.awt.Color
 import kotlin.math.round
 
@@ -83,7 +80,7 @@ suspend fun main() {
 }
 
 fun RenderScope.makeHeader(text: String, spansColumns: Int = 1) {
-    val columnWidth = Profile.profileData.termWidth / 3
+    val columnWidth = Profile.profileData.termWidth / ConsoleSubScreen.columns
     underline {
         text(text)
         repeat(columnWidth * spansColumns - text.length + (spansColumns - 1)) { text(" ") }

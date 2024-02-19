@@ -29,6 +29,10 @@ fun hasCargoRatio(cargo: Cargo, ratio: Double): Boolean =
     else cargo.units / cargo.capacity >= ratio
 
 
+/**
+ * It's not possible to exceed capacity, but this equality check is here
+ * to prevent odd fail cases.
+ */
 fun cargoFull(cargo: Cargo): Boolean = cargo.units >= cargo.capacity
 fun cargoNotFull(cargo: Cargo): Boolean = !cargoFull(cargo)
 fun hasCargo(cargo: Cargo): Boolean = cargo.units > 0

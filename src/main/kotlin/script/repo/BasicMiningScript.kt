@@ -4,6 +4,7 @@ import io.ktor.client.statement.*
 import model.market.TradeSymbol
 import model.responsebody.ExtractionResponse
 import model.ship.*
+import notification.NotificationManager
 import script.MessageableScriptExecutor
 import script.actions.mine
 import script.actions.noop
@@ -20,6 +21,7 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
 
     init {
         ship.script = this
+        execDelayMs = 1_000
     }
     enum class MiningStates {
         MINING,
@@ -42,10 +44,12 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
     override fun execute() {
         script {
             state(matchesState(MINING_COOLDOWN)) {
+                println("mining cooldown")
                 if (isCooldownExpired(ship.cooldown)) {
                     changeState(MINING)
                 } else {
-                    cooldownRemaining = ship.cooldown.expirationDateTime?.epochSecond?.minus(Instant.now().epochSecond)!!
+                    val whenExpiresSeconds = ship.cooldown.expiration?.epochSecond ?: 0
+                    cooldownRemaining = whenExpiresSeconds.minus(Instant.now().epochSecond)
                     ship.cooldown.remainingSeconds = cooldownRemaining
                 }
             }
@@ -54,6 +58,8 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
                 if (cargoFull(ship)) {
                     println("In mining state, but full; Going to await pickup")
                     changeState(FULL_AWAITING_PICKUP)
+                } else if (!isCooldownExpired(ship.cooldown)) {
+                    changeState(MINING_COOLDOWN)
                 }
                 else {
                     extractResult = null
@@ -91,7 +97,7 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
 
                 // Once our cargo isn't full anymore, resume mining
                 if (cargoNotFull(ship)) {
-                    changeState(MINING)
+                    changeState(MINING_COOLDOWN)
                 }
             }
 
@@ -102,7 +108,7 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
 //                println("${ship.cargo.units} of ${ship.cargo.capacity} used;" +
 //                        " Full? ${ship.cargo.units >= ship.cargo.capacity}")
             }
-        }.runForever(500)
+        }.runForever(execDelayMs)
     }
 
     suspend fun mineCallback(res: ExtractionResponse) {
@@ -111,6 +117,7 @@ class BasicMiningScript(val ship: Ship): MessageableScriptExecutor<MiningStates,
     }
 
     suspend fun failback(resp: HttpResponse?, ex: Exception?) {
+        NotificationManager.createErrorNotification("Mining failed for ${ship.registration.name}", "bad")
         println("Failback called")
         changeState(MINING)
     }

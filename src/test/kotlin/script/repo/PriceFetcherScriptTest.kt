@@ -1,16 +1,18 @@
 package script.repo
 
+import BaseTest
 import createMarket
 import createShip
-import io.mockk.every
-import io.mockk.mockkObject
-import io.mockk.mockkStatic
+import data.SavedScripts
 import kotlinx.coroutines.runBlocking
 import model.GameState
 import model.market.Market
-import model.ship.*
-import notification.NotificationManager
-import screen.TextAnimationContainer
+import model.ship.Ship
+import model.ship.ShipNavStatus
+import model.ship.toOrbit
+import org.jetbrains.exposed.sql.deleteAll
+import org.jetbrains.exposed.sql.transactions.transaction
+import org.junit.jupiter.api.TestInstance
 import script.repo.PriceFetcherScript.PriceFetcherState.*
 import java.lang.Thread.sleep
 import java.time.Instant
@@ -19,7 +21,8 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
-class PriceFetcherScriptTest {
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+class PriceFetcherScriptTest : BaseTest() {
 
     lateinit var ship: Ship
     lateinit var script: PriceFetcherScript
@@ -27,20 +30,11 @@ class PriceFetcherScriptTest {
 
     @BeforeTest
     fun beforeTest() {
+        transaction { SavedScripts.deleteAll() }
         ship = createShip()
         market = createMarket()
         script = PriceFetcherScript(ship)
         script.execDelayMs = 10
-        mockkObject(TextAnimationContainer)
-        mockkObject(NotificationManager)
-        every { NotificationManager.createNotification(any(), any()) } returns Unit
-        every { NotificationManager.createErrorNotification(any(), any()) } returns Unit
-        mockkStatic(::navigateTo)
-        every { navigateTo(any(), any(), any(), any()) } returns Unit
-        mockkStatic(::toOrbit)
-        every { toOrbit(any(), any(), any()) } returns true
-        mockkStatic(::toDock)
-        every { toDock(any(), any(), any()) } returns true
     }
 
     @Test
@@ -56,7 +50,7 @@ class PriceFetcherScriptTest {
     fun `test init transits to get price`() = runBlocking {
         toOrbit(ship)
         script.execute()
-        sleep(50)
+        sleep(5)
         assertEquals(GET_PRICE, script.currentState)
     }
 
@@ -74,7 +68,7 @@ class PriceFetcherScriptTest {
         ship.nav.route.arrival = Instant.now().plusSeconds(30_000)
         script.currentState = AWAIT_ASSIGNMENT
         script.execute()
-        sleep(100)
+        sleep(5)
         assertEquals(NAV, script.currentState)
     }
 
@@ -245,7 +239,7 @@ class PriceFetcherScriptTest {
         script.market = market
 
         script.execute()
-        sleep(20)
+        sleep(25)
 
         assertEquals(DOCK, script.currentState)
     }

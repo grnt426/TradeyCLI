@@ -22,6 +22,7 @@ import data.FileWritingQueue
 import makeHeader
 import model.GameState
 import model.GameState.getHqSystem
+import model.market.Market
 import model.ship.ShipNavStatus
 import model.ship.calculateExpirationSeconds
 import model.ship.components.Inventory
@@ -34,14 +35,17 @@ import reduceToSiNotation
 import runningRenderContext
 import screen.RunningScreen.SelectedScreen
 import script.ScriptExecutor
+import java.awt.Color
 import java.time.Instant
-import kotlin.math.max
-import kotlin.math.min
-import kotlin.math.roundToInt
+import kotlin.math.*
+import kotlin.random.Random
 
 class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(parent) {
     val self = this
-    val columns = 3
+
+    companion object {
+        val columns = 8
+    }
 
     private var zoom = SystemSubScreen.Point(1.0, 1.0)
     private var translate = SystemSubScreen.Point(0.0, 0.0)
@@ -55,12 +59,14 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
         val selectedQuad = runningRenderContext.selectedQuad
         val currentView = runningRenderContext.selectedView
         val selectedShip = runningRenderContext.selectedShip
+        var selectedWaypoint: Waypoint? = null
+        var selectedMarket: Market? = null
 
         grid(Cols.uniform(columns, GameState.profData.termWidth / columns), characters = GridCharacters.CURVED) {
             val visibleWaypoints = mutableListOf<Waypoint>()
             selectIndex = min(selectIndex, objectsOnScreen)
-            cell(colSpan = 2) {
-                rgb(HEADER_COLOR.rgb) { makeHeader("System View", 2) }
+            cell(colSpan = 3, rowSpan = 4) {
+                rgb(HEADER_COLOR.rgb) { makeHeader("System View", 3) }
                 objectsOnScreen = 0
                 val wp = GameState.waypoints.values
 
@@ -69,7 +75,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
 
                 // initialize empty grid
                 val rows = 30
-                val cols = 80
+                val cols = 60
                 val centerVector = SystemSubScreen.Point(cols / 2.0, rows / 2.0) + translate
                 val EMPTY_RENDER = { text(" ") }
                 val map = MutableList(rows) { // number of rows
@@ -89,6 +95,10 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                     if (x in 0..<cols && y in 0..<rows) {
                         objectsOnScreen++
                         val selected = visibleWaypoints.size == selectIndex
+                        if (selected) {
+                            selectedWaypoint = w
+                            selectedMarket = GameState.markets[w.symbol]
+                        }
                         visibleWaypoints.add(w)
                         map[y][x] = {
                             val entry = {
@@ -109,22 +119,153 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 applyEffects(map)
             }
 
-            cell {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Waypoints In ${getHqSystem().symbol}") }
-                visibleWaypoints.take(30).forEach { w ->
-                    text("${w.symbol} - ")
-                    rgb(w.type.color.rgb) { text(w.type.name) }
-                    text(" @ ${w.x},${w.y}")
+            cell(colSpan = 2, rowSpan = 4) {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Waypoints In ${getHqSystem().symbol}", 2) }
+                visibleWaypoints.take(30).forEachIndexed { i, w ->
+                    val entry = {
+                        text("${w.symbol} ")
+                        rgb(w.type.color.rgb) { text(w.type.name) }
+                        text("@${w.x},${w.y}")
+                    }
+                    if (i == selectIndex) {
+                        underline {
+                            entry()
+                        }
+                    } else {
+                        entry()
+                    }
                     textLine()
                 }
             }
 
+            cell(colSpan = 2) {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Waypoint View", 2) }
+                if (selectedWaypoint != null) {
+                    // initialize empty grid
+                    val rows = 12
+                    val cols = 40
+                    val centerVector = SystemSubScreen.Point(cols / 2.0, rows / 2.0)
+                    val EMPTY_RENDER = { text(" ") }
+                    val map = MutableList(rows) { // number of rows
+                        MutableList(cols) { // number of columns
+                            EMPTY_RENDER
+                        }
+                    }
+
+                    // We need a fixed seed so everything doesn't change each time
+                    // use the waypoints symbol so each planet is uniquely generated
+                    var random = Random(selectedWaypoint!!.symbol.hashCode())
+
+                    // draw stars
+                    for (i in 0..<rows) {
+                        for (j in 0..<cols) {
+                            if (random.nextInt(39) == 0) {
+                                map[i][j] = {
+                                    val star = if (random.nextInt(4) == 0) {
+                                        { bold { text(".") } }
+                                    } else {
+                                        { bold { text("·") } }
+                                    }
+
+                                    if (Random.nextInt(64) == 0) {
+                                        rgb(Color.gray.rgb) { star() }
+                                    } else {
+                                        star()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // draw planet
+
+                    // 0.75 and 0.25 gives better looking circles than 0.0 or 0.5
+                    random = Random(selectedWaypoint!!.symbol.hashCode())
+                    val radius = 4.75
+                    val top = ceil(centerVector.y - radius)
+                    val bot = floor(centerVector.y + radius)
+                    var y = top
+                    while (y <= bot) {
+                        val dy = y - centerVector.y
+                        val dx = sqrt(radius * radius - dy * dy)
+                        val left = ceil(centerVector.x * 1.667 - dx * 1.667) - centerVector.x / 1.5
+                        val right = floor(centerVector.x * 1.667 + dx * 1.667) - centerVector.x / 1.5
+                        var x = left
+                        while (x <= right) {
+                            map[y.toInt()][x.toInt()] = {
+                                rgb(Color(30, 50, 190).rgb) {
+                                    if (random.nextInt(4) < 3) text("█") else text("▓")
+                                }
+                            }
+                            x++
+                        }
+                        y++
+                    }
+
+                    // draw atmosphere
+
+
+                    map.forEach { row ->
+                        row.forEach { c ->
+                            c()
+                        }
+                        textLine()
+                    }
+                }
+            }
             cell {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Waypoint ${selectedWaypoint?.symbol}") }
+                if (selectedWaypoint != null) {
+                    textLine("Orbitals: ${selectedWaypoint!!.orbitals.size}")
+                    if (selectedWaypoint!!.orbits != null) textLine("Orbits ${selectedWaypoint!!.orbits}")
+                    textLine("Traits: ${selectedWaypoint!!.traits.map { t -> t.symbol }.joinToString(", ")}")
+                    textLine("Modifiers: ${selectedWaypoint!!.modifiers.joinToString { ", " }}")
+                }
+            }
+
+            // ROW 2
+            cell {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Imports") }
+                if (selectedWaypoint != null && selectedMarket != null) {
+                    textLine(selectedMarket!!.imports.map { i -> i.symbol }.joinToString(", "))
+                }
+            }
+            cell {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Exports") }
+                if (selectedWaypoint != null && selectedMarket != null) {
+                    textLine(selectedMarket!!.exports.map { i -> i.symbol }.joinToString(", "))
+                }
+            }
+
+            cell {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Exchange") }
+                if (selectedWaypoint != null && selectedMarket != null) {
+                    textLine(selectedMarket!!.exchange.map { i -> i.symbol }.joinToString(", "))
+                }
+            }
+
+            // row 3
+            cell(colSpan = 3) {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Prices", 3) }
+                if (selectedWaypoint != null && selectedMarket != null) {
+                    selectedMarket!!.tradeGoods.forEach { t ->
+                        textLine("${t.symbol} ASK:${t.sellPrice} BUY:${t.purchasePrice} VOL: ${t.tradeVolume} SUP: ${t.supply} ACT: ${t.activity}")
+                    }
+                }
+            }
+
+            // row 4
+            cell(colSpan = 3) {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Unused", 3) }
+            }
+
+            // below system view, row 5
+            cell(colSpan = 2) {
                 val headerColor = if (selectedQuad != QuadSelect.MAIN) HEADER_COLOR else SELECTED_HEADER_COLOR
                 when (currentView) {
                     Window.MAIN -> {
                         rgb(headerColor.rgb) {
-                            makeHeader("Fleet Status: ${getHqSystem().symbol}")
+                            makeHeader("Fleet Status: ${getHqSystem().symbol}", 2)
                         }
 
                         getShips().forEach { s ->
@@ -169,8 +310,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 rgb(headerColor.rgb) {
                     makeHeader("Agent")
                 }
-                textLine("${GameState.agent.symbol} - $${GameState.agent.credits}")
-                textLine("${GameState.ships.size} ships and ${GameState.scriptsRunning.size} scripts")
+                textLine("${GameState.agent.symbol}: $${GameState.agent.credits}")
+                textLine("${GameState.ships.size} 🚀 ${GameState.scriptsRunning.size} 📰")
             }
 
             cell {
@@ -181,10 +322,6 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 }
                 val pressureWindow = SpaceTradersClient.jobPressureWindow
                 (0..4).forEach { h ->
-                    if (h < 4)
-                        text(" |")
-                    else
-                        text("  ")
                     if (h != 3) {
                         pressureWindow.forEach { w ->
                             if (h < 4) {
@@ -231,9 +368,27 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
 
             cell {
 
+            }
+
+            cell {
+
+            }
+
+            cell {
+
+            }
+
+            cell {
+
+            }
+
+            // ROW 3
+
+            cell(colSpan = 2) {
+
                 val headerColor = if (selectedQuad != QuadSelect.COMM) HEADER_COLOR else SELECTED_HEADER_COLOR
                 rgb(headerColor.rgb) {
-                    makeHeader("Command")
+                    makeHeader("Command", 2)
                 }
                 val ship = getShips()[selectedShip - 1]
                 text("${ship.registration.name}#")
@@ -251,11 +406,11 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 }
             }
 
-            cell {
+            cell(colSpan = 2) {
 
                 val headerColor = if (selectedQuad != QuadSelect.NOTF) HEADER_COLOR else SELECTED_HEADER_COLOR
                 rgb(headerColor.rgb) {
-                    makeHeader("Notifications")
+                    makeHeader("Notifications", 2)
                 }
                 NotificationManager.notifications.forEach { n ->
                     rgb(n.animColor.rgb) {
@@ -265,8 +420,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 }
             }
 
-            cell {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Console Stats") }
+            cell(colSpan = 2) {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Console Stats", 2) }
                 val writes = FileWritingQueue.totalFileWrites
                 val states = ScriptExecutor.totalStateChanges
                 val errors = SpaceTradersClient.totalErrors
