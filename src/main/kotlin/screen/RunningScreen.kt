@@ -7,8 +7,7 @@ import com.varabyte.kotter.runtime.MainRenderScope
 import com.varabyte.kotter.runtime.RunScope
 import getActiveAppState
 import isActiveScreen
-import screen.RunningScreen.SelectedScreen.CONSOLE
-import screen.RunningScreen.SelectedScreen.SYSTEM
+import screen.RunningScreen.SelectedScreen.*
 
 object RunningScreen : Screen() {
 
@@ -17,6 +16,7 @@ object RunningScreen : Screen() {
     enum class SelectedScreen(val screen: SubScreen<SelectedScreen>) {
         CONSOLE(ConsoleSubScreen(self)),
         SYSTEM(SystemSubScreen(self)),
+        MARKET(MarketSubScreen(self)),
     }
 
     var selectedScreen = CONSOLE
@@ -39,6 +39,11 @@ object RunningScreen : Screen() {
                         selectedScreen = SYSTEM
                         getActiveAppState()
                     }
+
+                    MARKET -> {
+                        selectedScreen = MARKET
+                        getActiveAppState()
+                    }
                 }
             }
         } else {
@@ -57,6 +62,11 @@ object RunningScreen : Screen() {
 
                     SYSTEM -> {
                         selectedScreen = SYSTEM
+                        getActiveAppState()
+                    }
+
+                    MARKET -> {
+                        selectedScreen = MARKET
                         getActiveAppState()
                     }
                 }

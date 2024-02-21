@@ -442,6 +442,11 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                             return SelectedScreen.SYSTEM
                         }
 
+                        "MARKET" -> {
+                            this.clearInput()
+                            return SelectedScreen.MARKET
+                        }
+
                         "CONSOLE" -> {
                             this.clearInput()
                             return SelectedScreen.CONSOLE
