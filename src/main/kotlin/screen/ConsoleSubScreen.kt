@@ -266,7 +266,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                         getShips().forEach { s ->
                             text("${shortName(s)} [")
                             applyShipRoleColor(s.registration.role)
-                            text("] ${s.script?.currentState}")
+                            val status = s.script?.currentState ?: "No Script"
+                            text("] $status")
                             if (s.cooldown.remainingSeconds > 0)
                                 textLine(" (${s.cooldown.remainingSeconds})")
                             else if (s.nav.status == ShipNavStatus.IN_TRANSIT) {

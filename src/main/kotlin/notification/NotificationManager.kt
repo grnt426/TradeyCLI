@@ -18,6 +18,10 @@ object NotificationManager {
         )
     }
 
+    fun createErrorNotification(short: String) {
+        createErrorNotification(short, short)
+    }
+
     fun createNotification(short: String, long: String) {
         addNotification(
             Notification(

@@ -2,6 +2,7 @@ package script.repo
 
 import model.GameState
 import script.ScriptExecutor
+import script.repo.mining.MiningForemanScript
 import script.script
 
 class StrategyScript: ScriptExecutor<StrategyScript.StrategyState>(

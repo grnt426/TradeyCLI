@@ -8,11 +8,16 @@ class Agent(
     val accountId: String,
     val symbol: String,
     val headquarters: String,
-    val credits: Long,
+    var credits: Long,
     val startingFaction: String,
-    val shipCount: Long,
+    var shipCount: Long,
 ) : LastRead()
 
 fun hasCredits(amount: Long): Boolean = GameState.agent.credits >= amount
 
 fun creditsBelow(amount: Long): Boolean = GameState.agent.credits < amount
+
+fun applyAgentUpdate(agent: Agent) {
+    GameState.agent.credits = agent.credits
+    GameState.agent.shipCount = agent.shipCount
+}

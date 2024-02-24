@@ -24,7 +24,8 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.junit.jupiter.api.TestInstance
 import screen.TextAnimationContainer
-import script.repo.BasicMiningScript.MiningStates.*
+import script.repo.mining.BasicMiningScript
+import script.repo.mining.BasicMiningScript.MiningStates.*
 import java.lang.Thread.sleep
 import java.time.Instant
 import kotlin.test.BeforeTest

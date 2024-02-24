@@ -6,7 +6,7 @@ import model.market.MarketTransaction
 import model.ship.components.Cargo
 
 @Serializable
-data class SellCargoResponse(
+data class BuySellCargoResponse(
     val agent: Agent,
     val cargo: Cargo,
     val transaction: MarketTransaction,

@@ -2,6 +2,7 @@ package script.repo
 
 import model.system.System
 import script.ScriptExecutor
+import script.repo.mining.MiningForemanScript
 import script.script
 
 class SystemOverseerScript(val system: System): ScriptExecutor<SystemOverseerScript.SystemOversightState>(

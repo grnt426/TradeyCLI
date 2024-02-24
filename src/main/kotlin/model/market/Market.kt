@@ -14,6 +14,7 @@ import model.extension.LastRead
 import model.ship.Ship
 import model.ship.components.Inventory
 import model.system.OrbitalNames
+import notification.NotificationManager
 import java.io.File
 import java.time.ZoneId
 
@@ -79,3 +80,26 @@ fun intersectGoods(searchFor: List<TradeSymbol>, searchIn: List<TradeSymbol>): L
  */
 fun intersectTradeGoods(searchFor: List<TradeSymbol>, searchIn: List<TradeGood>): List<TradeSymbol> =
     intersectGoods(searchFor, searchIn.map { g -> g.symbol })
+
+fun applyMarketTransactionUpdate(transaction: MarketTransaction) {
+    val market = marketById(transaction.waypointSymbol)
+    if (market == null) {
+        NotificationManager.createErrorNotification(
+            "${transaction.waypointSymbol} needs an update but not cached", "Bad"
+        )
+        return
+    }
+    val orig = market.tradeGoods.first { t -> t.symbol == transaction.tradeSymbol }
+    when (transaction.type) {
+        TransactionType.PURCHASE -> {
+            if (orig.purchasePrice != transaction.pricePerUnit) {
+                // update historic price info
+
+            }
+        }
+
+        TransactionType.SELL -> TODO()
+    }
+}
+
+fun marketById(symbol: String): Market? = GameState.markets[symbol]

@@ -1,4 +1,4 @@
-package script.repo
+package script.repo.mining
 
 import model.hasCredits
 import model.system.System

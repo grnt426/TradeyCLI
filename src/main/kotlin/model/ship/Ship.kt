@@ -167,3 +167,5 @@ fun systemOf(ship: Ship): String = ship.nav.systemSymbol
 fun isNavigating(ship: Ship): Boolean = isNavigating(ship.nav)
 fun isOrbiting(ship: Ship): Boolean = isOrbiting(ship.nav)
 fun isDocked(ship: Ship): Boolean = isDocked(ship.nav)
+
+fun shipById(symbol: String): Ship? = GameState.ships[symbol]

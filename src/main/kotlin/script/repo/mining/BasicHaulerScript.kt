@@ -1,4 +1,4 @@
-package script.repo
+package script.repo.mining
 
 import io.ktor.client.statement.*
 import model.GameState
@@ -7,13 +7,10 @@ import model.market.findMarketForGood
 import model.responsebody.NavigationResponse
 import model.responsebody.TransferResponse
 import model.ship.*
-import model.ship.components.Inventory
-import model.ship.components.inv
-import model.ship.components.sellCargo
-import model.ship.components.transferCargo
+import model.ship.components.*
 import script.ScriptExecutor
-import script.repo.BasicHaulerScript.HaulingStates
-import script.repo.BasicHaulerScript.HaulingStates.*
+import script.repo.mining.BasicHaulerScript.HaulingStates
+import script.repo.mining.BasicHaulerScript.HaulingStates.*
 import script.script
 
 class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
@@ -234,7 +231,7 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
                     val accepted = findGoodsAcceptedHere(inv(ship), ship.nav.waypointSymbol)
                     if (accepted.isNotEmpty()) {
                         val inv = removeLocalCargo(ship, accepted.first())
-                        sellCargo(ship, inv.symbol, inv.units)
+                        sellCargo(ship, inv.symbol, inv.units, ::buySellCargoCbAndApply)
                         if (accepted.size == 1)
                             changeState(CHOOSE_MARKET_TO_SELL)
                         // otherwise if we don't change state, the next good will be sold here

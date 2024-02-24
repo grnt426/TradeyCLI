@@ -49,9 +49,10 @@ class MarketSubScreen(private val parent: Screen) : SubScreen<RunningScreen.Sele
         }
         profit.forEach { o ->
             val margin = o.toGood.sellPrice - o.fromGood.purchasePrice
-            if (margin > 100) {
+            if (margin in 401..999) {
                 textLine("${o.toGood.symbol} $$margin")
                 textLine("FS: ${o.fromGood.supply} FA: ${o.fromGood.activity} TA: ${o.toGood.activity}")
+                textLine("From: ${o.fromMarket.symbol} To: ${o.toMarket.symbol}")
             }
         }
     }
