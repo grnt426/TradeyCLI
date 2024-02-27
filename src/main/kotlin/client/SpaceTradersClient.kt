@@ -33,7 +33,7 @@ object SpaceTradersClient{
 
     val pendingRequestJobs = ConcurrentLinkedQueue<() -> Job>()
 
-    var jobPressureWindow = IntArray(20) { 20 - it }
+    var jobPressureWindow = IntArray(20) { 0 }
     var jobPressureUpdate = 0
 
     enum class JobPressure {

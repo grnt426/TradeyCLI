@@ -1,7 +1,7 @@
 package model.system
 
 import kotlinx.serialization.Serializable
-import model.Trait
+import model.WaypointTrait
 import model.extension.LastRead
 import model.faction.Faction
 
@@ -13,7 +13,7 @@ data class System(
     val x: Long,
     val y: Long,
     val waypoints: List<SystemWaypoint> = emptyList(),
-    val traits: List<Trait> = emptyList(),
+    val waypointTraits: List<WaypointTrait> = emptyList(),
     val modifiers: List<String> = emptyList(),
     val factions: List<Faction>,
 ): LastRead()

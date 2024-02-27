@@ -1,6 +1,7 @@
 package startup
 
 import data.DbClient
+import data.PriceHistory
 import data.SavedScripts
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
@@ -23,6 +24,7 @@ import model.faction.FactionSymbol
 import model.requestbody.RegisterRequest
 import model.responsebody.RegisterResponse
 import org.jetbrains.exposed.sql.deleteAll
+import org.jetbrains.exposed.sql.exists
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 
@@ -35,7 +37,10 @@ object BootManager {
 
         // empty tables
         DbClient.createClient()
-        transaction { SavedScripts.deleteAll() }
+        transaction {
+            if (SavedScripts.exists()) SavedScripts.deleteAll()
+            if (PriceHistory.exists()) PriceHistory.deleteAll()
+        }
 
         // We don't have auth until the Agent is generated
         val client = createNoAuthClient()
@@ -95,6 +100,7 @@ object BootManager {
         deleteFiles("waypoints")
         deleteFiles("ships")
         deleteFiles("shipyards")
+        deleteFiles("agent")
     }
 
     private fun deleteFiles(folderName: String) {

@@ -1,7 +1,7 @@
 package model.system
 
 import kotlinx.serialization.Serializable
-import model.Trait
+import model.WaypointTrait
 import model.extension.LastRead
 import model.faction.Faction
 
@@ -13,7 +13,7 @@ data class Waypoint(
     val x: Int,
     val y: Int,
     val orbitals: List<WaypointOrbital> = emptyList(),
-    val traits: List<Trait> = emptyList(),
+    val waypointTraits: List<WaypointTrait> = emptyList(),
     val modifiers: List<String> = emptyList(),
     val isUnderConstruction: Boolean,
 

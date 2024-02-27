@@ -3,13 +3,13 @@ package model
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class Trait(
-    val symbol: TraitTypes,
+data class WaypointTrait(
+    val symbol: WaypointTraitSymbol,
     val name: String,
     val description: String,
 )
 
-enum class TraitTypes {
+enum class WaypointTraitSymbol {
     UNCHARTED,
     UNDER_CONSTRUCTION,
     MARKETPLACE,

@@ -108,21 +108,15 @@ object GameState {
         if (waypoints.isEmpty()) {
             refreshWaypoints(getHqSystem().symbol, getHqSystem().waypoints)
         }
-        if (markets.isEmpty()) {
-            refreshMarkets()
-        }
-        if (shipyards.isEmpty()) {
-            refreshShipyards()
-        }
     }
 
     private inline fun <reified T> fetchSystemsForWaypointsWithTraits(
-        systemSymbol: String, traitType: TraitTypes,
+        systemSymbol: String, traitType: WaypointTraitSymbol,
         endpoint: String, callback: KSuspendFunction1<T, Unit>
     ) {
         waypoints.values
             .filter { w ->
-                w.systemSymbol == systemSymbol && w.traits.find { t -> t.symbol == traitType } != null
+                w.systemSymbol == systemSymbol && w.waypointTraits.find { t -> t.symbol == traitType } != null
             }
             .forEach { w ->
                 SpaceTradersClient.enqueueRequest<T>(callback, ::ignoredFailback, request {
@@ -136,12 +130,12 @@ object GameState {
     }
 
     private fun refreshShipyards() = fetchSystemsForWaypointsWithTraits(
-        getHqSystem().symbol, TraitTypes.SHIPYARD,
+        getHqSystem().symbol, WaypointTraitSymbol.SHIPYARD,
         "shipyard", ::shipyardCb
     )
 
     private fun refreshMarkets() = fetchSystemsForWaypointsWithTraits(
-        getHqSystem().symbol, TraitTypes.MARKETPLACE,
+        getHqSystem().symbol, WaypointTraitSymbol.MARKETPLACE,
         "market", ::marketCb
     )
 
@@ -153,7 +147,7 @@ object GameState {
         }
     }
 
-    suspend fun shipyardCb(shipyardResults: Shipyard) {
+    private suspend fun shipyardCb(shipyardResults: Shipyard) {
         val system = OrbitalNames.getSectorSystem(shipyardResults.symbol)
         shipyards[shipyardResults.symbol] = shipyardResults
         shipyardsBySystem.getOrPut(system) { mutableListOf() }.add(shipyardResults)
@@ -161,7 +155,7 @@ object GameState {
             .writeText(Json.encodeToString(shipyardResults))
     }
 
-    suspend fun marketCb(market: Market) {
+    private suspend fun marketCb(market: Market) {
         val system = OrbitalNames.getSectorSystem(market.symbol)
         markets[market.symbol] = market
         marketsBySystem.getOrPut(system) { mutableListOf() }.add(market)
@@ -173,6 +167,24 @@ object GameState {
         waypoints[waypoint.symbol] = waypoint
         File("$DEFAULT_PROF_DIR/waypoints/${waypoint.symbol}")
             .writeText(Json.encodeToString(waypoint))
+        when {
+            waypoint.waypointTraits.any { wt -> wt.symbol == WaypointTraitSymbol.MARKETPLACE } -> {
+                fetchWaypointByType(waypoint.systemSymbol, waypoint.symbol, "market", ::marketCb)
+            }
+
+            waypoint.waypointTraits.any { wt -> wt.symbol == WaypointTraitSymbol.SHIPYARD } -> {
+                fetchWaypointByType(waypoint.systemSymbol, waypoint.symbol, "shipyard", ::shipyardCb)
+            }
+        }
+    }
+
+    private inline fun <reified T> fetchWaypointByType(
+        systemSymbol: String, waypointSymbol: String,
+        endpoint: String, callback: KSuspendFunction1<T, Unit>
+    ) {
+        SpaceTradersClient.enqueueRequest<T>(callback, ::ignoredFailback, request {
+            url(api("systems/$systemSymbol/waypoints/$waypointSymbol/$endpoint"))
+        })
     }
 
     private fun loadAllData() {

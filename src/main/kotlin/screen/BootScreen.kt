@@ -3,7 +3,6 @@ package screen
 import AppState
 import AppState.BOOT
 import AppState.RUNNING
-import bootContext
 import com.varabyte.kotter.foundation.input.OnInputEnteredScope
 import com.varabyte.kotter.foundation.input.OnKeyPressedScope
 import com.varabyte.kotter.foundation.input.input
@@ -12,8 +11,6 @@ import com.varabyte.kotter.foundation.text.text
 import com.varabyte.kotter.foundation.text.textLine
 import com.varabyte.kotter.runtime.MainRenderScope
 import com.varabyte.kotter.runtime.RunScope
-import com.varabyte.kotterx.grid.Cols
-import com.varabyte.kotterx.grid.grid
 import getActiveAppState
 import isActiveScreen
 import kotlinx.coroutines.runBlocking
@@ -31,17 +28,11 @@ class BootScreen(var userAskedNew: Boolean = false) : Screen() {
         input()
     }
 
-    fun MainRenderScope.hello() {
-        this.grid(cols = Cols.uniform(2, 10)) {
-            this.cell { }
-        }
-    }
-
     override fun OnInputEnteredScope.onInput(runScope: RunScope): AppState {
         if (isActiveScreen(self)) {
             when (input.uppercase()) {
                 "NEW" -> {
-                    return if (bootContext.userAskedNew) {
+                    return if (self.userAskedNew) {
                         clearInput()
                         println("NEW AGENT")
                         runBlocking { BootManager.bootstrapNew() }

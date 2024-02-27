@@ -213,7 +213,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 if (selectedWaypoint != null) {
                     textLine("Orbitals: ${selectedWaypoint!!.orbitals.size}")
                     if (selectedWaypoint!!.orbits != null) textLine("Orbits ${selectedWaypoint!!.orbits}")
-                    textLine("Traits: ${selectedWaypoint!!.traits.map { t -> t.symbol }.joinToString(", ")}")
+                    textLine("Traits: ${selectedWaypoint!!.waypointTraits.map { t -> t.symbol }.joinToString(", ")}")
                     textLine("Modifiers: ${selectedWaypoint!!.modifiers.joinToString { ", " }}")
                 }
             }
