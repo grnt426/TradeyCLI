@@ -30,8 +30,9 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import screen.ColorPalette
 import screen.TextAnimationContainer
 import script.ScriptExecutor
-import script.repo.PriceDiscoveryScript
-import script.repo.PriceFetcherScript
+import script.repo.CommandShipStartScript
+import script.repo.pricing.PriceDiscoveryScript
+import script.repo.pricing.PriceFetcherScript
 import java.io.File
 import java.time.Instant
 import kotlin.reflect.KSuspendFunction1
@@ -60,6 +61,7 @@ object GameState {
     val marketsBySystem = mutableMapOf<String, MutableList<Market>>()
     val shipyardsBySystem = mutableMapOf<String, MutableList<Shipyard>>()
     val scriptsRunning = mutableListOf<ScriptExecutor<*>>()
+    var engineeredAsteroid: String = ""
 
     fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE) {
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
@@ -85,6 +87,13 @@ object GameState {
         contract = registerResponse.contract
         commandShip = registerResponse.ship
         postInitGameLoading()
+
+        // basic strategy
+        CommandShipStartScript(commandShip!!)
+
+        // ships are 1-indexed
+        ships["agent.symbol${-2}"]?.let { PriceFetcherScript(it).execute() }
+        PriceDiscoveryScript(getHqSystem().symbol)
     }
 
     private fun initializeDataManagers() {

@@ -1,4 +1,4 @@
-package script.repo
+package script.repo.pricing
 
 import model.GameState
 import model.Location
@@ -6,9 +6,9 @@ import model.market.Market
 import model.ship.Ship
 import model.ship.ShipRole
 import script.ScriptExecutor
-import script.repo.PriceDiscoveryScript.PriceDiscoveryState
-import script.repo.PriceDiscoveryScript.PriceDiscoveryState.*
-import script.repo.PriceFetcherScript.PriceFetcherState
+import script.repo.pricing.PriceDiscoveryScript.PriceDiscoveryState
+import script.repo.pricing.PriceDiscoveryScript.PriceDiscoveryState.*
+import script.repo.pricing.PriceFetcherScript.PriceFetcherState
 import script.script
 import java.time.Instant
 import java.time.temporal.ChronoUnit

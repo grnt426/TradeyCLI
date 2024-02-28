@@ -1,4 +1,4 @@
-package script.repo
+package script.repo.pricing
 
 import io.ktor.client.statement.*
 import model.GameState
@@ -8,8 +8,8 @@ import model.responsebody.NavigationResponse
 import model.ship.*
 import notification.NotificationManager
 import script.ScriptExecutor
-import script.repo.PriceFetcherScript.PriceFetcherState
-import script.repo.PriceFetcherScript.PriceFetcherState.*
+import script.repo.pricing.PriceFetcherScript.PriceFetcherState
+import script.repo.pricing.PriceFetcherScript.PriceFetcherState.*
 import script.script
 
 class PriceFetcherScript(val ship: Ship, state: PriceFetcherState = INITIAL) :

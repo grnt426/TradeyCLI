@@ -13,7 +13,8 @@ import model.ship.toOrbit
 import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.junit.jupiter.api.TestInstance
-import script.repo.PriceFetcherScript.PriceFetcherState.*
+import script.repo.pricing.PriceFetcherScript
+import script.repo.pricing.PriceFetcherScript.PriceFetcherState.*
 import java.lang.Thread.sleep
 import java.time.Instant
 import kotlin.test.BeforeTest

@@ -73,7 +73,7 @@ object BootManager {
             url(api("register"))
             method = HttpMethod.Post
             contentType(ContentType.Application.Json)
-            setBody(RegisterRequest("TripleHat3", FactionSymbol.VOID))
+            setBody(RegisterRequest("TripleHat4", FactionSymbol.VOID))
         })
 
         println("Got body of new agent")

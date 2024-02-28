@@ -12,7 +12,8 @@ import script.repo.modules.NavModule
 import script.repo.modules.SellModule
 import script.script
 
-class SelfSellingMiningScript(val ship: Ship, val assignedAsteroid: String) : ScriptExecutor<SelfSellingMiningStates>(
+class SelfSellingMiningScript(val ship: Ship, val assignedAsteroid: String = "X1-RH52-FB5D") :
+    ScriptExecutor<SelfSellingMiningStates>(
     MINING, "SelfSellingMiningScript", ship.symbol
 ) {
     init {
@@ -46,7 +47,9 @@ class SelfSellingMiningScript(val ship: Ship, val assignedAsteroid: String) : Sc
             )
 
             // Perform selling
-            NavModule(this@SelfSellingMiningScript).addNavDockState(ship, NAV, DOCK, SELL, this)
+            NavModule(this@SelfSellingMiningScript).addNavDockState(
+                ship, NAV, DOCK, SELL, true, this
+            )
             val s = SellModule(this@SelfSellingMiningScript)
             s.addSellModule(ship, SELL, FIND_MARKET_AND_NAV, this)
             s.addFindMarketToSellAnyGoodsModule(ship, FIND_MARKET_AND_NAV, NAV, ORBIT_AND_NAV, this)
@@ -56,7 +59,7 @@ class SelfSellingMiningScript(val ship: Ship, val assignedAsteroid: String) : Sc
                 navigateTo(ship, assignedAsteroid)
                 changeState(NAV_TO_MINING)
             }
-            NavModule(this@SelfSellingMiningScript).addNavDockState(ship, NAV_TO_MINING, DOCK, MINING, this)
+            NavModule(this@SelfSellingMiningScript).addNavState(ship, NAV_TO_MINING, MINING, this)
 
             state(matchesState(ERROR)) {
                 NotificationManager.createErrorNotification(

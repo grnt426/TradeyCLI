@@ -21,3 +21,4 @@ data class Waypoint(
     val faction: Faction? = null,
     val orbits: String? = null,
 ) : LastRead()
+

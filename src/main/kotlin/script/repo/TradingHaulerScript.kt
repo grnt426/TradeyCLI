@@ -5,6 +5,7 @@ import model.market.Market
 import model.ship.*
 import script.ScriptExecutor
 import script.repo.TradingHaulerScript.TradingHaulerState.*
+import script.repo.pricing.PriceFetcherScript
 import script.script
 
 class TradingHaulerScript(val ship: Ship) : ScriptExecutor<TradingHaulerScript.TradingHaulerState>(
