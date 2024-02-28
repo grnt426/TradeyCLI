@@ -125,7 +125,7 @@ object GameState {
     ) {
         waypoints.values
             .filter { w ->
-                w.systemSymbol == systemSymbol && w.waypointTraits.find { t -> t.symbol == traitType } != null
+                w.systemSymbol == systemSymbol && w.traits.find { t -> t.symbol == traitType } != null
             }
             .forEach { w ->
                 SpaceTradersClient.enqueueRequest<T>(callback, ::ignoredFailback, request {
@@ -176,14 +176,12 @@ object GameState {
         waypoints[waypoint.symbol] = waypoint
         File("$DEFAULT_PROF_DIR/waypoints/${waypoint.symbol}")
             .writeText(Json.encodeToString(waypoint))
-        when {
-            waypoint.waypointTraits.any { wt -> wt.symbol == WaypointTraitSymbol.MARKETPLACE } -> {
-                fetchWaypointByType(waypoint.systemSymbol, waypoint.symbol, "market", ::marketCb)
-            }
+        if (waypoint.traits.any { wt -> wt.symbol == WaypointTraitSymbol.MARKETPLACE }) {
+            fetchWaypointByType(waypoint.systemSymbol, waypoint.symbol, "market", ::marketCb)
+        }
 
-            waypoint.waypointTraits.any { wt -> wt.symbol == WaypointTraitSymbol.SHIPYARD } -> {
-                fetchWaypointByType(waypoint.systemSymbol, waypoint.symbol, "shipyard", ::shipyardCb)
-            }
+        if (waypoint.traits.any { wt -> wt.symbol == WaypointTraitSymbol.SHIPYARD }) {
+            fetchWaypointByType(waypoint.systemSymbol, waypoint.symbol, "shipyard", ::shipyardCb)
         }
     }
 

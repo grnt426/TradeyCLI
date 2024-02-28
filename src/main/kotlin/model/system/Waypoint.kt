@@ -13,7 +13,7 @@ data class Waypoint(
     val x: Int,
     val y: Int,
     val orbitals: List<WaypointOrbital> = emptyList(),
-    val waypointTraits: List<WaypointTrait> = emptyList(),
+    val traits: List<WaypointTrait> = emptyList(),
     val modifiers: List<String> = emptyList(),
     val isUnderConstruction: Boolean,
 
