@@ -27,6 +27,9 @@ fun navigateTo(
     cb: KSuspendFunction1<NavigationResponse, Unit> = SpaceTradersClient::ignoredCallback,
     fb: KSuspendFunction2<HttpResponse?, Exception?, Unit> = SpaceTradersClient::ignoredFailback
 ) {
+    if (isDocked(ship)) {
+        toOrbit(ship)
+    }
     SpaceTradersClient.enqueueRequest<NavigationResponse>(
         cb,
         fb,

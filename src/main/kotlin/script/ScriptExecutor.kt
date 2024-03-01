@@ -14,9 +14,14 @@ abstract class ScriptExecutor<T>(
     companion object {
         var totalStateChanges = 0
     }
+
+    init {
+        saveState()
+    }
+
     abstract fun execute()
 
-    fun saveState() {
+    private fun saveState() {
         SavedScripts.saveState(uuid, currentState.toString(), entityId, scriptType)
     }
 

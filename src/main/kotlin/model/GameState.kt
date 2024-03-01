@@ -35,6 +35,7 @@ import script.repo.pricing.PriceDiscoveryScript
 import script.repo.pricing.PriceFetcherScript
 import java.io.File
 import java.time.Instant
+import kotlin.concurrent.timer
 import kotlin.reflect.KSuspendFunction1
 
 const val DEFAULT_PROF_DIR = "profile"
@@ -62,6 +63,9 @@ object GameState {
     val shipyardsBySystem = mutableMapOf<String, MutableList<Shipyard>>()
     val scriptsRunning = mutableListOf<ScriptExecutor<*>>()
     var engineeredAsteroid: String = ""
+    private var initObjRequests = 0
+    private var initObjRequestsFilled = 0
+    private var awaitingScripts = mutableListOf<ScriptExecutor<*>>()
 
     fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE) {
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
@@ -88,8 +92,16 @@ object GameState {
         commandShip = registerResponse.ship
         postInitGameLoading()
 
+        timer("initialLoading", true, 0, 100) {
+            if (initObjRequestsFilled == initObjRequests) {
+                println("Finished loading at $initObjRequestsFilled/$initObjRequests")
+                awaitingScripts.forEach { s -> s.execute() }
+                this.cancel()
+            }
+        }
+
         // basic strategy
-        CommandShipStartScript(commandShip!!)
+        awaitingScripts.add(CommandShipStartScript(commandShip!!))
 
         // ships are 1-indexed
         ships["agent.symbol${-2}"]?.let { PriceFetcherScript(it).execute() }
@@ -149,6 +161,7 @@ object GameState {
     )
 
     private fun refreshWaypoints(systemSymbol: String, waypoints: List<SystemWaypoint>) {
+        initObjRequests += waypoints.size
         waypoints.forEach { w ->
             SpaceTradersClient.enqueueRequest(::waypointCb, ::ignoredFailback, request {
                 url(api("systems/$systemSymbol/waypoints/${w.symbol}"))
@@ -162,6 +175,7 @@ object GameState {
         shipyardsBySystem.getOrPut(system) { mutableListOf() }.add(shipyardResults)
         File("$DEFAULT_PROF_DIR/shipyards/${shipyardResults.symbol}")
             .writeText(Json.encodeToString(shipyardResults))
+        initObjRequestsFilled++
     }
 
     private suspend fun marketCb(market: Market) {
@@ -170,6 +184,7 @@ object GameState {
         marketsBySystem.getOrPut(system) { mutableListOf() }.add(market)
         File("$DEFAULT_PROF_DIR/markets/${market.symbol}")
             .writeText(Json.encodeToString(market))
+        initObjRequestsFilled++
     }
 
     private suspend fun waypointCb(waypoint: Waypoint) {
@@ -177,12 +192,15 @@ object GameState {
         File("$DEFAULT_PROF_DIR/waypoints/${waypoint.symbol}")
             .writeText(Json.encodeToString(waypoint))
         if (waypoint.traits.any { wt -> wt.symbol == WaypointTraitSymbol.MARKETPLACE }) {
+            initObjRequests++
             fetchWaypointByType(waypoint.systemSymbol, waypoint.symbol, "market", ::marketCb)
         }
 
         if (waypoint.traits.any { wt -> wt.symbol == WaypointTraitSymbol.SHIPYARD }) {
+            initObjRequests++
             fetchWaypointByType(waypoint.systemSymbol, waypoint.symbol, "shipyard", ::shipyardCb)
         }
+        initObjRequestsFilled++
     }
 
     private inline fun <reified T> fetchWaypointByType(
