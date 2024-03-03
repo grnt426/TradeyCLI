@@ -7,11 +7,14 @@ import model.ship.toDock
 import script.Script
 import script.ScriptExecutor
 
-class NavModule<T>(val script: ScriptExecutor<T>) {
+class NavModule<T>(val script: ScriptExecutor<T>, private var navigationBegun: Boolean = false) {
     fun addNavState(ship: Ship, navigationState: T, afterArrivalState: T, s: Script) {
         with(s) {
             state(script.matchesState(navigationState)) {
-                if (!isNavigating(ship)) {
+                if (isNavigating(ship)) {
+                    navigationBegun = true
+                }
+                if (!isNavigating(ship) && navigationBegun) {
                     script.changeState(afterArrivalState)
                 }
             }
@@ -25,14 +28,17 @@ class NavModule<T>(val script: ScriptExecutor<T>) {
     ) {
         with(scope) {
             state(script.matchesState(navigationState)) {
-                if (!isNavigating(ship)) {
+                if (isNavigating(ship)) {
+                    navigationBegun = true
+                }
+                if (!isNavigating(ship) && navigationBegun) {
                     script.changeState(dockState)
                 }
             }
 
             state(script.matchesState(dockState)) {
                 toDock(ship)
-                buyFuel(ship)
+                if (buyFuel) buyFuel(ship)
                 script.changeState(afterDockState)
             }
         }

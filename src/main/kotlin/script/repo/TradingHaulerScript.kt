@@ -1,5 +1,6 @@
 package script.repo
 
+import client.SpaceTradersClient.ignoredCallback
 import io.ktor.client.statement.*
 import model.market.Market
 import model.ship.*
@@ -62,7 +63,7 @@ class TradingHaulerScript(val ship: Ship) : ScriptExecutor<TradingHaulerScript.T
                     changeState(AWAIT_ASSIGNMENT)
                 } else {
                     changeState(NAV)
-                    navigateTo(ship, market!!.symbol, fb = ::failNavCb)
+                    navigateTo(ship, market!!.symbol, ::ignoredCallback, ::failNavCb)
                 }
             }
 

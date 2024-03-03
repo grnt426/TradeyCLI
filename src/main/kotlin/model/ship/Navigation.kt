@@ -8,6 +8,7 @@ import kotlinx.serialization.Serializable
 import model.api
 import model.responsebody.NavigationResponse
 import model.system.WaypointSymbol
+import notification.NotificationManager
 import java.time.Instant
 import kotlin.reflect.KSuspendFunction1
 import kotlin.reflect.KSuspendFunction2
@@ -21,11 +22,38 @@ data class Navigation(
     val flightMode: String
 )
 
+class NavigationCallbackHandler(val ship: Ship, val waypointSymbol: String, var attempts: Int = 0) {
+
+    suspend fun success(resp: NavigationResponse) {
+        ship.nav = resp.nav
+        if (resp.fuel != null) ship.fuel = resp.fuel
+    }
+
+    suspend fun failback(resp: HttpResponse?, ex: Exception?) {
+        attempts++
+        NotificationManager.createErrorNotification("Failed to navigate ${ship.registration.name}")
+
+        // try again
+        if (attempts <= 3) navigateTo(ship, waypointSymbol, ::success, ::failback)
+        else NotificationManager.createErrorNotification(
+            "Too many attempts to navigate ${ship.registration.name}"
+        )
+    }
+}
+
+fun navigateTo(
+    ship: Ship,
+    waypointSymbol: String
+) {
+    val handler = NavigationCallbackHandler(ship, waypointSymbol)
+    navigateTo(ship, waypointSymbol, handler::success, handler::failback)
+}
+
 fun navigateTo(
     ship: Ship,
     waypointSymbol: String,
-    cb: KSuspendFunction1<NavigationResponse, Unit> = SpaceTradersClient::ignoredCallback,
-    fb: KSuspendFunction2<HttpResponse?, Exception?, Unit> = SpaceTradersClient::ignoredFailback
+    cb: KSuspendFunction1<NavigationResponse, Unit>,
+    fb: KSuspendFunction2<HttpResponse?, Exception?, Unit>
 ) {
     if (isDocked(ship)) {
         toOrbit(ship)

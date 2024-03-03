@@ -20,6 +20,12 @@ import script.script
 class CommandShipStartScript(val ship: Ship) : ScriptExecutor<ComShipStartState>(
     START, "CommandShipStartScript"
 ) {
+
+    init {
+
+        // very short trips in the beginning
+        execDelayMs = 100
+    }
     enum class ComShipStartState {
         START,
         NAV_PROBE,
@@ -43,17 +49,18 @@ class CommandShipStartScript(val ship: Ship) : ScriptExecutor<ComShipStartState>
                     println("Navigating to shipyard")
                     navigateTo(ship, probeShipyards[0].symbol)
                     changeState(NAV_PROBE)
-                    NavModule(this@CommandShipStartScript).addNavDockState(
-                        ship, NAV_PROBE,
-                        DOCK_PROBE, BUY_PROBE,
-                        true, this@script
-                    )
                 } else {
                     println("No shipyard to buy probes")
                     NotificationManager.createErrorNotification("No probe ships to buy??")
                     changeState(FIND_MINING_SHIP)
                 }
             }
+
+            NavModule(this@CommandShipStartScript).addNavDockState(
+                ship, NAV_PROBE,
+                DOCK_PROBE, BUY_PROBE,
+                true, this@script
+            )
 
             state(matchesState(BUY_PROBE)) {
                 println("Buying probe")
@@ -68,16 +75,17 @@ class CommandShipStartScript(val ship: Ship) : ScriptExecutor<ComShipStartState>
                 if (miningShipyards.isNotEmpty()) {
                     navigateTo(ship, miningShipyards[0].symbol)
                     changeState(NAV_MINING)
-                    NavModule(this@CommandShipStartScript).addNavDockState(
-                        ship, NAV_MINING,
-                        DOCK_MINING, BUY_MINING,
-                        true, this@script
-                    )
                 } else {
                     NotificationManager.createErrorNotification("No mining drones to buy??")
                     changeState(DONE)
                 }
             }
+
+            NavModule(this@CommandShipStartScript).addNavDockState(
+                ship, NAV_MINING,
+                DOCK_MINING, BUY_MINING,
+                true, this@script
+            )
 
             state(matchesState(BUY_MINING)) {
                 println("Buying mining")
@@ -86,13 +94,14 @@ class CommandShipStartScript(val ship: Ship) : ScriptExecutor<ComShipStartState>
             }
 
             state(matchesState(DONE)) {
-                println("Done with startup")
 
                 // setup a new script for ourselves.
                 // terminate our current script. TODO
                 if (notDone) {
+                    println("Done with startup")
                     TradingHaulerScript(ship).execute()
                     notDone = false
+                    stopScript()
                 }
             }
         }.runForever(execDelayMs)

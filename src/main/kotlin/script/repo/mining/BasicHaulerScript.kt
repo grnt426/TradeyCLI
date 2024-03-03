@@ -1,5 +1,6 @@
 package script.repo.mining
 
+import client.SpaceTradersClient.ignoredFailback
 import io.ktor.client.statement.*
 import model.GameState
 import model.market.findGoodsAcceptedHere
@@ -95,7 +96,7 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
                     }
                     else {
                         navComplete = false
-                        navigateTo(ship, shipTarget!!.nav.waypointSymbol, ::navShipCb)
+                        navigateTo(ship, shipTarget!!.nav.waypointSymbol, ::navShipCb, ::ignoredFailback)
                         changeState(AWAIT_NAV_TO_SHIP)
                     }
                 }
@@ -196,7 +197,7 @@ class BasicHaulerScript(val ship: Ship): ScriptExecutor<HaulingStates>(
             state(matchesState(NAV_TO_MARKET)) {
                 println("Navigating to market")
                 if (targetMarket != null) {
-                    navigateTo(ship, targetMarket!!, ::navShipCb)
+                    navigateTo(ship, targetMarket!!, ::navShipCb, ::ignoredFailback)
                     changeState(AWAIT_NAV_TO_MARKET)
                 }
                 else {
