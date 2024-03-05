@@ -66,7 +66,10 @@ suspend fun main() {
             val runScope = this
             onInputEntered {
                 with(appState.screen) {
+                    val prevState = appState
                     appState = onInput(runScope)
+                    if (prevState != appState)
+                        rerender()
                 }
             }
             onKeyPressed {
