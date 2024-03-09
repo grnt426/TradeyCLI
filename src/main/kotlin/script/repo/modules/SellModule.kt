@@ -67,7 +67,7 @@ class SellModule<T>(val script: ScriptExecutor<T>) {
                             script.changeState(afterFindState)
                         } else {
                             // if nothing can take this good, jettison and try again
-                            NotificationManager.createErrorNotification("Nothing will import ${toSell}; will jettison")
+                            NotificationManager.errorNotification("Nothing will import ${toSell}; will jettison")
                             jettisonCargo(ship, ship.cargo.inventory.removeFirst())
                         }
                     }

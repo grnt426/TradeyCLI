@@ -81,7 +81,7 @@ class MiningModule<T : Any>(val script: ScriptExecutor<T>) {
     }
 
     suspend fun failback(resp: HttpResponse?, ex: Exception?) {
-        NotificationManager.createErrorNotification("Mining failed for ${ship.registration.name}")
+        NotificationManager.errorNotification("Mining failed for ${ship.registration.name}")
         println("Failback called")
         script.changeState(miningFailedState)
     }

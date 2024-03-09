@@ -84,7 +84,7 @@ fun intersectTradeGoods(searchFor: List<TradeSymbol>, searchIn: List<TradeGood>)
 fun applyMarketTransactionUpdate(transaction: MarketTransaction) {
     val market = marketById(transaction.waypointSymbol)
     if (market == null) {
-        NotificationManager.createErrorNotification(
+        NotificationManager.errorNotification(
             "${transaction.waypointSymbol} needs an update but not cached", "Bad"
         )
         return

@@ -62,7 +62,7 @@ class SelfSellingMiningScript(val ship: Ship, val assignedAsteroid: String = "X1
             NavModule(this@SelfSellingMiningScript).addNavState(ship, NAV_TO_MINING, MINING, this)
 
             state(matchesState(ERROR)) {
-                NotificationManager.createErrorNotification(
+                NotificationManager.errorNotification(
                     "SelfSellingMiningScript in error state. Stopping", "Bad"
                 )
                 stopScript()

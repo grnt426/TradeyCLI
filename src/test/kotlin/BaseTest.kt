@@ -1,8 +1,8 @@
+
 import data.DbClient
 import io.mockk.every
 import io.mockk.mockkObject
 import io.mockk.mockkStatic
-import model.ship.navigateTo
 import model.ship.toDock
 import model.ship.toOrbit
 import notification.NotificationManager
@@ -19,9 +19,7 @@ abstract class BaseTest {
         mockkObject(TextAnimationContainer)
         mockkObject(NotificationManager)
         every { NotificationManager.createNotification(any(), any()) } returns Unit
-        every { NotificationManager.createErrorNotification(any(), any()) } returns Unit
-        mockkStatic(::navigateTo)
-        every { navigateTo(any(), any(), any(), any()) } returns Unit
+        every { NotificationManager.errorNotification(any(), any()) } returns Unit
         mockkStatic(::toOrbit)
         every { toOrbit(any(), any(), any()) } returns true
         mockkStatic(::toDock)

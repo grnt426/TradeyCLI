@@ -90,25 +90,54 @@ class MarketSubScreen(private val parent: Screen) : SubScreen<RunningScreen.Sele
                     val normalizedCharValue = yHeight / charHeight
                     val volumeNormalizedCharValue = marketData.maxOf { m -> m.volume } * 1.50 / charHeight
                     val EMPTY_RENDER = { text(" ") }
-                    val BUY_LINE = { blue { text("X") } }
-                    val SELL_LINE = { yellow { text("X") } }
-                    val VOLUME_LINE = { green { text("X") } }
+                    val BUY_LINE = { blue { text("█") } }
+                    val UP_R_CORNER = "▜"
+                    val BOT_R_CORNER = "▟"
+                    val UP_L_CORNER = "▛"
+                    val BOT_L_CORNER = "▙"
+                    val SELL_LINE = { yellow { text("█") } }
+                    val VOLUME_LINE = { green { text("█") } }
+
+
+                    val ST = ""
+
                     val map = MutableList(charHeight) { // number of rows
                         MutableList(marketData.size) { // number of columns
                             EMPTY_RENDER
                         }
                     }
 
+                    var prevBuyPrice = 0
+                    var prevSellPrice = 0
+
                     marketData.forEachIndexed { i, d ->
-                        val vPos =
-                            (charHeight - (d.volume / volumeNormalizedCharValue).roundToInt()).coerceIn(0..<charHeight)
+                        val vPos = convertToCharPos(charHeight, volumeNormalizedCharValue, d.volume)
                         map[vPos][i] = VOLUME_LINE
-                        val bPos =
-                            (charHeight - (d.buyPrice / normalizedCharValue).roundToInt()).coerceIn(0..<charHeight)
+                        val bPos = convertToCharPos(charHeight, normalizedCharValue, d.buyPrice)
                         map[bPos][i] = BUY_LINE
-                        val sPos =
-                            (charHeight - (d.sellPrice / normalizedCharValue).roundToInt()).coerceIn(0..<charHeight)
+                        if (i != 0) {
+                            if (prevBuyPrice > bPos) {
+                                map[bPos][i - 1] = { blue { text(BOT_R_CORNER) } }
+                                map[bPos + 1][i] = { blue { text(UP_L_CORNER) } }
+                            } else if (prevBuyPrice < bPos) {
+                                map[bPos - 1][i] = { blue { text(BOT_L_CORNER) } }
+                                map[bPos][i - 1] = { blue { text(UP_R_CORNER) } }
+                            }
+                        }
+                        prevBuyPrice = bPos
+                        val sPos = convertToCharPos(charHeight, normalizedCharValue, d.sellPrice)
                         map[sPos][i] = SELL_LINE
+                        if (i != 0) {
+                            if (prevSellPrice > sPos) {
+                                map[sPos][i - 1] = { yellow { text(BOT_R_CORNER) } }
+                                map[sPos + 1][i] = { yellow { text(UP_L_CORNER) } }
+                            } else if (prevSellPrice < sPos) {
+                                map[sPos - 1][i] = { yellow { text(BOT_L_CORNER) } }
+                                map[sPos][i - 1] = { yellow { text(UP_R_CORNER) } }
+                            }
+                        }
+
+                        prevSellPrice = sPos
                     }
 
                     val moneyLength = marketData.maxOf { m -> m.buyPrice }.toString().length + 1
@@ -156,6 +185,9 @@ class MarketSubScreen(private val parent: Screen) : SubScreen<RunningScreen.Sele
             }
         }
     }
+
+    private fun convertToCharPos(height: Int, normalizedCharValue: Double, value: Int): Int =
+        (height - (value / normalizedCharValue).roundToInt()).coerceIn(0..<height)
 
     fun RenderScope.tradeOpportunities() {
         val markets = GameState.markets.values

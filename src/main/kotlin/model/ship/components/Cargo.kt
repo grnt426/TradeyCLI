@@ -90,14 +90,14 @@ fun sellCargo(
 ) {
     if (getMarketVolumeForGood(symbol, ship.nav.waypointSymbol) < units) {
         println("Too many units requested for sale at market.")
-        NotificationManager.createErrorNotification(
+        NotificationManager.errorNotification(
             "Can't sell $units $symbol at ${ship.nav.waypointSymbol}", "Bad"
         )
         return
     }
     val tradeGoodInv = ship.cargo.inventory.firstOrNull { i -> i.symbol == symbol }
     if (tradeGoodInv == null) {
-        NotificationManager.createErrorNotification(
+        NotificationManager.errorNotification(
             "Tried to sell a good we don't have???", "$ship, $symbol, $units"
         )
     } else {
@@ -123,7 +123,7 @@ fun applyCargoUpdate(cargo: Cargo, ship: Ship) {
 suspend fun buySellCargoCbAndApply(buySellCargoResponse: BuySellCargoResponse) {
     val ship = shipById(buySellCargoResponse.transaction.shipSymbol)
     if (ship == null) {
-        NotificationManager.createErrorNotification(
+        NotificationManager.errorNotification(
             "Given cargo response for ${buySellCargoResponse.transaction.shipSymbol} but not cached.",
             "Bad"
         )

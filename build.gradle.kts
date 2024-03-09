@@ -36,6 +36,10 @@ dependencies {
     // SQLite driver for Exposed
     implementation("org.xerial:sqlite-jdbc:3.44.1.0")
 
+    // Logging
+    implementation("io.github.oshai:kotlin-logging-jvm:6.0.3")
+
+    // Testing
     testImplementation(kotlin("test"))
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0-RC2")
     testImplementation("io.mockk:mockk:1.13.9")

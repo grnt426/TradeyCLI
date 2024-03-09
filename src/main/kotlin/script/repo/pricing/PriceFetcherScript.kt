@@ -200,7 +200,7 @@ class PriceFetcherScript(val ship: Ship, state: PriceFetcherState = INITIAL) :
 
     suspend fun failNavCb(resp: HttpResponse?, exception: Exception?) {
         println("Got error")
-        NotificationManager.createErrorNotification(
+        NotificationManager.errorNotification(
             "${ship.symbol} failed navigating to ${market?.symbol}", "uhhhh"
         )
         // try again

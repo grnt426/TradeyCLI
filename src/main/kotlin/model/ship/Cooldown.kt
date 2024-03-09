@@ -22,7 +22,7 @@ fun isCooldownExpired(cooldown: Cooldown): Boolean {
     }
     else {
         if (cooldown.remainingSeconds < -120) {
-            NotificationManager.createErrorNotification("Negative cooldown of over 2 mins", "Why")
+            NotificationManager.errorNotification("Negative cooldown of over 2 mins", "Why")
         }
         return cooldown.remainingSeconds <= 0
     }

@@ -51,7 +51,7 @@ class CommandShipStartScript(val ship: Ship) : ScriptExecutor<ComShipStartState>
                     changeState(NAV_PROBE)
                 } else {
                     println("No shipyard to buy probes")
-                    NotificationManager.createErrorNotification("No probe ships to buy??")
+                    NotificationManager.errorNotification("No probe ships to buy??")
                     changeState(FIND_MINING_SHIP)
                 }
             }
@@ -76,7 +76,7 @@ class CommandShipStartScript(val ship: Ship) : ScriptExecutor<ComShipStartState>
                     navigateTo(ship, miningShipyards[0].symbol)
                     changeState(NAV_MINING)
                 } else {
-                    NotificationManager.createErrorNotification("No mining drones to buy??")
+                    NotificationManager.errorNotification("No mining drones to buy??")
                     changeState(DONE)
                 }
             }

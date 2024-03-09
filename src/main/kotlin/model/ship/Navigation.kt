@@ -31,11 +31,11 @@ class NavigationCallbackHandler(val ship: Ship, val waypointSymbol: String, var 
 
     suspend fun failback(resp: HttpResponse?, ex: Exception?) {
         attempts++
-        NotificationManager.createErrorNotification("Failed to navigate ${ship.registration.name}")
+        NotificationManager.errorNotification("Failed to navigate ${ship.registration.name}")
 
         // try again
         if (attempts <= 3) navigateTo(ship, waypointSymbol, ::success, ::failback)
-        else NotificationManager.createErrorNotification(
+        else NotificationManager.errorNotification(
             "Too many attempts to navigate ${ship.registration.name}"
         )
     }

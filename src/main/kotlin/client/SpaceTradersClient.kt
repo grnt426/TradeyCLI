@@ -28,6 +28,7 @@ object SpaceTradersClient{
     lateinit var client: HttpClient
 
     var totalErrors = 0
+    var throttled = 0
 
     val apiDispatcher = Dispatchers.IO
 
@@ -102,8 +103,16 @@ object SpaceTradersClient{
                         }
                     }
                 } catch (e: TimeoutCancellationException) {
+                    NotificationManager.exceptNotification(
+                        "Timeout", "Timeout calling ST", e
+                    )
                     totalErrors++
                     println("Timeout")
+                } catch (e: Exception) {
+                    NotificationManager.exceptNotification(
+                        "Exception", "General exception calling ST", e
+                    )
+                    totalErrors++
                 }
             }
         }
@@ -141,6 +150,9 @@ object SpaceTradersClient{
                                         callback(result)
                                     } catch (e: Exception) {
                                         // prevent exceptions in callback from triggering anything else
+                                        NotificationManager.exceptNotification(
+                                            "Callback Exception", "Failure in callback", e
+                                        )
                                         totalErrors++
                                         println("Failure in handling callback")
                                         println(e.message)
@@ -148,6 +160,9 @@ object SpaceTradersClient{
                                     }
                                 }
                                 catch(e: SerializationException) {
+                                    NotificationManager.exceptNotification(
+                                        "Serialization Exception", "Failure deserializing response", e
+                                    )
                                     totalErrors++
                                     println("Failure in parsing response of type ${T::class}")
                                     println(e.message)
@@ -155,11 +170,24 @@ object SpaceTradersClient{
                                 }
                             } else {
                                 totalErrors++
+
+                                if (response.status == HttpStatusCode.TooManyRequests) {
+                                    throttled++
+                                    NotificationManager.errorNotification("Throttled")
+                                } else {
+                                    NotificationManager.errorNotification(
+                                        "HTTP Error - ${response.status}", response.bodyAsText()
+                                    )
+                                }
+
                                 failback(response, null)
                                 println("Failure ${response.status} - ${response.bodyAsText()}")
                             }
                         }
                     } catch (e: TimeoutCancellationException) {
+                        NotificationManager.exceptNotification(
+                            "Timeout", "Timeout calling ST", e
+                        )
                         totalErrors++
                         println("Exception caught??")
                         failback(null, e)
@@ -207,7 +235,7 @@ object SpaceTradersClient{
         } else {
             "No data"
         }
-        NotificationManager.createErrorNotification(
+        NotificationManager.errorNotification(
             "IE: $msg", "BAD BAD BAD"
         )
     }
