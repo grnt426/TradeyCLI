@@ -14,6 +14,13 @@ object NotificationManager {
         logger.error(e) {
             "$short - $long"
         }
+        addNotification(
+            Notification(
+                short, Instant.now(),
+                TextAnimationContainer.exceptNotification!!, ColorPalette.errorRed,
+                long
+            )
+        )
     }
 
     fun errorNotification(short: String, long: String) {

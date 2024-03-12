@@ -19,6 +19,7 @@ import com.varabyte.kotterx.grid.grid
 import commandHistory
 import commandHistoryIndex
 import data.FileWritingQueue
+import io.github.oshai.kotlinlogging.KotlinLogging
 import makeHeader
 import model.GameState
 import model.GameState.getHqSystem
@@ -40,11 +41,13 @@ import java.time.Instant
 import kotlin.math.*
 import kotlin.random.Random
 
+
 class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(parent) {
-    val self = this
+
+    private val logger = KotlinLogging.logger {}
 
     companion object {
-        val columns = 8
+        const val COLUMNS = 8
     }
 
     private var zoom = SystemSubScreen.Point(1.0, 1.0)
@@ -56,13 +59,14 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
     private val aspectRatio = SystemSubScreen.Point(3.0, 5.0)
 
     override fun MainRenderScope.render() {
+        logger.info { "Rendering" }
         val selectedQuad = runningRenderContext.selectedQuad
         val currentView = runningRenderContext.selectedView
         val selectedShip = runningRenderContext.selectedShip
         var selectedWaypoint: Waypoint? = null
         var selectedMarket: Market? = null
 
-        grid(Cols.uniform(columns, GameState.profData.termWidth / columns), characters = GridCharacters.CURVED) {
+        grid(Cols.uniform(COLUMNS, GameState.profData.termWidth / COLUMNS), characters = GridCharacters.CURVED) {
             val visibleWaypoints = mutableListOf<Waypoint>()
             selectIndex = min(selectIndex, objectsOnScreen)
             cell(colSpan = 3, rowSpan = 4) {
@@ -71,7 +75,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 val wp = GameState.waypoints.values
 
                 // a good starting zoom is 10
-                val zoom = (SystemSubScreen.Point(3.0, 3.0) + self.zoom) * aspectRatio
+                val zoom = (SystemSubScreen.Point(3.0, 3.0) + this@ConsoleSubScreen.zoom) * aspectRatio
 
                 // initialize empty grid
                 val rows = 30
@@ -429,7 +433,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
     }
 
     override fun OnInputEnteredScope.onInput(runScope: RunScope): SelectedScreen {
-        if (parent.isActiveSubScreen(self) && runningRenderContext.selectedQuad == QuadSelect.NONE) {
+        if (parent.isActiveSubScreen(this@ConsoleSubScreen) && runningRenderContext.selectedQuad == QuadSelect.NONE) {
             commandHistoryIndex = 0
             commandHistory.addFirst(input)
             val args = input.split(" ").map { str -> str.uppercase() }
@@ -470,7 +474,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
     }
 
     override fun OnKeyPressedScope.onKeyPressed(runScope: RunScope): SelectedScreen {
-        if (parent.isActiveSubScreen(self)) {
+        if (parent.isActiveSubScreen(this@ConsoleSubScreen)) {
+            logger.info { "Got Key Press" }
             println("Pressed: $key ${key.hashCode()}")
             when (key) {
                 Keys.DIGIT_1 -> {

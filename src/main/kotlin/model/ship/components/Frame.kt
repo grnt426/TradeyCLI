@@ -1,7 +1,7 @@
 package model.ship.components
 
-import model.ship.Requirements
 import kotlinx.serialization.Serializable
+import model.ship.Requirements
 
 @Serializable
 data class Frame(
@@ -11,6 +11,6 @@ data class Frame(
     val moduleSlots: Long,
     val mountingPoints: Long,
     val fuelCapacity: Long,
-    val condition: Long? = null,
+    val condition: Float? = null,
     val requirements: Requirements
 )

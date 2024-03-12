@@ -78,14 +78,14 @@ class MarketSubScreen(private val parent: Screen) : SubScreen<RunningScreen.Sele
         val charHeight = 3 * 8 // 3 rows * 8 characters a row
 
         grid(
-            Cols.uniform(ConsoleSubScreen.columns, GameState.profData.termWidth / ConsoleSubScreen.columns),
+            Cols.uniform(ConsoleSubScreen.COLUMNS, GameState.profData.termWidth / ConsoleSubScreen.COLUMNS),
             characters = GridCharacters.CURVED
         ) {
 
             // row 1
-            cell(colSpan = ConsoleSubScreen.columns - 2) {
+            cell(colSpan = ConsoleSubScreen.COLUMNS - 2) {
                 try {
-                    rgb(HEADER_COLOR.rgb) { makeHeader("Market History Data", ConsoleSubScreen.columns - 2) }
+                    rgb(HEADER_COLOR.rgb) { makeHeader("Market History Data", ConsoleSubScreen.COLUMNS - 2) }
                     val yHeight = marketData.maxOf { m -> m.buyPrice } * 1.10
                     val normalizedCharValue = yHeight / charHeight
                     val volumeNormalizedCharValue = marketData.maxOf { m -> m.volume } * 1.50 / charHeight

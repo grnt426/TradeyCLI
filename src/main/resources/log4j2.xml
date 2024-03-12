@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="warn">
+    <Appenders>
+        <Console name="Console">
+            <PatternLayout pattern="%C{1}.%M %m %ex%n"/>
+        </Console>
+
+        <File name="FileLogger" fileName="log.txt" immediateFlush="true">
+            <PatternLayout>
+                <pattern>%d %p %C{1.} [%t] %m%n</pattern>
+            </PatternLayout>
+        </File>
+    </Appenders>
+
+    <Loggers>
+        <Root level="all">
+            <AppenderRef ref="Console" level="error"/>
+            <AppenderRef ref="FileLogger"/>
+        </Root>
+    </Loggers>
+</Configuration>
+
+        <!-- Add -Dlog4j2.configurationFile=C:\abs\path\src\main\resources\log4j2.xml to VM args -->
