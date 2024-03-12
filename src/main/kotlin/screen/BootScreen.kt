@@ -23,8 +23,6 @@ class BootScreen(var userAskedNew: Boolean = false) : Screen() {
 
     private val self = this
     override fun MainRenderScope.render() {
-        logger.info { "Hello, World!" }
-        logger.error { "Hello, World!" }
         textLine("New - Create a new Agent")
         textLine("Start - Load everything and start all scripts")
         textLine("Debug - Load data, but don't run scripts")

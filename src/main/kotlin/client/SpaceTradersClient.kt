@@ -1,5 +1,6 @@
 package client
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.auth.*
@@ -23,6 +24,7 @@ import kotlin.concurrent.timer
 import kotlin.reflect.KSuspendFunction1
 import kotlin.reflect.KSuspendFunction2
 
+private val logger = KotlinLogging.logger {}
 object SpaceTradersClient{
 
     lateinit var client: HttpClient
@@ -44,6 +46,7 @@ object SpaceTradersClient{
     }
 
     fun beginPollingRequests() {
+        logger.info { "Processing job requests for ST" }
         timer("ApiRequestQueue", true, 0, 500) {
             if (jobPressureUpdate % 3 == 0) {
                 jobPressureWindow = with(jobPressureWindow.drop(1).toMutableList()) {

@@ -7,6 +7,7 @@ import client.SpaceTradersClient.ignoredFailback
 import data.DbClient
 import data.FileWritingQueue
 import data.SavedScripts
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.request.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.encodeToString
@@ -34,6 +35,7 @@ import script.repo.CommandShipStartScript
 import script.repo.pricing.PriceDiscoveryScript
 import script.repo.pricing.PriceFetcherScript
 import java.io.File
+import java.lang.Thread.sleep
 import java.time.Instant
 import kotlin.concurrent.timer
 import kotlin.reflect.KSuspendFunction1
@@ -41,6 +43,7 @@ import kotlin.reflect.KSuspendFunction1
 const val DEFAULT_PROF_DIR = "profile"
 const val DEFAULT_PROF_FILE = "$DEFAULT_PROF_DIR/profile.settings.json"
 
+private val logger = KotlinLogging.logger {}
 object GameState {
 
     const val GAME_API = "https://api.spacetraders.io/v2/"
@@ -68,6 +71,7 @@ object GameState {
     private var awaitingScripts = mutableListOf<ScriptExecutor<*>>()
 
     fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE) {
+        logger.info { "Booting GameState from existing Agent" }
         profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
         Profile.createProfile(profData)
         SpaceTradersClient.createClient(File("$DEFAULT_PROF_DIR/authtoken.secret"))
@@ -80,6 +84,8 @@ object GameState {
     }
 
     suspend fun bootGameStateFromNewAgent(profileData: ProfileData, registerResponse: RegisterResponse) {
+        logger.info { "Booting GameState from newly created Agent" }
+
         profData = profileData
         Profile.createProfile(profileData)
         SpaceTradersClient.createClient(registerResponse.token)
@@ -94,9 +100,12 @@ object GameState {
 
         timer("initialLoading", true, 0, 100) {
             if (initObjRequestsFilled == initObjRequests) {
-                println("Finished loading at $initObjRequestsFilled/$initObjRequests")
-                awaitingScripts.forEach { s -> s.execute() }
                 this.cancel()
+
+                // Give us a little more time, to avoid race conditions
+                sleep(2_000)
+                logger.info { "Finished loading at $initObjRequestsFilled/$initObjRequests" }
+                awaitingScripts.forEach { s -> s.execute() }
             }
         }
 
@@ -116,13 +125,15 @@ object GameState {
     private fun postInitGameLoading() {
         NotificationManager.notifications.add(
             Notification(
-                "Welcome, Emperox", Instant.now(),
+                "Welcome, Magnate", Instant.now(),
                 TextAnimationContainer.newNotification!!, ColorPalette.secondaryInfoBlue,
                 "Welcome to the command console"
             )
         )
-        println("Name ${profData.name}")
-        println("HQ @ ${agent.headquarters}")
+        logger.info {
+            "Name ${profData.name}"
+            "HQ ${agent.headquarters}"
+        }
         File("$DEFAULT_PROF_DIR/agent/${profData.name}").writeText(Json.encodeToString(agent))
         loadAllData()
         refreshSystem(OrbitalNames.getSectorSystem(agent.headquarters)) ?: failedToLoad("Headquarters")
@@ -161,6 +172,7 @@ object GameState {
     )
 
     private fun refreshWaypoints(systemSymbol: String, waypoints: List<SystemWaypoint>) {
+        logger.info { "Loading waypoints of $systemSymbol for ${waypoints.size} waypoints" }
         initObjRequests += waypoints.size
         waypoints.forEach { w ->
             SpaceTradersClient.enqueueRequest(::waypointCb, ::ignoredFailback, request {
@@ -213,6 +225,7 @@ object GameState {
     }
 
     private fun loadAllData() {
+        logger.info { "Loading data from files" }
         systems = loadDataFromJsonFile<System>("systems")
         shipyards = loadDataFromJsonFile<Shipyard>("shipyards")
         waypoints = loadDataFromJsonFile<Waypoint>("waypoints")
@@ -222,6 +235,7 @@ object GameState {
                 mutableListOf()
             }.add(m)
         }
+        logger.info { "Done loading data from files" }
     }
 
     private fun fetchAllShips() {
@@ -319,7 +333,7 @@ object GameState {
     })
 
     private fun refreshSystem(systemName: String): System? {
-        println("Loading $systemName")
+        logger.info { "Ensuring home system $systemName is loaded" }
         val system = callGet<System>(request {
             url(api("systems/$systemName"))
         })

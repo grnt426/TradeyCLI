@@ -3,6 +3,7 @@ package startup
 import data.DbClient
 import data.PriceHistory
 import data.SavedScripts
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -28,36 +29,44 @@ import org.jetbrains.exposed.sql.exists
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 
+private val logger = KotlinLogging.logger {}
 object BootManager {
 
     suspend fun bootstrapNew() {
+        try {
+            logger.info { "Creating new Agent" }
 
-        // delete all previous data
-        deleteAllData()
+            // delete all previous data
+            deleteAllData()
 
-        // empty tables
-        DbClient.createClient()
-        transaction {
-            if (SavedScripts.exists()) SavedScripts.deleteAll()
-            if (PriceHistory.exists()) PriceHistory.deleteAll()
+            // empty tables
+            DbClient.createClient()
+            logger.debug { "Deleting data from tables" }
+            transaction {
+                if (SavedScripts.exists()) SavedScripts.deleteAll()
+                if (PriceHistory.exists()) PriceHistory.deleteAll()
+            }
+            logger.info { "data deleted from tables" }
+
+            // We don't have auth until the Agent is generated
+            val client = createNoAuthClient()
+            val resp = createAgent(client) ?: throw Exception("Failed to create agent???")
+
+            // save auth token
+            File("$DEFAULT_PROF_DIR/authtoken.secret").writeText(resp.token)
+
+            // get previous profile data and update with name
+            val profDataFile = File("$DEFAULT_PROF_DIR/profile.settings.json")
+            val profData = Json.decodeFromString<ProfileData>(
+                profDataFile.readText()
+            )
+            profData.name = resp.agent.symbol
+            profDataFile.writeText(Json.encodeToString(profData))
+
+            bootGameStateFromNewAgent(profData, resp)
+        } catch (e: Exception) {
+            logger.error(e) { "Failed to initialize agent" }
         }
-
-        // We don't have auth until the Agent is generated
-        val client = createNoAuthClient()
-        val resp = createAgent(client) ?: throw Exception("Failed to create agent???")
-
-        // save auth token
-        File("$DEFAULT_PROF_DIR/authtoken.secret").writeText(resp.token)
-
-        // get previous profile data and update with name
-        val profDataFile = File("$DEFAULT_PROF_DIR/profile.settings.json")
-        val profData = Json.decodeFromString<ProfileData>(
-            profDataFile.readText()
-        )
-        profData.name = resp.agent.symbol
-        profDataFile.writeText(Json.encodeToString(profData))
-
-        bootGameStateFromNewAgent(profData, resp)
     }
 
     fun normalStart() {
@@ -76,8 +85,8 @@ object BootManager {
             setBody(RegisterRequest("TripleHat12", FactionSymbol.VOID))
         })
 
-        println("Got body of new agent")
-        println(response.bodyAsText())
+        logger.info { "Got body of new agent" }
+        logger.info { runBlocking { response.bodyAsText() } }
 
         return@runBlocking Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
             Json.decodeFromJsonElement<RegisterResponse>(
@@ -95,12 +104,14 @@ object BootManager {
     }
 
     private fun deleteAllData() {
+        logger.info { "Deleting all data from files" }
         deleteFiles("markets")
         deleteFiles("systems")
         deleteFiles("waypoints")
         deleteFiles("ships")
         deleteFiles("shipyards")
         deleteFiles("agent")
+        logger.info { "All data deleted in files" }
     }
 
     private fun deleteFiles(folderName: String) {
