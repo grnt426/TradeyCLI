@@ -3,6 +3,7 @@ package engine
 import api.ApiError
 import model.Agent
 import model.Construction
+import model.responsebody.JumpGate
 import model.actions.Survey
 import model.contract.Contract
 import model.market.Market
@@ -78,6 +79,12 @@ interface Verbs {
 
     /** Tags [ship]'s transactions with a chain id from now on; null clears it. */
     suspend fun setChain(ship: String, chain: String?)
+
+    /** A gate's connections; one request. */
+    suspend fun jumpGate(waypoint: String): JumpGate
+
+    /** Jumps [ship] through the gate it is at to [waypoint], buying the antimatter locally. Returns on arrival. */
+    suspend fun jump(ship: String, waypoint: String): Ship
 
     /** What a construction site still needs; one request. */
     suspend fun construction(waypoint: String): Construction

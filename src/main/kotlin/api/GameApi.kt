@@ -13,6 +13,8 @@ import model.responsebody.BuySellCargoResponse
 import model.responsebody.ChartResponse
 import model.responsebody.ContractResponse
 import model.responsebody.DeliverResponse
+import model.responsebody.JumpGate
+import model.responsebody.JumpResponse
 import model.responsebody.SiphonResponse
 import model.responsebody.ExtractionResponse
 import model.responsebody.NavigationResponse
@@ -62,6 +64,9 @@ interface GameApi {
     suspend fun acceptContract(id: String): ContractResponse
     suspend fun deliverContract(id: String, ship: String, symbol: TradeSymbol, units: Int): DeliverResponse
     suspend fun fulfillContract(id: String): ContractResponse
+
+    suspend fun getJumpGate(system: String, waypoint: String): JumpGate
+    suspend fun jump(ship: String, waypoint: String): JumpResponse
 
     suspend fun getConstruction(system: String, waypoint: String): Construction
     suspend fun supplyConstruction(system: String, waypoint: String, ship: String, symbol: TradeSymbol, units: Int): SupplyConstructionResponse

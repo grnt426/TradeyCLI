@@ -8,6 +8,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import model.Agent
 import model.Construction
+import model.responsebody.JumpGate
 import storage.SupplyRecord
 import model.Shipyard
 import model.actions.Survey
@@ -304,6 +305,21 @@ class ShipVerbs(
 
     override suspend fun setChain(ship: String, chain: String?) {
         if (chain == null) world.chainOf.remove(ship) else world.chainOf[ship] = chain
+    }
+
+    override suspend fun jumpGate(waypoint: String): JumpGate =
+        call { api.getJumpGate(OrbitalNames.getSectorSystem(waypoint), waypoint) }
+
+    override suspend fun jump(ship: String, waypoint: String): Ship {
+        var current = settled(ship)
+        awaitCooldown(current)
+        if (current.isDocked) current = orbit(ship)
+        val response = call(retryOnCooldown = true) { api.jump(ship, waypoint) }
+        response.transaction?.let { sink.transaction(it, world.chainOf[ship]) }
+        response.agent?.let { agentChanged(it) }
+        current = update(current.copy(nav = response.nav, cooldown = response.cooldown))
+        sink.event(Event.Jumped(ship, waypoint, response.transaction?.totalPrice?.toLong() ?: 0))
+        return current
     }
 
     override suspend fun construction(waypoint: String): Construction =

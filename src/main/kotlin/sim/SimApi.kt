@@ -3,6 +3,8 @@ package sim
 import api.GameApi
 import model.Agent
 import model.Construction
+import model.responsebody.JumpGate
+import model.responsebody.JumpResponse
 import model.SupplyConstructionResponse
 import model.ServerStatus
 import model.Shipyard
@@ -56,6 +58,8 @@ class SimApi(val universe: SimUniverse) : GameApi {
     override suspend fun acceptContract(id: String): ContractResponse = universe.acceptContract(id)
     override suspend fun deliverContract(id: String, ship: String, symbol: TradeSymbol, units: Int): DeliverResponse = universe.deliverContract(id, ship, symbol, units)
     override suspend fun fulfillContract(id: String): ContractResponse = universe.fulfillContract(id)
+    override suspend fun getJumpGate(system: String, waypoint: String): JumpGate = throw api.ApiError(404, 404, "the simulator has one system and no gate connections", "sim")
+    override suspend fun jump(ship: String, waypoint: String): JumpResponse = throw api.ApiError(400, 4254, "the simulator has one system", "sim")
     override suspend fun getConstruction(system: String, waypoint: String): Construction = universe.construction(waypoint)
     override suspend fun supplyConstruction(system: String, waypoint: String, ship: String, symbol: TradeSymbol, units: Int): SupplyConstructionResponse = universe.supplyConstruction(waypoint, ship, symbol, units)
 }

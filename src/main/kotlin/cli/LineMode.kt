@@ -100,6 +100,7 @@ class LineMode(
         sim = sim?.copy(agent = agentOption)
 
         if (command == "sim") return runBlocking { simulate(positional.drop(1)) }
+        if (command == "register") return runBlocking { register(positional.drop(1)) }
 
         return runBlocking {
             engine = engineFactory(sim)
@@ -157,6 +158,8 @@ class LineMode(
             "goal" -> return goal(args)
             "chain" -> return chain(args)
             "gate" -> gate(args)
+            "jumpgate" -> jumpgate(args)
+            "jump" -> return jump(args)
             "run" -> return runPlan(args)
             "buy" -> return buy(args)
             "extractions" -> extractions()
@@ -377,6 +380,40 @@ class LineMode(
                 )
             },
         )
+    }
+
+    /** `register SYMBOL FACTION`: a new agent on this account, its token saved under profile/agents; the active agent is unchanged. */
+    private suspend fun register(args: List<String>): Int {
+        val symbol = args.getOrNull(0)?.uppercase() ?: run { err.println("register SYMBOL FACTION"); return 1 }
+        val faction = args.getOrNull(1)?.uppercase()?.let { runCatching { model.faction.FactionSymbol.valueOf(it) }.getOrNull() }
+            ?: run { err.println("register SYMBOL FACTION; factions: ${model.faction.FactionSymbol.entries.joinToString(",")}"); return 1 }
+        return try {
+            val assigned = BootManager.registerOnly(symbol, faction)
+            out.println("registered $assigned with $faction; use --agent $assigned")
+            0
+        } catch (e: BootFailure) {
+            err.println("Registration failed: ${e.message}"); 2
+        }
+    }
+
+    /** A gate's connections and whether it is finished. */
+    private suspend fun jumpgate(args: List<String>) {
+        val snap = engine.snapshot
+        val gate = args.firstOrNull()?.uppercase() ?: snap.waypointsIn(snap.hqSystem ?: return).firstOrNull { it.type == model.system.WaypointType.JUMP_GATE }?.symbol
+            ?: return err.println("No jump gate in ${snap.hqSystem}; name one")
+        val waypoint = snap.waypoints[gate]
+        out.println("$gate: ${if (waypoint?.isUnderConstruction == true) "UNDER CONSTRUCTION (see `gate`)" else "complete"}")
+        val info = engine.verbs().jumpGate(gate)
+        table(listOf("connected gate", "system"), info.connections.map { listOf(it, OrbitalNames.getSectorSystem(it)) })
+    }
+
+    /** `jump SHIP GATE`: through the gate the ship is at, to a connected gate. */
+    private suspend fun jump(args: List<String>): Int {
+        if (args.size < 2) { err.println("jump SHIP DESTINATION_GATE"); return 1 }
+        val ship = engine.verbs().jump(args[0].uppercase(), args[1].uppercase())
+        engine.refreshShips()
+        out.println("${ship.symbol} is at ${ship.nav.waypointSymbol} in ${ship.nav.systemSymbol}; credits ${engine.snapshot.agent?.credits}")
+        return 0
     }
 
     /** The construction site's bill, what we have delivered, what it cost, and what finishing would cost at today's prices. */
@@ -603,6 +640,7 @@ class LineMode(
                     is Event.Delivered -> err.println("${time(engine.clock.now())} ${e.ship} delivered ${e.units} ${e.good} for contract ${e.contract.takeLast(6)}")
                     is Event.ContractFulfilled -> err.println("${time(engine.clock.now())} contract ${e.id.takeLast(6)} fulfilled: +${e.credits}")
                     is Event.Supplied -> err.println("${time(engine.clock.now())} ${e.ship} supplied ${e.units} ${e.good} to ${e.site}; ${e.remaining} to go")
+                    is Event.Jumped -> err.println("${time(engine.clock.now())} ${e.ship} jumped to ${e.waypoint} (antimatter ${e.antimatterCost})")
                     is Event.Charted -> err.println("${time(engine.clock.now())} ${e.ship} charted ${e.waypoint}: +${e.credits}")
                     is Event.Warning -> err.println("${time(engine.clock.now())} warning: ${e.message}")
                     is Event.Failure -> err.println("${time(engine.clock.now())} failure: ${e.message}")
@@ -762,6 +800,9 @@ class LineMode(
               intentions                 what the bot is doing and saving for, and the credits trend
               contracts                  every contract seen with its payment, our cost and the dates
               gate [SITE]                the construction bill, what we delivered and spent, and the cost to finish
+              jumpgate [GATE]            a gate's connections
+              jump SHIP GATE             jump a ship through the gate it is at to a connected gate (buys antimatter)
+              register SYMBOL FACTION    register a new agent on this account (needs profile/accounttoken.secret)
               extractions                every extraction made this reset
               plan                       the plan: which ship runs which behaviour
               assign SHIP BEHAVIOUR [--param value ...]   add or replace an assignment (see 'behaviours')
@@ -788,7 +829,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "extractions",
             "plan", "assign", "unassign", "goal", "chain", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")

@@ -95,6 +95,21 @@ object BootManager {
         boot(token, progress) {}
     }
 
+    /**
+     * Registers [symbol] with [faction] using the account token and saves the agent token in its
+     * folder. Does not boot and does not change the active agent in the profile. Returns the
+     * symbol the server assigned.
+     */
+    suspend fun registerOnly(symbol: String, faction: model.faction.FactionSymbol, accountTokenPath: String = ACCOUNT_TOKEN_FILE): String {
+        ensureRuntimeDirectories()
+        val accountToken = readSecret(accountTokenPath) ?: throw BootFailure("No account token in $accountTokenPath.")
+        if (symbol.length !in 3..14) throw BootFailure("Agent symbol '$symbol' must be 3 to 14 characters.")
+        val (assigned, token) = registerAgent(accountToken, ProfileData(symbol, 160, faction))
+        Layout.saveAgentToken(assigned, token)
+        logger.info { "Registered agent $assigned with $faction; token saved to ${Layout.agentTokenFile(assigned).path}" }
+        return assigned
+    }
+
     /** Identical to [normalStart] while ship automation is disabled; kept so the menu entry works. */
     suspend fun debugStart() {
         normalStart()

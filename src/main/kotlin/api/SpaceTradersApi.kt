@@ -27,6 +27,8 @@ import model.responsebody.BuySellCargoResponse
 import model.responsebody.ChartResponse
 import model.responsebody.ContractResponse
 import model.responsebody.DeliverResponse
+import model.responsebody.JumpGate
+import model.responsebody.JumpResponse
 import model.responsebody.SiphonResponse
 import model.responsebody.ExtractionResponse
 import model.responsebody.NavigationResponse
@@ -151,6 +153,14 @@ class SpaceTradersApi(val client: ApiClient) : GameApi {
 
     override suspend fun fulfillContract(id: String): ContractResponse =
         client.post("my/contracts/$id/fulfill", Priority.ACTION).decode()
+
+    // Jump gates
+
+    override suspend fun getJumpGate(system: String, waypoint: String): JumpGate =
+        client.get("systems/$system/waypoints/$waypoint/jump-gate", Priority.INTERACTIVE).decode()
+
+    override suspend fun jump(ship: String, waypoint: String): JumpResponse =
+        client.post("my/ships/$ship/jump", WaypointSymbol(waypoint), Priority.ACTION).decode()
 
     // Construction
 
