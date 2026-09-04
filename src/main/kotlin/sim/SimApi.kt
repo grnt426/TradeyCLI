@@ -2,6 +2,8 @@ package sim
 
 import api.GameApi
 import model.Agent
+import model.Construction
+import model.SupplyConstructionResponse
 import model.ServerStatus
 import model.Shipyard
 import model.actions.Survey
@@ -54,4 +56,6 @@ class SimApi(val universe: SimUniverse) : GameApi {
     override suspend fun acceptContract(id: String): ContractResponse = universe.acceptContract(id)
     override suspend fun deliverContract(id: String, ship: String, symbol: TradeSymbol, units: Int): DeliverResponse = universe.deliverContract(id, ship, symbol, units)
     override suspend fun fulfillContract(id: String): ContractResponse = universe.fulfillContract(id)
+    override suspend fun getConstruction(system: String, waypoint: String): Construction = universe.construction(waypoint)
+    override suspend fun supplyConstruction(system: String, waypoint: String, ship: String, symbol: TradeSymbol, units: Int): SupplyConstructionResponse = universe.supplyConstruction(waypoint, ship, symbol, units)
 }

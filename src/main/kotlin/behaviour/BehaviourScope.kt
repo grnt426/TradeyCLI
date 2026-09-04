@@ -75,6 +75,33 @@ class BehaviourScope(
         return if (me.fuel.current >= needed) navigateTo(ship, waypoint, mode) else navigateTo(ship, waypoint, FlightMode.DRIFT)
     }
 
+    /**
+     * Goes to [waypoint] on cruise, stopping to refuel at the market that adds the least distance
+     * when the tank cannot cover the leg. Probes fly free. Drifts only when no stop is in reach.
+     */
+    suspend fun travelVia(waypoint: String): Ship {
+        val s = me
+        if (s.nav.waypointSymbol == waypoint || !s.usesFuel) return travelTo(waypoint)
+        val capacity = s.fuel.capacity
+        if (Travel.fuelCost(distanceTo(waypoint), FlightMode.CRUISE) <= capacity) {
+            ensureFuel(Travel.fuelCost(distanceTo(waypoint), FlightMode.CRUISE) + 5)
+            return travelTo(waypoint)
+        }
+        val from = here
+        val to = verbs.waypoint(waypoint)
+        val snap = snapshot()
+        val stop = snap.waypointsIn(from.systemSymbol)
+            .filter { it.hasMarket && it.symbol != from.symbol && it.symbol != to.symbol && snap.markets[it.symbol]?.trades(model.market.TradeSymbol.FUEL) != false }
+            .map { it to (Travel.distance(from.x, from.y, it.x, it.y) to Travel.distance(it.x, it.y, to.x, to.y)) }
+            .filter { (_, legs) -> Travel.fuelCost(legs.first, FlightMode.CRUISE) <= capacity && Travel.fuelCost(legs.second, FlightMode.CRUISE) <= capacity }
+            .minByOrNull { (_, legs) -> legs.first + legs.second }
+        if (stop == null) return travelTo(waypoint)
+        ensureFuel(Travel.fuelCost(stop.second.first, FlightMode.CRUISE) + 5)
+        travelTo(stop.first.symbol)
+        refuel(ship)
+        return travelTo(waypoint)
+    }
+
     /** Refuels when the tank is below what [fuelNeeded] units of travel would take, if a market is here. */
     suspend fun ensureFuel(fuelNeeded: Long) {
         val s = me

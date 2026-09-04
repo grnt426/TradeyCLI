@@ -7,6 +7,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import model.Agent
+import model.Construction
+import storage.SupplyRecord
 import model.Shipyard
 import model.actions.Survey
 import model.contract.Contract
@@ -37,6 +39,7 @@ interface VerbSink {
     suspend fun extraction(record: ExtractionRecord)
     suspend fun statusChanged(ship: String, status: ShipStatus?, params: String)
     suspend fun contractChanged(contract: Contract, cost: Long = 0, accepted: Boolean = false, fulfilled: Boolean = false)
+    suspend fun supplied(record: SupplyRecord)
     fun event(event: Event)
 }
 
@@ -301,6 +304,22 @@ class ShipVerbs(
 
     override suspend fun setChain(ship: String, chain: String?) {
         if (chain == null) world.chainOf.remove(ship) else world.chainOf[ship] = chain
+    }
+
+    override suspend fun construction(waypoint: String): Construction =
+        call { api.getConstruction(OrbitalNames.getSectorSystem(waypoint), waypoint) }
+
+    override suspend fun supplyConstruction(waypoint: String, ship: String, good: TradeSymbol, units: Int): Construction {
+        var current = settled(ship)
+        if (current.nav.waypointSymbol != waypoint) throw VerbFailure.NotAtMarket(ship, waypoint)
+        if (!current.isDocked) current = dock(ship)
+        val have = current.unitsOf(good)
+        if (have == 0 || units <= 0) return construction(waypoint)
+        val response = call { api.supplyConstruction(OrbitalNames.getSectorSystem(waypoint), waypoint, ship, good, minOf(units, have)) }
+        update(current.copy(cargo = response.cargo))
+        sink.supplied(SupplyRecord(ship, waypoint, good, minOf(units, have), clock.now()))
+        sink.event(Event.Supplied(ship, waypoint, good.name, minOf(units, have), response.construction.remaining(good)))
+        return response.construction
     }
 
     override fun contracts(): List<Contract> = world.contracts.values.sortedBy { it.id }

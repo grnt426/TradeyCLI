@@ -47,6 +47,8 @@ class TraceSink : VerbSink {
     override suspend fun statusChanged(ship: String, status: ShipStatus?, params: String) {
         if (status != null) phases += ship to status
     }
+    override suspend fun supplied(record: storage.SupplyRecord) { supplies += record }
+    val supplies = mutableListOf<storage.SupplyRecord>()
     override suspend fun contractChanged(contract: model.contract.Contract, cost: Long, accepted: Boolean, fulfilled: Boolean) {
         contracts[contract.id] = contract
     }

@@ -51,6 +51,8 @@ data class ContractRecord(val contract: Contract, val cost: Long, val acceptedAt
     val profit: Long get() = payment - cost
 }
 
+data class SupplyRecord(val ship: String, val site: String, val good: TradeSymbol, val units: Int, val at: Instant)
+
 data class Checkpoint(val id: String, val behaviour: String, val entity: String?, val phase: String, val params: String, val updatedAt: Instant, val detail: String = "")
 
 data class ExtractionRecord(
@@ -297,6 +299,22 @@ class AgentStore private constructor(
                 fulfilledAt = row[ContractTable.fulfilledAt]?.let { Instant.ofEpochMilli(it) },
                 seenAt = Instant.ofEpochMilli(row[ContractTable.seenAt]),
             )
+        }
+    }
+
+    suspend fun putSupply(record: SupplyRecord) = tx {
+        SupplyTable.insert {
+            it[shipSymbol] = record.ship
+            it[waypointSymbol] = record.site
+            it[tradeSymbol] = record.good.name
+            it[units] = record.units
+            it[at] = record.at.toEpochMilli()
+        }
+    }
+
+    suspend fun listSupplies(site: String): List<SupplyRecord> = tx {
+        SupplyTable.selectAll().where { SupplyTable.waypointSymbol eq site }.orderBy(SupplyTable.at, SortOrder.ASC).map { row ->
+            SupplyRecord(row[SupplyTable.shipSymbol], row[SupplyTable.waypointSymbol], TradeSymbol.valueOf(row[SupplyTable.tradeSymbol]), row[SupplyTable.units], Instant.ofEpochMilli(row[SupplyTable.at]))
         }
     }
 

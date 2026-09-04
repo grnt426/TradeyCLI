@@ -1,6 +1,8 @@
 package api
 
 import model.Agent
+import model.Construction
+import model.SupplyConstructionResponse
 import model.ServerStatus
 import model.Shipyard
 import model.actions.Survey
@@ -60,4 +62,7 @@ interface GameApi {
     suspend fun acceptContract(id: String): ContractResponse
     suspend fun deliverContract(id: String, ship: String, symbol: TradeSymbol, units: Int): DeliverResponse
     suspend fun fulfillContract(id: String): ContractResponse
+
+    suspend fun getConstruction(system: String, waypoint: String): Construction
+    suspend fun supplyConstruction(system: String, waypoint: String, ship: String, symbol: TradeSymbol, units: Int): SupplyConstructionResponse
 }

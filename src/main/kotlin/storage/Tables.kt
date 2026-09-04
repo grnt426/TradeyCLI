@@ -92,6 +92,17 @@ object ContractTable : Table("contracts") {
     override val primaryKey = PrimaryKey(id)
 }
 
+/** Every delivery to a construction site: with the gate-tagged purchases, the real cost curve. */
+object SupplyTable : Table("construction_supplies") {
+    val id = long("id").autoIncrement()
+    val shipSymbol = varchar("ship_symbol", 64)
+    val waypointSymbol = varchar("waypoint_symbol", 64).index()
+    val tradeSymbol = varchar("trade_symbol", 64)
+    val units = integer("units")
+    val at = long("at").index()
+    override val primaryKey = PrimaryKey(id)
+}
+
 /** The bank after every change we caused: the credits graph and its trend. */
 object CreditsTable : Table("credits_history") {
     val id = long("id").autoIncrement()
@@ -127,5 +138,5 @@ object RequestLogTable : Table("request_log") {
 
 val ALL_TABLES = listOf(
     MetaTable, AgentTable, ShipTable, SystemTable, WaypointTable, MarketTable, ShipyardTable,
-    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, RequestLogTable,
+    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable,
 )

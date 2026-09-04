@@ -59,7 +59,7 @@ class FakeServer(val universe: SimUniverse) {
                 path.startsWith("/my/ships/") -> ship(path.removePrefix("/my/ships/"), method, body)
                 path == "/my/contracts" -> paged(universe.listContracts(), request)
                 path.startsWith("/my/contracts/") -> contract(path.removePrefix("/my/contracts/"), body)
-                path.startsWith("/systems/") -> systems(path.removePrefix("/systems/"), request)
+                path.startsWith("/systems/") -> systems(path.removePrefix("/systems/"), request, body)
                 else -> respond("""{"error":{"code":404,"message":"no route $method $path"}}""", HttpStatusCode.NotFound, jsonHeaders)
             }
         } catch (e: ApiError) {
@@ -106,13 +106,15 @@ class FakeServer(val universe: SimUniverse) {
         }
     }
 
-    private fun MockRequestHandleScope.systems(rest: String, request: HttpRequestData): HttpResponseData {
+    private fun MockRequestHandleScope.systems(rest: String, request: HttpRequestData, body: JsonObject? = null): HttpResponseData {
         val parts = rest.split('/')
         return when {
             parts.size == 1 -> data(universe.system(parts[0]))
             parts.size == 2 && parts[1] == "waypoints" -> paged(universe.listWaypoints(parts[0]), request)
             parts.size == 3 && parts[1] == "waypoints" -> data(universe.listWaypoints(parts[0]).first { it.symbol == parts[2] })
             parts.size == 4 && parts[3] == "market" -> data(universe.market(parts[2]))
+            parts.size == 4 && parts[3] == "construction" -> data(universe.construction(parts[2]))
+            parts.size == 5 && parts[3] == "construction" && parts[4] == "supply" -> data(universe.supplyConstruction(parts[2], body!!.str("shipSymbol"), enumValueOf<TradeSymbol>(body.str("tradeSymbol")), body.str("units").toInt()), HttpStatusCode.Created)
             parts.size == 4 && parts[3] == "shipyard" -> data(universe.shipyard(parts[2]))
             else -> respond("""{"error":{"code":404,"message":"no system route $rest"}}""", HttpStatusCode.NotFound, jsonHeaders)
         }

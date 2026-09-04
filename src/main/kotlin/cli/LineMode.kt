@@ -156,6 +156,7 @@ class LineMode(
             "unassign" -> return unassign(args)
             "goal" -> return goal(args)
             "chain" -> return chain(args)
+            "gate" -> gate(args)
             "run" -> return runPlan(args)
             "buy" -> return buy(args)
             "extractions" -> extractions()
@@ -378,6 +379,34 @@ class LineMode(
         )
     }
 
+    /** The construction site's bill, what we have delivered, what it cost, and what finishing would cost at today's prices. */
+    private suspend fun gate(args: List<String>) {
+        val store = engine.store ?: return err.println("No store open")
+        val snap = engine.snapshot
+        val site = args.firstOrNull()?.uppercase() ?: snap.waypointsIn(snap.hqSystem ?: return).firstOrNull { it.isUnderConstruction }?.symbol
+            ?: return err.println("Nothing under construction in ${snap.hqSystem}; name a waypoint")
+        val construction = engine.verbs().construction(site)
+        val supplies = store.listSupplies(site)
+        val purchases = store.listChainTransactions("gate:$site").filter { it.type == model.market.TransactionType.PURCHASE && it.tradeSymbol != model.market.TradeSymbol.FUEL }
+        val fuel = store.listChainTransactions("gate:$site").filter { it.tradeSymbol == model.market.TradeSymbol.FUEL }.sumOf { it.totalPrice.toLong() }
+        out.println("$site: ${if (construction.isComplete) "COMPLETE" else "under construction"}; fuel spent on the haul ${Intentions.format(fuel)}")
+        table(
+            listOf("material", "required", "fulfilled", "we delivered", "we bought", "spent", "avg", "cheapest now", "to finish at that price"),
+            construction.materials.map { m ->
+                val ours = supplies.filter { it.good == m.tradeSymbol }.sumOf { it.units }
+                val bought = purchases.filter { it.tradeSymbol == m.tradeSymbol }
+                val spent = bought.sumOf { it.totalPrice.toLong() }
+                val units = bought.sumOf { it.units }
+                val cheapest = snap.marketsIn(snap.hqSystem ?: "").mapNotNull { it.good(m.tradeSymbol)?.purchasePrice }.minOrNull()
+                listOf(
+                    m.tradeSymbol.name, m.required.toString(), m.fulfilled.toString(), ours.toString(), units.toString(), Intentions.format(spent),
+                    if (units > 0) (spent / units).toString() else "-", cheapest?.toString() ?: "-",
+                    cheapest?.let { Intentions.format((m.required - m.fulfilled) * it) } ?: "-",
+                )
+            },
+        )
+    }
+
     private suspend fun extractions() {
         val store = engine.store ?: return err.println("No store open")
         val list = store.listExtractions()
@@ -573,6 +602,7 @@ class LineMode(
                     is Event.ContractOffered -> err.println("${time(engine.clock.now())} contract ${e.id.takeLast(6)} offered: ${e.type} paying ${e.payment}")
                     is Event.Delivered -> err.println("${time(engine.clock.now())} ${e.ship} delivered ${e.units} ${e.good} for contract ${e.contract.takeLast(6)}")
                     is Event.ContractFulfilled -> err.println("${time(engine.clock.now())} contract ${e.id.takeLast(6)} fulfilled: +${e.credits}")
+                    is Event.Supplied -> err.println("${time(engine.clock.now())} ${e.ship} supplied ${e.units} ${e.good} to ${e.site}; ${e.remaining} to go")
                     is Event.Charted -> err.println("${time(engine.clock.now())} ${e.ship} charted ${e.waypoint}: +${e.credits}")
                     is Event.Warning -> err.println("${time(engine.clock.now())} warning: ${e.message}")
                     is Event.Failure -> err.println("${time(engine.clock.now())} failure: ${e.message}")
@@ -731,6 +761,7 @@ class LineMode(
               trades [--ship S] [--all]  buy-here-sell-there routes ranked by credits per hour
               intentions                 what the bot is doing and saving for, and the credits trend
               contracts                  every contract seen with its payment, our cost and the dates
+              gate [SITE]                the construction bill, what we delivered and spent, and the cost to finish
               extractions                every extraction made this reset
               plan                       the plan: which ship runs which behaviour
               assign SHIP BEHAVIOUR [--param value ...]   add or replace an assignment (see 'behaviours')
@@ -757,7 +788,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "extractions",
             "plan", "assign", "unassign", "goal", "chain", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")

@@ -42,6 +42,7 @@ import model.system.System
 import model.system.Waypoint
 import storage.AgentStore
 import storage.ExtractionRecord
+import storage.SupplyRecord
 import storage.Layout
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -352,6 +353,10 @@ class Engine(
         override suspend fun extraction(record: ExtractionRecord) {
             store?.putExtraction(record)
             world.extractions = (world.extractions + record).takeLast(2000)
+        }
+
+        override suspend fun supplied(record: SupplyRecord) {
+            store?.putSupply(record)
         }
 
         override suspend fun contractChanged(contract: Contract, cost: Long, accepted: Boolean, fulfilled: Boolean) {

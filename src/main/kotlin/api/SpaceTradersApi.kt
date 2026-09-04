@@ -4,6 +4,9 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import model.Agent
+import model.Construction
+import model.SupplyConstructionResponse
+import model.requestbody.SupplyConstructionRequest
 import model.ApiJson
 import model.ServerStatus
 import model.Shipyard
@@ -148,6 +151,14 @@ class SpaceTradersApi(val client: ApiClient) : GameApi {
 
     override suspend fun fulfillContract(id: String): ContractResponse =
         client.post("my/contracts/$id/fulfill", Priority.ACTION).decode()
+
+    // Construction
+
+    override suspend fun getConstruction(system: String, waypoint: String): Construction =
+        client.get("systems/$system/waypoints/$waypoint/construction", Priority.ACTION).decode()
+
+    override suspend fun supplyConstruction(system: String, waypoint: String, ship: String, symbol: TradeSymbol, units: Int): SupplyConstructionResponse =
+        client.post("systems/$system/waypoints/$waypoint/construction/supply", SupplyConstructionRequest(ship, symbol.name, units), Priority.ACTION).decode()
 }
 
 inline fun <reified T> JsonElement.decode(): T = ApiJson.decodeFromJsonElement(this)

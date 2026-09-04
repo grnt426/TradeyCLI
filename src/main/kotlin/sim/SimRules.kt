@@ -1,5 +1,6 @@
 package sim
 
+import model.market.TradeSymbol
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -69,6 +70,9 @@ data class SimRules(
     /** Contracts: pay this multiple of the goods' sale value at the destination (the live offer paid 2.6x), with this long to deliver. */
     val contractPayMultiple: Double = 2.6,
     val contractDeadlineHours: Long = 24 * 7,
+    /** What a waypoint under construction needs: the home gate's bill as read live on 2026-09-04. */
+    val constructionBill: Map<TradeSymbol, Long> = mapOf(TradeSymbol.FAB_MATS to 1600L, TradeSymbol.ADVANCED_CIRCUITRY to 400L),
+
     /** Credits for charting a waypoint. Guess; nothing here is uncharted to measure. */
     val chartReward: Long = 5_000,
 

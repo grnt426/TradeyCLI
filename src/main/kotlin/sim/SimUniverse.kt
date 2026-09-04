@@ -11,6 +11,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import model.Agent
+import model.Construction
+import model.ConstructionMaterial
+import model.SupplyConstructionResponse
 import model.Location
 import model.ServerResets
 import model.ServerStatus
@@ -100,6 +103,8 @@ class SimUniverse(
 
     private val surveys = mutableMapOf<String, SimSurvey>()
     private val contractBook = mutableMapOf<String, Contract>()
+    private val sites: MutableMap<String, Construction> = seed.waypoints.filter { it.isUnderConstruction }
+        .associate { it.symbol to Construction(it.symbol, rules.constructionBill.map { (g, n) -> ConstructionMaterial(g, n, 0) }, false) }.toMutableMap()
     private var contractsIssued = 0
     private val asteroids = mutableMapOf<String, AsteroidState>()
     private val hq: Waypoint? = waypoints[seed.agent.headquarters]
@@ -408,6 +413,24 @@ class SimUniverse(
         contractBook[id] = updated
         agent = agent.copy(credits = agent.credits + c.terms.payment.onFulfilled)
         ContractResponse(updated, agent)
+    }
+
+    fun construction(waypoint: String): Construction = counted { sites[waypoint] ?: throw error(404, 404, "$waypoint is not under construction") }
+
+    fun supplyConstruction(waypoint: String, symbol: String, good: TradeSymbol, units: Int): SupplyConstructionResponse = counted {
+        val site = sites[waypoint] ?: throw error(400, 4802, "$waypoint is not under construction")
+        val ship = settle(symbol)
+        if (ship.nav.waypointSymbol != waypoint) throw error(400, 4802, "$symbol is not at $waypoint")
+        val material = site.materials.firstOrNull { it.tradeSymbol == good } ?: throw error(400, 4800, "$good is not required")
+        if (material.fulfilled >= material.required) throw error(400, 4801, "$good is already fulfilled")
+        if (units <= 0 || ship.unitsOf(good) < units) throw error(400, 4219, "$symbol has ${ship.unitsOf(good)} $good")
+        val taken = minOf(units.toLong(), material.required - material.fulfilled).toInt()
+        val materials = site.materials.map { if (it.tradeSymbol == good) it.copy(fulfilled = it.fulfilled + taken) else it }
+        val updated = Construction(waypoint, materials, materials.all { it.fulfilled >= it.required })
+        sites[waypoint] = updated
+        if (updated.isComplete) waypoints[waypoint]?.let { waypoints[waypoint] = it.copy(isUnderConstruction = false) }
+        val after = put(ship.copy(cargo = ship.cargo.adjusted(good, -taken)))
+        SupplyConstructionResponse(updated, after.cargo)
     }
 
     fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse = counted {

@@ -2,6 +2,7 @@ package engine
 
 import api.ApiError
 import model.Agent
+import model.Construction
 import model.actions.Survey
 import model.contract.Contract
 import model.market.Market
@@ -77,6 +78,12 @@ interface Verbs {
 
     /** Tags [ship]'s transactions with a chain id from now on; null clears it. */
     suspend fun setChain(ship: String, chain: String?)
+
+    /** What a construction site still needs; one request. */
+    suspend fun construction(waypoint: String): Construction
+
+    /** Hands [units] of [good] from [ship]'s hold to the site. Docks first. */
+    suspend fun supplyConstruction(waypoint: String, ship: String, good: TradeSymbol, units: Int): Construction
 
     fun contracts(): List<Contract>
     suspend fun negotiateContract(ship: String): Contract

@@ -150,4 +150,5 @@ sealed interface Event {
     data class ContractOffered(val id: String, val type: String, val payment: Long) : Event
     data class Delivered(val ship: String, val contract: String, val good: String, val units: Int) : Event
     data class ContractFulfilled(val id: String, val credits: Long) : Event
+    data class Supplied(val ship: String, val site: String, val good: String, val units: Int, val remaining: Long) : Event
 }
