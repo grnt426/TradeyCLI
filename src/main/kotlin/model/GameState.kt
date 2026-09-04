@@ -144,7 +144,7 @@ object GameState {
 
     private inline fun <reified T> fetchSystemsForWaypointsWithTraits(
         systemSymbol: String, traitType: WaypointTraitSymbol,
-        endpoint: String, callback: KSuspendFunction1<T, Unit>
+        endpoint: String, noinline callback: KSuspendFunction1<T, Unit>
     ) {
         waypoints.values
             .filter { w ->
@@ -217,7 +217,7 @@ object GameState {
 
     private inline fun <reified T> fetchWaypointByType(
         systemSymbol: String, waypointSymbol: String,
-        endpoint: String, callback: KSuspendFunction1<T, Unit>
+        endpoint: String, noinline callback: KSuspendFunction1<T, Unit>
     ) {
         SpaceTradersClient.enqueueRequest<T>(callback, ::ignoredFailback, request {
             url(api("systems/$systemSymbol/waypoints/$waypointSymbol/$endpoint"))

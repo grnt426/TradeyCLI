@@ -62,7 +62,7 @@ suspend fun main() {
             with(appState.screen) {
                 render()
             }
-        }.runUntilKeyPressed(Keys.ESC) {
+        }.runUntilKeyPressed(Keys.Escape) {
             val runScope = this
             onInputEntered {
                 with(appState.screen) {

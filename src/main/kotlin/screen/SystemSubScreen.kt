@@ -112,15 +112,15 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
         if (parent.isActiveSubScreen(self)) {
             runScope.setInput("")
             when (key) {
-                Keys.PLUS -> zoom -= Point(0.5, 0.5)
-                Keys.MINUS -> zoom += Point(0.5, 0.5)
-                Keys.LEFT -> translate -= Point(0.5, 0.5)
-                Keys.RIGHT -> translate += Point(0.5, 0.5)
-                Keys.UP -> translate -= Point(0.0, 1.0)
-                Keys.DOWN -> translate += Point(0.0, 1.0)
-                Keys.PAGE_UP -> selectIndex = max(0, selectIndex - 1)
-                Keys.PAGE_DOWN -> selectIndex = min(objectsOnScreen, selectIndex + 1)
-                Keys.TICK -> {
+                Keys.Plus -> zoom -= Point(0.5, 0.5)
+                Keys.Minus -> zoom += Point(0.5, 0.5)
+                Keys.Left -> translate -= Point(0.5, 0.5)
+                Keys.Right -> translate += Point(0.5, 0.5)
+                Keys.Up -> translate -= Point(0.0, 1.0)
+                Keys.Down -> translate += Point(0.0, 1.0)
+                Keys.PageUp -> selectIndex = max(0, selectIndex - 1)
+                Keys.PageDown -> selectIndex = min(objectsOnScreen, selectIndex + 1)
+                Keys.Tick -> {
                     return SelectedScreen.CONSOLE
                 }
             }

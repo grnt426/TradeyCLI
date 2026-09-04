@@ -1,12 +1,12 @@
 package script.repo
 
 import BaseTest
+import awaitState
 import createShip
 import data.SavedScripts
 import io.ktor.client.*
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.mockkObject
 import kotlinx.coroutines.runBlocking
 import model.actions.Extraction
 import model.actions.Yield
@@ -17,13 +17,11 @@ import model.ship.Ship
 import model.ship.components.Cargo
 import model.ship.components.Inventory
 import model.ship.jettisonCargo
-import notification.NotificationManager
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.deleteAll
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.junit.jupiter.api.TestInstance
-import screen.TextAnimationContainer
 import script.repo.mining.BasicMiningScript
 import script.repo.mining.BasicMiningScript.MiningStates.*
 import java.lang.Thread.sleep
@@ -43,8 +41,6 @@ class BasicMiningScriptTest : BaseTest() {
     @BeforeTest
     fun beforeTest() {
         transaction { SavedScripts.deleteAll() }
-        mockkObject(TextAnimationContainer)
-        mockkObject(NotificationManager)
         every { jettisonCargo(any(), any<Inventory>()) } returns Unit
         ship = createShip()
         bms = BasicMiningScript(ship)
@@ -58,7 +54,7 @@ class BasicMiningScriptTest : BaseTest() {
     fun `start in mining but cargo full changes to full await pickup`() = runBlocking {
         ship.cargo.units = ship.cargo.capacity
         bms.execute()
-        sleep(5)
+        awaitState(bms, FULL_AWAITING_PICKUP)
         assertEquals(FULL_AWAITING_PICKUP, bms.currentState)
         transaction {
             val res = SavedScripts.selectAll().where(SavedScripts.id eq bms.uuid).single()
@@ -74,14 +70,14 @@ class BasicMiningScriptTest : BaseTest() {
         ship.cooldown.remainingSeconds = 10
         ship.cooldown.expiration = Instant.now().plusSeconds(10)
         bms.execute()
-        sleep(5)
+        awaitState(bms, MINING_COOLDOWN)
         assertEquals(MINING_COOLDOWN, bms.currentState)
     }
 
     @Test
     fun `start in mining and changes to await mining response`() = runBlocking {
         bms.execute()
-        sleep(100)
+        awaitState(bms, AWAIT_MINING_RESPONSE)
         assertEquals(AWAIT_MINING_RESPONSE, bms.currentState)
     }
 
@@ -127,8 +123,9 @@ class BasicMiningScriptTest : BaseTest() {
     fun `keep valuables jettisons nothing when cargo empty and changes to mining cooldown`() = runBlocking {
         bms.currentState = KEEP_VALUABLES
         ship.cooldown.remainingSeconds = 10
+        ship.cooldown.expiration = Instant.now().plusSeconds(10)
         bms.execute()
-        sleep(5)
+        awaitState(bms, MINING_COOLDOWN)
         assertEquals(MINING_COOLDOWN, bms.currentState)
     }
 
@@ -136,10 +133,11 @@ class BasicMiningScriptTest : BaseTest() {
     fun `keep valuables jettisons 1 ice water to empty cargo and changes to mining cooldown`() = runBlocking {
         bms.currentState = KEEP_VALUABLES
         ship.cooldown.remainingSeconds = 10
+        ship.cooldown.expiration = Instant.now().plusSeconds(10)
         ship.cargo.units = 1
         ship.cargo.inventory.add(Inventory(TradeSymbol.ICE_WATER, "ice", "ice", 1))
         bms.execute()
-        sleep(5)
+        awaitState(bms, MINING_COOLDOWN)
         assertEquals(0, ship.cargo.units)
         assertEquals(0, ship.cargo.inventory.size)
         assertEquals(MINING_COOLDOWN, bms.currentState)
@@ -149,13 +147,14 @@ class BasicMiningScriptTest : BaseTest() {
     fun `keep valuables jettisons 1 ice water to cargo of 1 iron ore and changes to mining cooldown`() = runBlocking {
         bms.currentState = KEEP_VALUABLES
         ship.cooldown.remainingSeconds = 10
+        ship.cooldown.expiration = Instant.now().plusSeconds(10)
         ship.cargo.units = 2
         with(ship.cargo.inventory) {
             add(Inventory(TradeSymbol.ICE_WATER, "ice", "ice", 1))
             add(Inventory(TradeSymbol.IRON_ORE, "iron_ore", "iron ore", 1))
         }
         bms.execute()
-        sleep(5)
+        awaitState(bms, MINING_COOLDOWN)
         assertEquals(1, ship.cargo.units)
         assertEquals(1, ship.cargo.inventory.size)
         assertEquals(TradeSymbol.IRON_ORE, ship.cargo.inventory[0].symbol)
@@ -167,7 +166,7 @@ class BasicMiningScriptTest : BaseTest() {
         bms.currentState = KEEP_VALUABLES
         ship.cargo.units = ship.cargo.capacity
         bms.execute()
-        sleep(5)
+        awaitState(bms, FULL_AWAITING_PICKUP)
         assertEquals(FULL_AWAITING_PICKUP, bms.currentState)
     }
 
@@ -180,8 +179,9 @@ class BasicMiningScriptTest : BaseTest() {
         bms.currentState = FULL_AWAITING_PICKUP
         ship.cargo.units = 0
         ship.cooldown.remainingSeconds = 60
+        ship.cooldown.expiration = Instant.now().plusSeconds(60)
         bms.execute()
-        sleep(5)
+        awaitState(bms, MINING_COOLDOWN)
         assertEquals(MINING_COOLDOWN, bms.currentState)
     }
 
@@ -191,11 +191,12 @@ class BasicMiningScriptTest : BaseTest() {
             bms.currentState = FULL_AWAITING_PICKUP
             ship.cargo.units = ship.cargo.capacity
             ship.cooldown.remainingSeconds = 60
+            ship.cooldown.expiration = Instant.now().plusSeconds(60)
             bms.execute()
             sleep(50)
             assertEquals(FULL_AWAITING_PICKUP, bms.currentState)
             ship.cargo.units -= 1
-            sleep(50)
+            awaitState(bms, MINING_COOLDOWN)
             assertEquals(MINING_COOLDOWN, bms.currentState)
         }
 

@@ -20,6 +20,7 @@ abstract class BaseTest {
         mockkObject(NotificationManager)
         every { NotificationManager.createNotification(any(), any()) } returns Unit
         every { NotificationManager.errorNotification(any(), any()) } returns Unit
+        every { NotificationManager.errorNotification(any()) } returns Unit
         mockkStatic(::toOrbit)
         every { toOrbit(any(), any(), any()) } returns true
         mockkStatic(::toDock)

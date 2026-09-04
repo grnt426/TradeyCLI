@@ -123,8 +123,8 @@ object SpaceTradersClient{
     }
 
     inline fun <reified T> enqueueRequest(
-        callback: KSuspendFunction1<T, Unit>,
-        failback: KSuspendFunction2<HttpResponse?, Exception?, Unit>,
+        noinline callback: KSuspendFunction1<T, Unit>,
+        noinline failback: KSuspendFunction2<HttpResponse?, Exception?, Unit>,
         request: HttpRequestBuilder
     ) {
         pendingRequestJobs.add {

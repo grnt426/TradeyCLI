@@ -1,30 +1,33 @@
 plugins {
-    kotlin("jvm") version "1.9.0"
-    kotlin("plugin.serialization") version "1.9.21"
+    kotlin("jvm") version "2.4.10"
+    kotlin("plugin.serialization") version "2.4.10"
     application
 }
 
 group = "bot.kurtz"
 version = "1.0-SNAPSHOT"
 
-val ktorVersion: String by project
-val exposedVersion: String by project
+val ktorVersion = project.property("ktorVersion") as String
+val exposedVersion = project.property("exposedVersion") as String
+val coroutinesVersion = "1.11.0"
+val log4jVersion = "2.26.1"
 
 repositories {
     mavenCentral()
-    maven {
-        url = uri("https://s01.oss.sonatype.org/content/repositories/snapshots/")
-    }
 }
 
 dependencies {
-    implementation("com.varabyte.kotter:kotter-jvm:1.1.2-SNAPSHOT")
+    // Terminal UI
+    implementation("com.varabyte.kotter:kotter-jvm:1.4.0")
+
+    // HTTP + JSON
     implementation("io.ktor:ktor-client-core:$ktorVersion")
     implementation("io.ktor:ktor-client-cio:$ktorVersion")
     implementation("io.ktor:ktor-client-auth:$ktorVersion")
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
 
     // Exposed libs for Sqlite
     implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
@@ -39,13 +42,15 @@ dependencies {
     // Logging
     implementation("io.github.oshai:kotlin-logging-jvm:6.0.3")
     implementation("org.slf4j:slf4j-api:2.0.12")
-    implementation("org.apache.logging.log4j:log4j-slf4j2-impl:2.23.1")
-    implementation("org.apache.logging.log4j:log4j-core:2.19.0")
+    implementation("org.apache.logging.log4j:log4j-slf4j2-impl:$log4jVersion")
+    implementation("org.apache.logging.log4j:log4j-core:$log4jVersion")
 
     // Testing
     testImplementation(kotlin("test"))
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0-RC2")
-    testImplementation("io.mockk:mockk:1.13.9")
+    testImplementation(platform("org.junit:junit-bom:6.1.3"))
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
+    testImplementation("io.mockk:mockk:1.14.11")
 }
 
 tasks.test {

@@ -66,7 +66,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
         var selectedWaypoint: Waypoint? = null
         var selectedMarket: Market? = null
 
-        grid(Cols.uniform(COLUMNS, GameState.profData.termWidth / COLUMNS), characters = GridCharacters.CURVED) {
+        grid(Cols.uniform(COLUMNS, GameState.profData.termWidth / COLUMNS), characters = GridCharacters.Curved) {
             val visibleWaypoints = mutableListOf<Waypoint>()
             selectIndex = min(selectIndex, objectsOnScreen)
             cell(colSpan = 3, rowSpan = 4) {
@@ -478,7 +478,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
             logger.info { "Got Key Press" }
             println("Pressed: $key ${key.hashCode()}")
             when (key) {
-                Keys.DIGIT_1 -> {
+                Keys.Digit1 -> {
                     val inputLen = (runScope.getInput()?.length ?: 0)
                     println("Input len $inputLen")
                     if (inputLen <= 1) {
@@ -487,7 +487,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                     }
                 }
 
-                Keys.DIGIT_2 -> {
+                Keys.Digit2 -> {
                     val inputLen = (runScope.getInput()?.length ?: 0)
                     println("Input len $inputLen")
                     if (inputLen <= 1) {
@@ -496,7 +496,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                     }
                 }
 
-                Keys.DIGIT_3 -> {
+                Keys.Digit3 -> {
                     val inputLen = (runScope.getInput()?.length ?: 0)
                     println("Input len $inputLen")
                     if (inputLen <= 1) {
@@ -505,7 +505,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                     }
                 }
 
-                Keys.DIGIT_4 -> {
+                Keys.Digit4 -> {
                     val inputLen = (runScope.getInput()?.length ?: 0)
                     println("Input len $inputLen")
                     if (inputLen <= 1) {
@@ -515,21 +515,21 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 }
 
                 // Doesn't quite work...
-                Keys.UP -> {
+                Keys.Up -> {
                     if (commandHistory.size > 0 && commandHistoryIndex < commandHistory.size) {
                         runScope.setInput(commandHistory[commandHistoryIndex])
                         commandHistoryIndex = min(commandHistory.size - 1, commandHistoryIndex++)
                     }
                 }
 
-                Keys.DOWN -> {
+                Keys.Down -> {
                     if (commandHistory.size > 0 && commandHistoryIndex >= 0) {
                         runScope.setInput(commandHistory[commandHistoryIndex])
                         commandHistoryIndex = max(0, commandHistoryIndex--)
                     }
                 }
 
-                Keys.TAB -> {
+                Keys.Tab -> {
                     if (runningRenderContext.selectedQuad != QuadSelect.NONE) {
                         runningRenderContext.selectedQuad = QuadSelect.NONE
                     }

@@ -2,6 +2,7 @@ package script.repo
 
 import BaseTest
 import createMarket
+import awaitState
 import createShip
 import data.SavedScripts
 import kotlinx.coroutines.runBlocking
@@ -51,7 +52,7 @@ class PriceFetcherScriptTest : BaseTest() {
     fun `test init transits to get price`() = runBlocking {
         toOrbit(ship)
         script.execute()
-        sleep(5)
+        awaitState(script, GET_PRICE)
         assertEquals(GET_PRICE, script.currentState)
     }
 
@@ -69,7 +70,7 @@ class PriceFetcherScriptTest : BaseTest() {
         ship.nav.route.arrival = Instant.now().plusSeconds(30_000)
         script.currentState = AWAIT_ASSIGNMENT
         script.execute()
-        sleep(5)
+        awaitState(script, NAV)
         assertEquals(NAV, script.currentState)
     }
 
@@ -91,7 +92,7 @@ class PriceFetcherScriptTest : BaseTest() {
         ship.nav.status = ShipNavStatus.IN_TRANSIT
         ship.nav.route.arrival = Instant.now().plusSeconds(60)
         script.execute()
-        sleep(50)
+        awaitState(script, NAV)
         assertEquals(NAV, script.currentState)
     }
 
@@ -99,7 +100,7 @@ class PriceFetcherScriptTest : BaseTest() {
     fun `assigned await nav changes to await assign if market null`() = runBlocking {
         script.currentState = ASSIGNED_AWAIT_NAV
         script.execute()
-        sleep(50)
+        awaitState(script, AWAIT_ASSIGNMENT)
         assertEquals(AWAIT_ASSIGNMENT, script.currentState)
     }
 
@@ -111,7 +112,7 @@ class PriceFetcherScriptTest : BaseTest() {
         script.market = market
 
         script.execute()
-        sleep(5)
+        awaitState(script, DOCK)
 
         assertEquals(DOCK, script.currentState)
     }
@@ -123,7 +124,7 @@ class PriceFetcherScriptTest : BaseTest() {
         ship.nav.status = ShipNavStatus.IN_ORBIT
 
         script.execute()
-        sleep(10)
+        awaitState(script, AWAIT_NAV_RESP)
 
         assertEquals(AWAIT_NAV_RESP, script.currentState)
     }
@@ -151,7 +152,7 @@ class PriceFetcherScriptTest : BaseTest() {
         ship.nav.status = ShipNavStatus.DOCKED
 
         script.execute()
-        sleep(20)
+        awaitState(script, GET_PRICE)
 
         assertEquals(GET_PRICE, script.currentState)
     }
@@ -166,7 +167,7 @@ class PriceFetcherScriptTest : BaseTest() {
         sleep(10)
         ship.nav.status = ShipNavStatus.IN_TRANSIT
         ship.nav.route.arrival = Instant.now().plusSeconds(60)
-        sleep(50)
+        awaitState(script, NAV)
 
         assertEquals(NAV, script.currentState)
     }
@@ -199,7 +200,7 @@ class PriceFetcherScriptTest : BaseTest() {
         GameState.markets = mutableMapOf()
 
         script.execute()
-        sleep(50)
+        awaitState(script, ERROR)
 
         assertEquals(ERROR, script.currentState)
     }
@@ -212,7 +213,7 @@ class PriceFetcherScriptTest : BaseTest() {
         script.market = market
 
         script.execute()
-        sleep(5)
+        awaitState(script, GET_PRICE)
 
         assertEquals(GET_PRICE, script.currentState)
     }
@@ -240,7 +241,7 @@ class PriceFetcherScriptTest : BaseTest() {
         script.market = market
 
         script.execute()
-        sleep(25)
+        awaitState(script, DOCK)
 
         assertEquals(DOCK, script.currentState)
     }
@@ -254,7 +255,7 @@ class PriceFetcherScriptTest : BaseTest() {
         script.market = market
 
         script.execute()
-        sleep(5)
+        awaitState(script, DOCK)
 
         assertEquals(DOCK, script.currentState)
     }
@@ -272,7 +273,7 @@ class PriceFetcherScriptTest : BaseTest() {
         script.market = market
 
         script.execute()
-        sleep(5)
+        awaitState(script, NAV)
 
         assertEquals(NAV, script.currentState)
     }
@@ -283,7 +284,7 @@ class PriceFetcherScriptTest : BaseTest() {
         ship.nav.status = ShipNavStatus.IN_ORBIT
 
         script.execute()
-        sleep(5)
+        awaitState(script, AWAIT_ASSIGNMENT)
 
         assertEquals(AWAIT_ASSIGNMENT, script.currentState)
     }

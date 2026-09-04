@@ -79,7 +79,7 @@ class MarketSubScreen(private val parent: Screen) : SubScreen<RunningScreen.Sele
 
         grid(
             Cols.uniform(ConsoleSubScreen.COLUMNS, GameState.profData.termWidth / ConsoleSubScreen.COLUMNS),
-            characters = GridCharacters.CURVED
+            characters = GridCharacters.Curved
         ) {
 
             // row 1
@@ -240,7 +240,7 @@ class MarketSubScreen(private val parent: Screen) : SubScreen<RunningScreen.Sele
     override fun OnKeyPressedScope.onKeyPressed(runScope: RunScope): RunningScreen.SelectedScreen {
         if (parent.isActiveSubScreen(self)) {
             when (key) {
-                Keys.TICK -> {
+                Keys.Tick -> {
                     runScope.setInput("")
                     return RunningScreen.SelectedScreen.CONSOLE
                 }
