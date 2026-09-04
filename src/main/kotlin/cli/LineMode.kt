@@ -101,6 +101,7 @@ class LineMode(
 
         if (command == "sim") return runBlocking { simulate(positional.drop(1)) }
         if (command == "register") return runBlocking { register(positional.drop(1)) }
+        if (command == "catalog") return runBlocking { catalog(positional.drop(1)) }
 
         return runBlocking {
             engine = engineFactory(sim)
@@ -394,6 +395,45 @@ class LineMode(
         } catch (e: BootFailure) {
             err.println("Registration failed: ${e.message}"); 2
         }
+    }
+
+    /**
+     * `catalog [ships|parts]`: every ship listing and every part seen for sale by any agent on this
+     * account, from their stores, no network. What is out there, where, and at what price.
+     */
+    private suspend fun catalog(args: List<String>): Int {
+        val what = args.firstOrNull() ?: "all"
+        val ships = mutableListOf<List<String>>()
+        val parts = mutableListOf<List<String>>()
+        for (symbol in Layout.listAgents()) {
+            val db = Layout.latestDatabase(symbol) ?: continue
+            AgentStore.open(Layout.agentDir(symbol), symbol, Layout.resetDateOf(db)).use { store ->
+                store.listShipyards().forEach { yard ->
+                    yard.ships.forEach { s ->
+                        ships += listOf(
+                            s.type.name.removePrefix("SHIP_"), yard.symbol, s.purchasePrice.toString(), s.frame.symbol.removePrefix("FRAME_"),
+                            s.engine.symbol.removePrefix("ENGINE_"), s.engine.speed.toString(), s.frame.fuelCapacity.toString(),
+                            s.modules.filter { it.symbol.startsWith("MODULE_CARGO_HOLD") }.sumOf { it.capacity }.toString(),
+                            s.modules.joinToString(",") { it.symbol.removePrefix("MODULE_") }, s.mounts.joinToString(",") { it.symbol.name.removePrefix("MOUNT_") }, symbol,
+                        )
+                    }
+                }
+                store.listMarkets().forEach { m ->
+                    (m.imports + m.exports + m.exchange).map { it.symbol }.filter { g -> PART_PREFIXES.any { g.name.startsWith(it) } }.forEach { g ->
+                        val price = m.good(g)
+                        parts += listOf(g.name, m.symbol, m.typeOf(g)?.name ?: "-", price?.purchasePrice?.toString() ?: "-", price?.sellPrice?.toString() ?: "-", price?.supply?.name ?: "-", symbol)
+                    }
+                }
+            }
+        }
+        if (what == "all" || what == "ships") {
+            table(listOf("ship", "shipyard", "price", "frame", "engine", "speed", "fuel", "hold", "modules", "mounts", "seen by"), ships.sortedWith(compareBy({ it[0] }, { it[1] })))
+            if (what == "all") out.println()
+        }
+        if (what == "all" || what == "parts") {
+            table(listOf("part", "market", "type", "buy", "sell", "supply", "seen by"), parts.distinctBy { it[0] + it[1] }.sortedWith(compareBy({ it[0] }, { it[1] })))
+        }
+        return 0
     }
 
     /** A gate's connections and whether it is finished. */
@@ -803,6 +843,7 @@ class LineMode(
               jumpgate [GATE]            a gate's connections
               jump SHIP GATE             jump a ship through the gate it is at to a connected gate (buys antimatter)
               register SYMBOL FACTION    register a new agent on this account (needs profile/accounttoken.secret)
+              catalog [ships|parts]      every ship listing and part for sale seen by any agent on this account; no network
               extractions                every extraction made this reset
               plan                       the plan: which ship runs which behaviour
               assign SHIP BEHAVIOUR [--param value ...]   add or replace an assignment (see 'behaviours')
@@ -829,10 +870,11 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "catalog", "extractions",
             "plan", "assign", "unassign", "goal", "chain", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+        private val PART_PREFIXES = listOf("MOUNT_", "MODULE_", "ENGINE_", "REACTOR_")
 
         /** An engine over the simulator, seeded from the agent's store, with a throwaway store of its own. */
         fun simEngine(options: SimOptions): Engine {

@@ -45,6 +45,10 @@ TradeyCLI shipyards
 TradeyCLI asteroids            # every asteroid ranked by credits per hour for the mining ship
 TradeyCLI trades               # buy-here-sell-there routes ranked by credits per hour
 TradeyCLI intentions           # what the bot is doing and saving for, and the credits trend
+TradeyCLI contracts            # every contract seen: payment, our cost, dates
+TradeyCLI gate                 # the construction bill, what we delivered and spent, cost to finish
+TradeyCLI jumpgate             # a gate's connections; `jump SHIP GATE` takes a ship through
+TradeyCLI catalog              # every ship listing and part for sale seen by any agent (no network)
 TradeyCLI extractions          # everything mined this reset
 TradeyCLI --agent OTHERGUY --refresh ships
 TradeyCLI repl                 # reads commands from stdin until EOF
@@ -67,9 +71,20 @@ TradeyCLI goal fleet LIGHT_SHUTTLE 2 --reserve 150000  # buy shuttles while the 
 TradeyCLI assign TRIPLEHAT-2 expand                    # the probe parks at the yard and buys them the moment the bank allows
 TradeyCLI plan                                         # the plan and its goals, with anything wrong with it
 TradeyCLI unassign TRIPLEHAT-1
+TradeyCLI assign TRIPLEHAT-4 runContract               # negotiate, procure, deliver, fulfil, repeat
+TradeyCLI assign TRIPLEHAT-1 supplyGate --site X1-TH77-I54   # haul the gate's materials, through a fuel stop
+TradeyCLI chain add chips --leg COPPER:X1-TH77-H50/X1-TH77-A3 --ships TRIPLEHAT-3   # worker bees on a chain
+TradeyCLI chain                                        # the chains' ledgers and the damped release policy's verdicts
 TradeyCLI run --for 2h                                 # run the plan, printing every phase, then summarise
 TradeyCLI buy MINING_DRONE X1-TH77-H51                 # a ship of yours must be at the shipyard
 ```
+
+Only one `run` may drive an agent at a time: it holds `profile/agents/<SYMBOL>/run.lock` with a
+heartbeat, a second `run` refuses, and the dashboard's Intentions panel says who is driving.
+
+Several agents on one account: `TradeyCLI register SYMBOL FACTION` (account token in
+`profile/accounttoken.secret`), then `--agent SYMBOL` on any command; each agent has its own plan,
+store and run.
 
 `run` prints one line per phase change, extraction, sale and refuel to stderr and a summary table
 to stdout when the time is up or every behaviour has finished. `ships` shows the current phase of
