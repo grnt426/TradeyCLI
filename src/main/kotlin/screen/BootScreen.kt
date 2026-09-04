@@ -20,7 +20,7 @@ import isActiveScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import model.BootProgress
-import model.GameState
+import app.App
 import model.exceptions.BootFailure
 import startup.BootManager
 
@@ -92,7 +92,7 @@ class BootScreen(var userAskedNew: Boolean = false) : Screen() {
     private fun launchBoot(what: String, action: suspend () -> Unit): AppState {
         logger.info { what }
         BootProgress.reset(what)
-        GameState.engineScope.launch {
+        App.engine.scope.launch {
             try {
                 action()
                 BootProgress.finish()

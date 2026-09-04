@@ -2,6 +2,7 @@ package engine
 
 import api.ApiClient
 import api.ApiError
+import api.GameApi
 import api.RequestPacer
 import api.SpaceTradersApi
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -24,29 +25,35 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import model.Agent
-import model.WaypointTraitSymbol
+import model.Shipyard
+import model.actions.Survey
 import model.market.Market
+import model.market.MarketTransaction
+import model.ship.Ship
 import model.system.OrbitalNames
 import model.system.System
 import model.system.Waypoint
 import storage.AgentStore
+import storage.ExtractionRecord
 import storage.Layout
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 private val logger = KotlinLogging.logger {}
 
 /**
- * Owns the game state. Every mutation happens on one engine thread; API calls suspend on that
- * thread rather than block it, so work interleaves without locks. Readers take [state]; the UI
- * and line mode never touch [world] directly.
+ * Owns the game state. Bulk loads happen on one engine thread; ship verbs run on [scope] and
+ * write the world through [ShipVerbs], one behaviour per ship, so they never race each other.
+ * Readers take [state]; the UI and line mode never touch [world] directly.
  *
- * Nothing here starts ship automation; that arrives with the scripting overhaul.
+ * Ship automation lives in `plan.Supervisor`, which drives [verbs].
  */
 class Engine(
     val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("engine")),
     val pacer: RequestPacer = RequestPacer(scope),
-    private val apiFactory: (token: String) -> SpaceTradersApi = { token -> SpaceTradersApi(ApiClient(token, pacer)) },
+    val clock: GameClock = SystemClock,
+    private val apiFactory: (token: String) -> GameApi = { token -> SpaceTradersApi(ApiClient(token, pacer)) },
     private val storeFactory: (agentSymbol: String, resetDate: String) -> AgentStore =
         { symbol, reset -> AgentStore.open(Layout.agentDir(symbol), symbol, reset) },
 ) {
@@ -55,20 +62,27 @@ class Engine(
 
     val world = World()
 
-    private var version = 0L
+    private val version = AtomicLong()
     private val _state = MutableStateFlow(world.snapshot(0))
     val state: StateFlow<Snapshot> = _state.asStateFlow()
 
-    private val _events = MutableSharedFlow<Event>(extraBufferCapacity = 256)
+    private val _events = MutableSharedFlow<Event>(extraBufferCapacity = 1024)
     val events: SharedFlow<Event> = _events.asSharedFlow()
 
     @Volatile
-    var api: SpaceTradersApi? = null
+    var api: GameApi? = null
         private set
 
     @Volatile
     var store: AgentStore? = null
         private set
+
+    @Volatile
+    var verbs: Verbs? = null
+        private set
+
+    /** The HTTP client's counters, when the API is the real one. */
+    val apiClient: ApiClient? get() = (api as? SpaceTradersApi)?.client
 
     private val systemLoads = ConcurrentHashMap<String, Deferred<Unit>>()
 
@@ -89,7 +103,7 @@ class Engine(
     ): Unit = withContext(engineThread) {
         progress("Connecting")
         val api = apiFactory(token).also { this@Engine.api = it }
-        api.client.listener = { record -> store?.let { s -> scope.launch { s.logRequest(record) } } }
+        (api as? SpaceTradersApi)?.client?.listener = { record -> store?.let { s -> scope.launch { s.logRequest(record) } } }
 
         progress("Checking server status")
         val status = api.getStatus()
@@ -116,6 +130,8 @@ class Engine(
         progress("Loading ships")
         refreshShips()
 
+        verbs = ShipVerbs(api, world, clock, EngineSink())
+
         val hq = world.hqSystemSymbol() ?: error("Agent ${agent.symbol} has no headquarters")
         progress("Loading home system $hq")
         ensureSystem(hq)
@@ -131,7 +147,7 @@ class Engine(
         agent
     }
 
-    suspend fun refreshShips(): List<model.ship.Ship> = onEngine {
+    suspend fun refreshShips(): List<Ship> = onEngine {
         val fleet = api().listMyShips()
         world.ships.clear()
         fleet.forEach { world.ships[it.symbol] = it }
@@ -168,26 +184,29 @@ class Engine(
         list
     }
 
-    suspend fun refreshMarket(waypoint: String): Market = onEngine {
+    suspend fun refreshMarket(waypoint: String): Market {
         val market = api().getMarket(OrbitalNames.getSectorSystem(waypoint), waypoint)
         world.markets[market.symbol] = market
-        store?.putMarket(market)
+        store?.putMarket(market, clock.now())
         publish()
         emit(Event.MarketUpdated(market.symbol))
-        market
+        return market
     }
 
-    suspend fun refreshShipyard(waypoint: String): model.Shipyard = onEngine {
+    suspend fun refreshShipyard(waypoint: String): Shipyard {
         val shipyard = api().getShipyard(OrbitalNames.getSectorSystem(waypoint), waypoint)
         world.shipyards[shipyard.symbol] = shipyard
         store?.putShipyard(shipyard)
         publish()
-        shipyard
+        return shipyard
     }
+
+    /** The verb layer; only available once booted. */
+    fun verbs(): Verbs = verbs ?: error("Engine is not connected; boot first")
 
     fun shutdown() {
         scope.cancel()
-        runCatching { api?.client?.close() }
+        runCatching { apiClient?.close() }
         runCatching { store?.close() }
         executor.shutdown()
     }
@@ -199,10 +218,10 @@ class Engine(
             }
             logger.info { "$system: ${waypoints.size} waypoints" }
             coroutineScope {
-                waypoints.filter { it.hasTrait(WaypointTraitSymbol.MARKETPLACE) && !world.markets.containsKey(it.symbol) }.forEach { w ->
+                waypoints.filter { it.hasMarket && !world.markets.containsKey(it.symbol) }.forEach { w ->
                     launch { fetchOrWarn("market ${w.symbol}") { refreshMarket(w.symbol) } }
                 }
-                waypoints.filter { it.hasTrait(WaypointTraitSymbol.SHIPYARD) && !world.shipyards.containsKey(it.symbol) }.forEach { w ->
+                waypoints.filter { it.hasShipyard && !world.shipyards.containsKey(it.symbol) }.forEach { w ->
                     launch { fetchOrWarn("shipyard ${w.symbol}") { refreshShipyard(w.symbol) } }
                 }
             }
@@ -229,15 +248,63 @@ class Engine(
 
     private suspend fun <T> onEngine(block: suspend () -> T): T = withContext(engineThread) { block() }
 
-    private fun api(): SpaceTradersApi = api ?: error("Engine is not connected; boot first")
+    private fun api(): GameApi = api ?: error("Engine is not connected; boot first")
 
-    private fun publish() {
-        _state.value = world.snapshot(++version)
+    internal fun publish() {
+        _state.value = world.snapshot(version.incrementAndGet())
     }
 
-    private fun emit(event: Event) {
+    internal fun emit(event: Event) {
         if (!_events.tryEmit(event)) logger.warn { "Event buffer full; dropped $event" }
     }
-}
 
-private fun Waypoint.hasTrait(trait: WaypointTraitSymbol): Boolean = traits.any { it.symbol == trait }
+    /** Where the verbs report what they changed: the store gets it, the snapshot and events follow. */
+    private inner class EngineSink : VerbSink {
+        override suspend fun shipChanged(ship: Ship) {
+            store?.putShip(ship)
+            publish()
+        }
+
+        override suspend fun agentChanged(agent: Agent) {
+            store?.putAgent(agent)
+            publish()
+        }
+
+        override suspend fun marketChanged(market: Market) {
+            store?.putMarket(market, clock.now())
+            publish()
+            emit(Event.MarketUpdated(market.symbol))
+        }
+
+        override suspend fun shipyardChanged(shipyard: Shipyard) {
+            store?.putShipyard(shipyard)
+            publish()
+        }
+
+        override suspend fun waypointChanged(waypoint: Waypoint) {
+            store?.putWaypoints(listOf(waypoint))
+            publish()
+        }
+
+        override suspend fun surveysAdded(surveys: List<Survey>) = publish()
+
+        override suspend fun transaction(transaction: MarketTransaction) {
+            store?.putTransaction(transaction)
+        }
+
+        override suspend fun extraction(record: ExtractionRecord) {
+            store?.putExtraction(record)
+        }
+
+        override suspend fun statusChanged(ship: String, status: ShipStatus?, params: String) {
+            if (status == null) {
+                store?.deleteCheckpoint(ship)
+            } else {
+                store?.putCheckpoint(ship, status.behaviour, ship, status.phase, params)
+            }
+            publish()
+        }
+
+        override fun event(event: Event) = emit(event)
+    }
+}

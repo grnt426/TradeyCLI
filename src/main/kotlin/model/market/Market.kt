@@ -1,105 +1,36 @@
 package model.market
 
-import client.SpaceTradersClient
-import client.SpaceTradersClient.ignoredFailback
-import data.FileWritingQueue
-import io.ktor.client.request.*
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.Transient
-import kotlinx.serialization.encodeToString
-import model.ApiJson
-import model.GameState
-import model.api
 import model.extension.LastRead
-import model.ship.Ship
-import model.ship.components.Inventory
-import model.system.OrbitalNames
-import notification.NotificationManager
-import java.io.File
-import java.time.ZoneId
 
 @Serializable
 data class Market(
-    var symbol: String,
-    var exports: MutableList<TradeGood>,
-    var imports: MutableList<TradeGood>,
-    var exchange: MutableList<TradeGood>,
+    val symbol: String,
+    val exports: List<TradeGood> = emptyList(),
+    val imports: List<TradeGood> = emptyList(),
+    val exchange: List<TradeGood> = emptyList(),
 
-    var transactions: MutableList<MarketTransaction> = mutableListOf(),
-    var tradeGoods: MutableList<MarketTradeGood> = mutableListOf(),
+    val transactions: List<MarketTransaction> = emptyList(),
 
-    @Transient var shipAssignedToGetPrices: Ship? = null
-) : LastRead()
+    /** Present only when one of our ships is at the waypoint. */
+    val tradeGoods: List<MarketTradeGood> = emptyList(),
+) : LastRead() {
 
-fun refreshMarket(systemSymbol: String, market: Market) {
-    SpaceTradersClient.enqueueRequest<Market>(
-        ::writeMarket, ::ignoredFailback, request {
-            url(api("systems/$systemSymbol/waypoints/${market.symbol}/market"))
-        }
-    )
-}
+    val hasPrices: Boolean get() = tradeGoods.isNotEmpty()
 
-suspend fun writeMarket(resp: Market) {
-    val symbol = resp.symbol
-    val market = resp
-    val orig = GameState.markets[symbol]
-    if (orig == null) {
-        GameState.markets[symbol] = market
-        GameState.marketsBySystem.getOrPut(OrbitalNames.getSectorSystem(symbol)) { mutableListOf() }.add(market)
-    } else {
-        orig.imports = market.imports
-        orig.exports = market.imports
-        orig.exchange = market.exchange
-        orig.lastRead = market.lastRead
+    fun good(symbol: TradeSymbol): MarketTradeGood? = tradeGoods.firstOrNull { it.symbol == symbol }
 
-        if (market.tradeGoods != null) orig.tradeGoods = market.tradeGoods
-        if (market.transactions != null) orig.transactions = market.transactions
-    }
-    println("Market $symbol updated @ ${market.lastRead.atZone(ZoneId.systemDefault())}")
-    println(ApiJson.encodeToString(market))
-    FileWritingQueue.enqueue(File(FileWritingQueue.marketDir(symbol)), market)
-}
+    /** Every good this market trades, whether or not prices are known. */
+    val tradedSymbols: Set<TradeSymbol> get() = (exports + imports + exchange).map { it.symbol }.toSet()
 
-fun findMarketForGood(good: TradeSymbol, system: String): Market? {
+    fun trades(symbol: TradeSymbol): Boolean = symbol in tradedSymbols
 
-    // filter by system later
-    return GameState.markets.values.firstOrNull { m -> m.imports.find { i -> i.symbol == good } != null }
-}
+    fun sellPriceOf(symbol: TradeSymbol): Int? = good(symbol)?.sellPrice
 
-fun findGoodsAcceptedHere(goods: List<Inventory>, waypoint: String): List<TradeSymbol> {
-    val searchFor = goods.map { i -> i.symbol }
-    val market = GameState.markets.values.find { m -> m.symbol == waypoint } ?: return emptyList()
-    return intersectTradeGoods(searchFor, market.imports).union(intersectTradeGoods(searchFor, market.exchange)).toList()
-}
-
-fun intersectGoods(searchFor: List<TradeSymbol>, searchIn: List<TradeSymbol>): List<TradeSymbol> =
-    searchFor.intersect(searchIn.toSet()).toList()
-
-/**
- * This needs a different name otherwise they "have the same JVM signature" ???
- */
-fun intersectTradeGoods(searchFor: List<TradeSymbol>, searchIn: List<TradeGood>): List<TradeSymbol> =
-    intersectGoods(searchFor, searchIn.map { g -> g.symbol })
-
-fun applyMarketTransactionUpdate(transaction: MarketTransaction) {
-    val market = marketById(transaction.waypointSymbol)
-    if (market == null) {
-        NotificationManager.errorNotification(
-            "${transaction.waypointSymbol} needs an update but not cached", "Bad"
-        )
-        return
-    }
-    val orig = market.tradeGoods.first { t -> t.symbol == transaction.tradeSymbol }
-    when (transaction.type) {
-        TransactionType.PURCHASE -> {
-            if (orig.purchasePrice != transaction.pricePerUnit) {
-                // update historic price info
-
-            }
-        }
-
-        TransactionType.SELL -> TODO()
+    fun typeOf(symbol: TradeSymbol): TradeGoodType? = when {
+        imports.any { it.symbol == symbol } -> TradeGoodType.IMPORT
+        exports.any { it.symbol == symbol } -> TradeGoodType.EXPORT
+        exchange.any { it.symbol == symbol } -> TradeGoodType.EXCHANGE
+        else -> null
     }
 }
-
-fun marketById(symbol: String): Market? = GameState.markets[symbol]

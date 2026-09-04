@@ -127,6 +127,14 @@ class ApiClient(
             }
         }.data
 
+    suspend inline fun <reified B : Any> patch(path: String, body: B, priority: Priority): JsonElement =
+        envelope(path, priority) {
+            http.patch(path) {
+                contentType(ContentType.Application.Json)
+                setBody(body)
+            }
+        }.data
+
     @PublishedApi
     internal suspend fun envelope(
         path: String,

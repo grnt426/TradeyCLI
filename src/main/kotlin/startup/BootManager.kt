@@ -3,7 +3,7 @@ package startup
 import api.ApiClient
 import api.ApiError
 import api.SpaceTradersApi
-import client.SpaceTradersClient
+import app.App
 import data.ACCOUNT_TOKEN_FILE
 import data.LEGACY_AGENT_TOKEN_FILE
 import data.ensureRuntimeDirectories
@@ -14,7 +14,6 @@ import kotlinx.serialization.json.jsonPrimitive
 import model.Agent
 import model.BootProgress
 import model.DEFAULT_PROF_FILE
-import model.GameState
 import model.ProfileData
 import model.exceptions.BootFailure
 import model.loadProfile
@@ -40,7 +39,7 @@ object BootManager {
     ) {
         ensureRuntimeDirectories()
         val settings = loadProfile()
-        GameState.profData = settings
+        App.profData = settings
         val symbol = (agentSymbol ?: settings.name).uppercase()
         val tokenFile = agentTokenPath?.let(::File) ?: Layout.agentTokenFile(symbol)
         val legacyFile = File(LEGACY_AGENT_TOKEN_FILE)
@@ -80,7 +79,7 @@ object BootManager {
                     "$accountTokenPath on a single line."
         )
         val settings = loadProfile()
-        GameState.profData = settings
+        App.profData = settings
         if (settings.name.length !in 3..14) throw BootFailure(
             "Agent symbol '${settings.name}' must be 3 to 14 characters; edit 'name' in $DEFAULT_PROF_FILE."
         )
@@ -103,24 +102,19 @@ object BootManager {
 
     private suspend fun boot(token: String, progress: (String) -> Unit, onAgentKnown: suspend (Agent) -> Unit) {
         try {
-            GameState.engine.boot(token, progress, onAgentKnown)
+            App.engine.boot(token, progress, onAgentKnown)
         } catch (e: ApiError) {
             throw BootFailure(
                 "The API rejected the request: ${e.apiMessage} (HTTP ${e.status}, code ${e.code}). " +
                         "If the server has reset since the token was issued, mint a new one."
             )
         }
-        if (GameState.scriptsEnabled) {
-            // The parked script layer still talks through the old client.
-            SpaceTradersClient.createClient(token)
-            SpaceTradersClient.beginPollingRequests()
-        }
     }
 
     /** Returns the new agent's symbol and token. The token is the only thing that must not be lost. */
     private suspend fun registerAgent(accountToken: String, settings: ProfileData): Pair<String, String> {
         val data = try {
-            ApiClient(accountToken, GameState.pacer).use { client ->
+            ApiClient(accountToken, App.engine.pacer).use { client ->
                 SpaceTradersApi(client).register(settings.name, settings.faction).jsonObject
             }
         } catch (e: ApiError) {

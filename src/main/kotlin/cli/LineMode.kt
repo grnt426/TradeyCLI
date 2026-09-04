@@ -1,36 +1,76 @@
 package cli
 
+import api.ApiClient
+import api.SpaceTradersApi
+import app.App
+import behaviour.Behaviours
+import behaviour.decisions.Mining
+import engine.AcceleratedClock
 import engine.Engine
+import engine.Event
 import engine.Snapshot
+import api.RequestPacer
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import model.GameState
+import kotlinx.coroutines.withTimeoutOrNull
 import model.exceptions.BootFailure
 import model.ship.ShipNavStatus
+import model.ship.ShipType
 import model.system.OrbitalNames
+import plan.Assignment
+import plan.Plan
+import plan.Supervisor
+import sim.FakeServer
+import sim.SimReport
+import sim.SimRules
+import sim.SimRun
+import sim.SimSeed
+import sim.SimUniverse
 import startup.BootManager
+import storage.AgentStore
+import storage.Layout
+import java.io.File
 import java.io.PrintStream
+import java.nio.file.Files
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 
 /**
  * The client without the screen: one command per invocation, or a `repl` that reads commands from
  * standard input until end of file. Plain text out, so it can be driven from any terminal, piped,
  * and asserted on in tests.
  *
- * Usage: `tradey [--agent SYMBOL] [--refresh] <command> [args]`
+ * Usage: `tradey [--agent SYMBOL] [--refresh] [--sim[=FACTOR]] <command> [args]`
  */
 class LineMode(
-    private val engine: Engine = GameState.engine,
     private val out: PrintStream = System.out,
     private val err: PrintStream = System.err,
-    private val boot: suspend (agent: String?, progress: (String) -> Unit) -> Unit = { agent, progress ->
-        BootManager.normalStart(agentSymbol = agent, progress = progress)
+    /** Builds the engine; the default is the process-wide one, or a simulator-backed one with `--sim`. */
+    private val engineFactory: (SimOptions?) -> Engine = { sim -> if (sim == null) App.engine else simEngine(sim) },
+    private val boot: suspend (engine: Engine, sim: SimOptions?, agent: String?, progress: (String) -> Unit) -> Unit = { engine, sim, agent, progress ->
+        if (sim == null) BootManager.normalStart(agentSymbol = agent, progress = progress) else engine.boot("sim", progress)
     },
 ) {
     private var refresh = false
+    private lateinit var engine: Engine
+    private var agentOption: String? = null
+
+    /** `--sim`: the engine runs against a fake server seeded from the agent's store, at [factor] times real speed. */
+    data class SimOptions(val agent: String?, val factor: Double)
 
     fun run(args: List<String>): Int {
         val options = mutableMapOf<String, String>()
         val positional = mutableListOf<String>()
+        var sim: SimOptions? = null
         var i = 0
         while (i < args.size) {
             val a = args[i]
@@ -38,19 +78,27 @@ class LineMode(
                 a == "--refresh" -> refresh = true
                 a == "--agent" && i + 1 < args.size -> options["agent"] = args[++i]
                 a.startsWith("--agent=") -> options["agent"] = a.substringAfter('=')
+                a == "--sim" -> sim = SimOptions(null, 60.0)
+                a.startsWith("--sim=") -> sim = SimOptions(null, a.substringAfter('=').toDoubleOrNull() ?: 60.0)
                 a == "--help" || a == "-h" -> { printHelp(); return 0 }
-                a.startsWith("--") -> { err.println("Unknown option $a"); printHelp(); return 1 }
+                positional.isEmpty() && a.startsWith("--") -> { err.println("Unknown option $a"); printHelp(); return 1 }
                 else -> positional += a
             }
             i++
         }
         val command = positional.firstOrNull() ?: run { printHelp(); return 1 }
         if (command == "help") { printHelp(); return 0 }
+        if (command == "behaviours") { err.println(Behaviours.usage()); return 0 }
         if (command !in COMMANDS) { err.println("Unknown command '$command'"); printHelp(); return 1 }
+        agentOption = options["agent"]
+        sim = sim?.copy(agent = agentOption)
+
+        if (command == "sim") return runBlocking { simulate(positional.drop(1)) }
 
         return runBlocking {
+            engine = engineFactory(sim)
             try {
-                boot(options["agent"]) { step -> err.println("  $step") }
+                boot(engine, sim, agentOption) { step -> err.println("  $step") }
             } catch (e: BootFailure) {
                 err.println("Boot failed: ${e.message}")
                 return@runBlocking 2
@@ -60,7 +108,7 @@ class LineMode(
     }
 
     private suspend fun repl(): Int {
-        err.println("Ready. Commands: ${COMMANDS.filter { it != "repl" }.joinToString(" ")}. Blank line or 'quit' exits.")
+        err.println("Ready. Commands: ${COMMANDS.filter { it != "repl" && it != "sim" }.joinToString(" ")}. Blank line or 'quit' exits.")
         while (true) {
             err.print("> ")
             err.flush()
@@ -68,10 +116,10 @@ class LineMode(
             if (line.isEmpty() || line == "quit" || line == "exit") break
             val parts = line.split(Regex("\\s+"))
             refresh = "--refresh" in parts
-            val words = parts.filterNot { it.startsWith("--") }
+            val words = parts.filterNot { it == "--refresh" }
             val cmd = words.first()
             if (cmd == "help") { printHelp(); continue }
-            if (cmd !in COMMANDS || cmd == "repl") { err.println("Unknown command '$cmd'"); continue }
+            if (cmd !in COMMANDS || cmd == "repl" || cmd == "sim") { err.println("Unknown command '$cmd'"); continue }
             try {
                 dispatch(cmd, words.drop(1))
             } catch (e: Exception) {
@@ -93,9 +141,18 @@ class LineMode(
                 market(symbol.uppercase())
             }
             "shipyards" -> shipyards(args.firstOrNull())
+            "asteroids" -> asteroids(args)
+            "plan" -> plan()
+            "assign" -> return assign(args)
+            "unassign" -> return unassign(args)
+            "run" -> return runPlan(args)
+            "buy" -> return buy(args)
+            "extractions" -> extractions()
         }
         return 0
     }
+
+    // Reads
 
     private suspend fun status() {
         if (refresh) engine.refreshAgent()
@@ -112,9 +169,10 @@ class LineMode(
                 listOf("home system", s.hqSystem ?: "?"),
                 listOf("waypoints loaded", s.waypoints.size.toString()),
                 listOf("markets loaded", s.markets.size.toString()),
+                listOf("markets priced", s.markets.values.count { it.hasPrices }.toString()),
                 listOf("reset", s.resetDate ?: "?"),
                 listOf("next reset", s.nextReset ?: "?"),
-                listOf("requests this run", engine.api?.client?.stats?.requests?.get()?.toString() ?: "0"),
+                listOf("requests this run", engine.apiClient?.stats?.requests?.get()?.toString() ?: "0"),
             ),
         )
     }
@@ -135,9 +193,10 @@ class LineMode(
 
     private suspend fun ships() {
         val fleet = if (refresh) engine.refreshShips() else engine.snapshot.ships.values.sortedBy { it.symbol }
-        val now = Instant.now()
+        val snap = engine.snapshot
+        val now = engine.clock.now()
         table(
-            listOf("ship", "role", "frame", "status", "waypoint", "fuel", "cargo", "cooldown"),
+            listOf("ship", "role", "frame", "status", "waypoint", "fuel", "cargo", "cooldown", "behaviour"),
             fleet.map { ship ->
                 val arrival = ship.nav.route.arrival
                 val status = when {
@@ -153,7 +212,8 @@ class LineMode(
                     ship.nav.waypointSymbol,
                     "${ship.fuel.current}/${ship.fuel.capacity}",
                     "${ship.cargo.units}/${ship.cargo.capacity}",
-                    ship.cooldown.remainingSeconds.takeIf { it > 0 }?.let { "${it}s" } ?: "-",
+                    ship.cooldown.expiresAt(now)?.let { "${it.epochSecond - now.epochSecond}s" } ?: "-",
+                    snap.shipStatus[ship.symbol]?.let { "${it.behaviour}: ${it.phase} ${it.detail}".trim() } ?: "-",
                 )
             },
         )
@@ -163,8 +223,8 @@ class LineMode(
         val system = systemOrHome(systemArg) ?: return
         val list = loaded(system).waypointsIn(system)
         table(
-            listOf("waypoint", "type", "x", "y", "traits"),
-            list.map { w -> listOf(w.symbol, w.type.name, w.x.toString(), w.y.toString(), w.traits.joinToString(",") { it.symbol.name }) },
+            listOf("waypoint", "type", "x", "y", "traits", "modifiers"),
+            list.map { w -> listOf(w.symbol, w.type.name, w.x.toString(), w.y.toString(), w.traits.joinToString(",") { it.symbol.name }, w.modifiers.joinToString(",") { it.symbol }) },
         )
     }
 
@@ -172,7 +232,7 @@ class LineMode(
         val system = systemOrHome(systemArg) ?: return
         val list = loaded(system).marketsIn(system)
         table(
-            listOf("market", "imports", "exports", "exchange", "priced goods"),
+            listOf("market", "imports", "exports", "exchange", "priced goods", "read"),
             list.map { m ->
                 listOf(
                     m.symbol,
@@ -180,6 +240,7 @@ class LineMode(
                     m.exports.joinToString(",") { it.symbol.name },
                     m.exchange.joinToString(",") { it.symbol.name },
                     m.tradeGoods.size.toString(),
+                    if (m.hasPrices) time(m.lastRead) else "-",
                 )
             },
         )
@@ -204,10 +265,232 @@ class LineMode(
         val system = systemOrHome(systemArg) ?: return
         val list = loaded(system).shipyardsIn(system)
         table(
-            listOf("shipyard", "sells", "fee"),
-            list.map { y -> listOf(y.symbol, y.shipTypes.joinToString(",") { it.type.name.removePrefix("SHIP_") }, y.modificationsFee.toString()) },
+            listOf("shipyard", "sells", "prices", "fee"),
+            list.map { y ->
+                listOf(
+                    y.symbol,
+                    y.shipTypes.joinToString(",") { it.type.name.removePrefix("SHIP_") },
+                    y.ships.joinToString(",") { "${it.type.name.removePrefix("SHIP_")}=${it.purchasePrice}" }.ifEmpty { "-" },
+                    y.modificationsFee.toString(),
+                )
+            },
         )
     }
+
+    /** The ranking: every asteroid with the market that pays best for what it yields. */
+    private suspend fun asteroids(args: List<String>) {
+        val shipArg = args.indexOf("--ship").takeIf { it >= 0 }?.let { args.getOrNull(it + 1)?.uppercase() }
+        val system = systemOrHome(args.firstOrNull()?.takeUnless { it.startsWith("--") || it == shipArg }) ?: return
+        val snap = loaded(system)
+        val ship = (shipArg?.let { snap.ships[it] } ?: snap.ships.values.filter { it.canMine }.minByOrNull { it.symbol })
+            ?: return err.println("No ship with a mining laser; name one with --ship")
+        val plans = Mining.bestPerAsteroid(Mining.rank(snap, ship, engine.clock.now()))
+        err.println("Ranked for ${ship.symbol} (laser strength ${ship.miningStrength}, cargo ${ship.cargo.capacity}, speed ${ship.engine.speed}). Prices marked ~ are guesses: no ship has read that market yet.")
+        table(
+            listOf("asteroid", "deposits", "market", "cr/h", "cr/unit", "sellable", "cycle", "dist", "fuel", "return", "risk", "notes"),
+            plans.map { p ->
+                listOf(
+                    p.asteroid.symbol,
+                    p.asteroid.traits.map { it.symbol.name }.filter { it.endsWith("DEPOSITS") || it == "ICE_CRYSTALS" || it == "FROZEN" }.joinToString(",") { it.removeSuffix("_DEPOSITS") },
+                    p.market.symbol,
+                    (if (p.estimated) "~" else "") + p.creditsPerHour.toInt(),
+                    "%.0f".format(p.valuePerUnit),
+                    "${(p.tradedShare * 100).toInt()}%",
+                    "${p.cycleSeconds / 60}m",
+                    p.distance.toInt().toString(),
+                    p.fuelPerCycle.toString(),
+                    when (val r = p.returnLeg) { is behaviour.decisions.ReturnLeg.Via -> "via ${r.via.symbol}"; behaviour.decisions.ReturnLeg.Drift -> "DRIFT"; else -> "cruise" },
+                    "%.2f".format(p.risk),
+                    (p.asteroid.modifiers.map { it.symbol } + p.riskNotes).distinct().joinToString(", "),
+                )
+            },
+        )
+    }
+
+    private suspend fun extractions() {
+        val store = engine.store ?: return err.println("No store open")
+        val list = store.listExtractions()
+        table(
+            listOf("at", "ship", "waypoint", "good", "units", "survey", "modifiers"),
+            list.map { e -> listOf(time(e.at), e.ship, e.waypoint, e.good.name, e.units.toString(), e.surveySignature?.takeLast(8) ?: "-", e.modifiers.joinToString(",")) },
+        )
+    }
+
+    // The plan
+
+    private fun planFile(): File = Layout.planFile(engine.snapshot.agent?.symbol ?: agentOption ?: "UNKNOWN")
+
+    private fun plan() {
+        val plan = Plan.load(planFile())
+        val snap = engine.snapshot
+        table(
+            listOf("ship", "behaviour", "params", "problems"),
+            plan.assignments.map { a ->
+                listOf(a.ship, a.behaviour, a.params.entries.joinToString(" ") { (k, v) -> "--$k $v" }, plan.copy(assignments = listOf(a)).validate(snap).joinToString("; "))
+            },
+        )
+        plan.goals.credits?.let { out.println("goal: $it credits") }
+    }
+
+    private fun assign(args: List<String>): Int {
+        if (args.size < 2) { err.println("assign SHIP BEHAVIOUR [--param value ...]"); err.println(Behaviours.usage()); return 1 }
+        val ship = args[0].uppercase()
+        val behaviour = args[1]
+        val params = mutableMapOf<String, String>()
+        var i = 2
+        while (i < args.size) {
+            val a = args[i]
+            if (a.startsWith("--") && i + 1 < args.size) { params[a.removePrefix("--")] = args[i + 1]; i += 2 } else { err.println("Bad parameter '$a'"); return 1 }
+        }
+        val plan = Plan.load(planFile()).with(Assignment(ship, behaviour, params))
+        val problems = plan.validate(engine.snapshot)
+        if (problems.isNotEmpty()) { problems.forEach { err.println(it) }; return 1 }
+        Plan.save(planFile(), plan)
+        out.println("$ship: $behaviour ${params.entries.joinToString(" ") { (k, v) -> "--$k $v" }}".trimEnd())
+        return 0
+    }
+
+    private fun unassign(args: List<String>): Int {
+        val ship = args.firstOrNull()?.uppercase() ?: run { err.println("unassign SHIP"); return 1 }
+        Plan.save(planFile(), Plan.load(planFile()).without(ship))
+        out.println("$ship: unassigned")
+        return 0
+    }
+
+    /** Runs the plan for a while, printing every phase change and a summary at the end. */
+    private suspend fun runPlan(args: List<String>): Int {
+        val duration = option(args, "--for")?.let { parseDuration(it) ?: run { err.println("Bad duration '$it'; try 30m, 2h or 1h30m"); return 1 } } ?: 1.hours
+        var plan = Plan.load(planFile())
+        if (plan.assignments.isEmpty()) {
+            plan = SimRun.defaultPlan(engine.snapshot.ships.values)
+            err.println("No plan.json; using the default: " + plan.assignments.joinToString(", ") { "${it.ship} ${it.behaviour}" })
+        }
+        engine.awaitSystem(engine.snapshot.hqSystem ?: return 1)
+        val supervisor = Supervisor(engine.scope, engine.verbs(), engine.clock, engine::emit)
+        val problems = supervisor.apply(plan)
+        if (problems.isNotEmpty()) { problems.forEach { err.println(it) }; return 1 }
+        val startCredits = engine.snapshot.agent?.credits ?: 0
+        val startRequests = engine.apiClient?.stats?.requests?.get() ?: 0
+        var extracted = 0
+        var sold = 0L
+        val printer: Job = engine.scope.launch {
+            engine.events.collect { e ->
+                when (e) {
+                    is Event.PhaseChanged -> err.println("${time(engine.clock.now())} ${e.ship} ${e.behaviour}: ${e.phase} ${e.detail}".trimEnd())
+                    is Event.Extracted -> { extracted += e.units; err.println("${time(engine.clock.now())} ${e.ship} extracted ${e.units} ${e.good} at ${e.waypoint} (${e.cargo})") }
+                    is Event.Sold -> { sold += e.credits; err.println("${time(engine.clock.now())} ${e.ship} sold ${e.units} ${e.good} at ${e.waypoint} for ${e.credits}") }
+                    is Event.Refueled -> err.println("${time(engine.clock.now())} ${e.ship} refueled at ${e.waypoint}: ${e.units} units for ${e.credits}")
+                    is Event.Surveyed -> err.println("${time(engine.clock.now())} ${e.ship} surveyed ${e.waypoint}: ${e.surveys} surveys")
+                    is Event.BehaviourFailed -> err.println("${time(engine.clock.now())} ${e.ship} ${e.behaviour} FAILED: ${e.reason}; restart in ${e.restartIn}")
+                    is Event.BehaviourFinished -> err.println("${time(engine.clock.now())} ${e.ship} ${e.behaviour} finished")
+                    is Event.ShipPurchased -> err.println("${time(engine.clock.now())} bought ${e.ship} (${e.type}) for ${e.credits}")
+                    is Event.Warning -> err.println("${time(engine.clock.now())} warning: ${e.message}")
+                    is Event.Failure -> err.println("${time(engine.clock.now())} failure: ${e.message}")
+                    else -> Unit
+                }
+            }
+        }
+        err.println("Running ${plan.assignments.size} assignment(s) for $duration; Ctrl+C stops early.")
+        withTimeoutOrNull(duration) { while (supervisor.active.isNotEmpty()) engine.clock.sleep(kotlin.time.Duration.parse("5s")) }
+        supervisor.stopAll()
+        printer.cancel()
+        val endCredits = engine.snapshot.agent?.credits ?: 0
+        table(
+            listOf("field", "value"),
+            listOf(
+                listOf("ran for", duration.toString()),
+                listOf("credits", "$startCredits -> $endCredits (${endCredits - startCredits})"),
+                listOf("sold for", sold.toString()),
+                listOf("units extracted", extracted.toString()),
+                listOf("requests", ((engine.apiClient?.stats?.requests?.get() ?: 0) - startRequests).toString()),
+                listOf("finished", supervisor.finished.joinToString(",").ifEmpty { "-" }),
+            ),
+        )
+        return 0
+    }
+
+    private suspend fun buy(args: List<String>): Int {
+        if (args.size < 2) { err.println("buy SHIP_TYPE SHIPYARD"); return 1 }
+        val type = shipType(args[0]) ?: run { err.println("Unknown ship type ${args[0]}; one of ${ShipType.entries.joinToString(",")}"); return 1 }
+        val ship = engine.verbs().purchaseShip(type, args[1].uppercase())
+        engine.refreshShips()
+        out.println("${ship.symbol} ${ship.registration.role} at ${ship.nav.waypointSymbol}; credits now ${engine.snapshot.agent?.credits}")
+        return 0
+    }
+
+    // The simulator on virtual time: no engine, no network
+
+    private suspend fun simulate(args: List<String>): Int {
+        val hours = option(args, "--hours")?.toIntOrNull() ?: 24
+        val seedFile = option(args, "--seed")?.let(::File)
+        val seed = try {
+            loadSeed(seedFile)
+        } catch (e: Exception) {
+            err.println("Cannot seed the simulator: ${e.message}. Boot once against the live API (any command) or pass --seed FILE."); return 2
+        }
+        val planFile = option(args, "--plan")?.let(::File) ?: Layout.planFile(seed.agent.symbol)
+        var plan = Plan.load(planFile)
+        if (plan.assignments.isEmpty()) plan = SimRun.defaultPlan(seed.ships)
+        val rules = SimRules()
+        val purchases = option(args, "--buy")?.split(',')?.map { shipType(it) ?: run { err.println("Unknown ship type $it"); return 1 } } ?: emptyList()
+        err.println("Simulating ${seed.systemSymbol} for ${hours}h with ${plan.assignments.size} assignment(s): " + plan.assignments.joinToString(", ") { "${it.ship} ${it.describe()}" } +
+            (if (purchases.isEmpty()) "" else "; buying ${purchases.joinToString(",")} first"))
+        val report = try {
+            SimRun(seed, plan, hours, rules, randomSeed = option(args, "--random")?.toLongOrNull() ?: 1, purchases = purchases).run()
+        } catch (e: IllegalArgumentException) {
+            err.println(e.message); return 1
+        } catch (e: IllegalStateException) {
+            err.println(e.message); return 1
+        }
+        printReport(report, args.contains("--trace"))
+        return 0
+    }
+
+    private suspend fun loadSeed(seedFile: File?): SimSeed {
+        if (seedFile != null) return SimSeed.load(seedFile)
+        val symbol = (agentOption ?: model.loadProfile().name).uppercase()
+        val db = Layout.latestDatabase(symbol) ?: error("no database under ${Layout.agentDir(symbol).path}")
+        return AgentStore.open(Layout.agentDir(symbol), symbol, Layout.resetDateOf(db)).use { SimSeed.fromStore(it) }
+    }
+
+    private fun printReport(r: SimReport, trace: Boolean) {
+        table(
+            listOf("field", "value"),
+            listOf(
+                listOf("hours", r.hours.toString()),
+                listOf("credits", "${r.startingCredits} -> ${r.endingCredits} (${if (r.earned >= 0) "+" else ""}${r.earned})"),
+                listOf("credits/hour", "%.0f".format(r.perHour)),
+                listOf("extractions", "${r.extractions} (${r.unitsExtracted} units)"),
+                listOf("units sold", r.unitsSold.toString()),
+                listOf("fuel spent", r.fuelSpent.toString()),
+                listOf("API calls", "${r.calls} (%.0f/hour, budget 7200/hour)".format(r.callsPerHour)),
+                listOf("failures", r.failures.size.toString()),
+            ),
+        )
+        out.println()
+        table(listOf("hour", "credits"), r.creditsByHour.mapIndexed { i, c -> listOf((i + 1).toString(), c.toString()) })
+        out.println()
+        table(listOf("good", "units", "credits", "avg"), r.salesByGood.entries.sortedByDescending { it.value.second }.map { (g, v) -> listOf(g, v.first.toString(), v.second.toString(), (v.second / v.first.coerceAtLeast(1)).toString()) })
+        out.println()
+        table(listOf("asteroid", "state"), r.asteroids.entries.sortedBy { it.key }.map { listOf(it.key, it.value) })
+        out.println()
+        table(listOf("ship", "final status"), r.finalStatus.entries.sortedBy { it.key }.map { listOf(it.key, it.value) })
+        r.failures.take(10).forEach { out.println("failure: $it") }
+        if (trace) {
+            out.println()
+            r.trace.phases.forEach { (ship, s) -> out.println("${time(s.since)} $ship ${s.behaviour}: ${s.phase} ${s.detail}".trimEnd()) }
+        }
+    }
+
+    // Helpers
+
+    private fun shipType(text: String): ShipType? =
+        runCatching { ShipType.valueOf(text.uppercase().let { if (it.startsWith("SHIP_")) it else "SHIP_$it" }) }.getOrNull()
+
+    private fun option(args: List<String>, name: String): String? = args.indexOf(name).takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
+
+    private fun parseDuration(text: String): Duration? =
+        runCatching { Duration.parse(text.replace(Regex("(?<=[hms])(?=\\d)"), " ")) }.getOrNull()
 
     private fun systemOrHome(arg: String?): String? {
         val system = arg?.uppercase()?.let { if (it.count { c -> c == '-' } >= 2) OrbitalNames.getSectorSystem(it) else it }
@@ -224,6 +507,8 @@ class LineMode(
         return engine.snapshot
     }
 
+    private fun time(instant: Instant): String = TIME.format(instant.atZone(ZoneId.systemDefault()))
+
     private fun table(headers: List<String>, rows: List<List<String>>) {
         val widths = headers.indices.map { c -> maxOf(headers[c].length, rows.maxOfOrNull { it[c].length } ?: 0) }
         fun line(cells: List<String>) = cells.mapIndexed { c, v -> v.padEnd(widths[c]) }.joinToString("  ").trimEnd()
@@ -236,24 +521,54 @@ class LineMode(
     private fun printHelp() {
         err.println(
             """
-            Usage: tradey [--agent SYMBOL] [--refresh] <command> [args]
+            Usage: tradey [--agent SYMBOL] [--refresh] [--sim[=FACTOR]] <command> [args]
 
-              status               agent, fleet size, reset date, request count
-              agent                the agent record
-              ships                the fleet
-              waypoints [SYSTEM]   waypoints of a system (default: home)
-              markets [SYSTEM]     markets of a system with their imports and exports
-              market WAYPOINT      prices at one market (needs a ship there for prices)
-              shipyards [SYSTEM]   shipyards of a system and what they sell
-              repl                 read commands from standard input until EOF
+              status                     agent, fleet size, reset date, request count
+              agent                      the agent record
+              ships                      the fleet, with what each ship's behaviour is doing
+              waypoints [SYSTEM]         waypoints of a system (default: home)
+              markets [SYSTEM]           markets of a system with imports, exports and when prices were read
+              market WAYPOINT            prices at one market (needs a ship there for prices)
+              shipyards [SYSTEM]         shipyards of a system and what they sell
+              asteroids [SYSTEM] [--ship S]   asteroids ranked by credits per hour for a mining ship
+              extractions                every extraction made this reset
+              plan                       the plan: which ship runs which behaviour
+              assign SHIP BEHAVIOUR [--param value ...]   add or replace an assignment (see 'behaviours')
+              unassign SHIP              remove an assignment
+              run [--for 2h]             run the plan, printing phases, then summarise
+              buy TYPE SHIPYARD          buy a ship (a ship of yours must be at the shipyard)
+              sim [--hours 24] [--buy TYPE,..] [--seed FILE] [--plan FILE] [--random N] [--trace]
+                                         run the plan against the simulator on virtual time; no network.
+                                         --buy purchases ships first and puts them to work, to price an expansion
+              behaviours                 list behaviours and their parameters
+              repl                       read commands from standard input until EOF
 
             --agent picks an agent folder under profile/agents; --refresh re-fetches instead of using cached data.
+            --sim runs every command against a simulated copy of the agent's system at FACTOR times real speed (default 60), without the network.
             With no arguments the terminal dashboard starts instead.
             """.trimIndent()
         )
     }
 
     companion object {
-        val COMMANDS = listOf("status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "repl")
+        val COMMANDS = listOf(
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "extractions",
+            "plan", "assign", "unassign", "run", "buy", "sim", "repl",
+        )
+        private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
+
+        /** An engine over the simulator, seeded from the agent's store, with a throwaway store of its own. */
+        fun simEngine(options: SimOptions): Engine {
+            val symbol = (options.agent ?: model.loadProfile().name).uppercase()
+            val db = Layout.latestDatabase(symbol) ?: error("no database under ${Layout.agentDir(symbol).path}; boot once against the live API first")
+            val seed = runBlocking { AgentStore.open(Layout.agentDir(symbol), symbol, Layout.resetDateOf(db)).use { SimSeed.fromStore(it) } }
+            val clock = AcceleratedClock(options.factor)
+            val universe = SimUniverse(seed, clock)
+            val server = FakeServer(universe)
+            val storeDir = Files.createTempDirectory("tradey-sim").toFile()
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("sim-engine"))
+            val pacer = RequestPacer(scope)
+            return Engine(scope, pacer, clock, apiFactory = { SpaceTradersApi(ApiClient("sim", pacer, server.engine)) }, storeFactory = { s, reset -> AgentStore.open(storeDir, s, reset) })
+        }
     }
 }

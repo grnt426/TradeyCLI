@@ -13,7 +13,7 @@ import com.varabyte.kotterx.grid.Cols
 import com.varabyte.kotterx.grid.GridCharacters
 import com.varabyte.kotterx.grid.grid
 import makeHeader
-import model.GameState
+import app.App
 import model.market.Market
 import model.market.MarketTradeGood
 import model.market.TradeSymbol
@@ -78,7 +78,7 @@ class MarketSubScreen(private val parent: Screen) : SubScreen<RunningScreen.Sele
         val charHeight = 3 * 8 // 3 rows * 8 characters a row
 
         grid(
-            Cols.uniform(ConsoleSubScreen.COLUMNS, GameState.profData.termWidth / ConsoleSubScreen.COLUMNS),
+            Cols.uniform(ConsoleSubScreen.COLUMNS, App.profData.termWidth / ConsoleSubScreen.COLUMNS),
             characters = GridCharacters.Curved
         ) {
 
@@ -190,7 +190,7 @@ class MarketSubScreen(private val parent: Screen) : SubScreen<RunningScreen.Sele
         (height - (value / normalizedCharValue).roundToInt()).coerceIn(0..<height)
 
     fun RenderScope.tradeOpportunities() {
-        val markets = GameState.engine.state.value.markets.values
+        val markets = App.engine.state.value.markets.values
         val opportunities = mutableListOf<TradeOpportunity>()
         TradeSymbol.entries.forEach { t ->
             val exports = markets

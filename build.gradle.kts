@@ -29,6 +29,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
 
+    // The simulator: virtual time for the `sim` command and a fake server behind the real client
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
+    implementation("io.ktor:ktor-client-mock:$ktorVersion")
+
     // Exposed libs for Sqlite
     implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-dao:$exposedVersion")
@@ -56,6 +60,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // A test that spins on the virtual clock must fail, not stall the build.
+    systemProperty("junit.jupiter.execution.timeout.default", "3m")
 }
 
 kotlin {

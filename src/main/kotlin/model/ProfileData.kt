@@ -6,6 +6,9 @@ import kotlinx.serialization.json.Json
 import model.faction.FactionSymbol
 import java.io.File
 
+const val DEFAULT_PROF_DIR = "profile"
+const val DEFAULT_PROF_FILE = "$DEFAULT_PROF_DIR/profile.settings.json"
+
 @Serializable
 data class ProfileData(
     /** The active agent. Its token and data live under `profile/agents/<name>/`. */

@@ -2,6 +2,7 @@ package model.system
 
 import kotlinx.serialization.Serializable
 import model.WaypointTrait
+import model.WaypointTraitSymbol
 import model.extension.LastRead
 import model.faction.Faction
 
@@ -20,4 +21,14 @@ data class Waypoint(
     val chart: Chart? = null,
     val faction: Faction? = null,
     val orbits: String? = null,
-) : LastRead()
+) : LastRead() {
+    fun hasTrait(trait: WaypointTraitSymbol): Boolean = traits.any { it.symbol == trait }
+    fun hasModifier(symbol: String): Boolean = modifiers.any { it.symbol == symbol }
+    val hasMarket: Boolean get() = hasTrait(WaypointTraitSymbol.MARKETPLACE)
+    val hasShipyard: Boolean get() = hasTrait(WaypointTraitSymbol.SHIPYARD)
+    val traitSymbols: Set<WaypointTraitSymbol> get() = traits.map { it.symbol }.toSet()
+
+    /** Waypoint types a mining laser can work. */
+    val isMineable: Boolean
+        get() = type == WaypointType.ASTEROID || type == WaypointType.ENGINEERED_ASTEROID || type == WaypointType.ASTEROID_FIELD
+}

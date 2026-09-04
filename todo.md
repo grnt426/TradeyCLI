@@ -26,8 +26,8 @@ Order matters: each step is the floor the next one stands on. Details and reason
       and the old script layer mutates models everywhere.
 - [x] Boot path (`Start`, `New`) on the new client. The old `SpaceTradersClient` queue stays only
       for the parked scripts and goes with them.
-- [ ] Typed bindings for the endpoints the old scripts never used (contracts, surveys, jump and
-      warp, scan, mounts, construction), as the new behaviours need them.
+- [x] Surveys, extract-with-survey, flight mode; `GameApi` interface so the simulator can stand in.
+- [ ] Contracts, jump and warp, scan, mounts, construction, as the new behaviours need them.
 
 ## 2. Headless engine and line mode
 
@@ -46,13 +46,21 @@ Order matters: each step is the floor the next one stands on. Details and reason
 Design: `docs/scripting-rewrite.md`. One language, three layers (verbs, behaviours, plan), one
 simulator. Milestones from the design:
 
-- [ ] Verbs and simulator, with a conformance test both implementations pass.
-- [ ] First behaviour, `mineAndSell`: pure decisions, checkpoints, phase reporting, simulator tests.
-- [ ] Plan file and supervisor; `assign`, `unassign`, `plan` in line mode and the console; resume
-      from checkpoints; `scriptsEnabled` moves to the supervisor.
-- [ ] Live trial: one drone for a day, watched through the request log.
-- [ ] More behaviours: `probeMarkets`, `runContract`, `haul`, then the expansion policy.
-- [ ] Retire the old layer: `script/`, `SpaceTradersClient`, `DbClient`, `FileWritingQueue`,
+- [x] Verbs (`engine/ShipVerbs` over `api/GameApi`) and simulator (`sim/`), with a conformance
+      test that runs the verbs over the simulator directly and over it through a fake HTTP server.
+- [x] First behaviours: `probeMarkets` (read every market's prices, then stop) and `mineAndSell`
+      (rank rocks against markets, fill, sell, refuel, repeat), pure decisions under
+      `behaviour/decisions/`, phase reporting in `ships`, checkpoints, simulator tests.
+- [x] Plan file (`profile/agents/<SYMBOL>/plan.json`) and supervisor; `assign`, `unassign`, `plan`,
+      `run`, `asteroids`, `buy`, `sim` in line mode. Resume is re-running from the top; the phases
+      are idempotent.
+- [ ] Console command line in the dashboard runs the same commands.
+- [ ] Live trial: `run --for 1d` with the probe surveying and the frigate mining, then compare the
+      `extractions` and `transactions` tables against `sim.SimRules` and correct the guesses.
+- [ ] Refuel stops on the way *out* as well as back, and a hauler that meets miners at the rock.
+- [ ] More behaviours: `runContract`, `haul`, then the expansion policy (buy a drone when the sim
+      says it pays back inside the reset).
+- [x] Retire the old layer: `script/`, `SpaceTradersClient`, `DbClient`, `FileWritingQueue`,
       `SavedScripts`, `PriceHistory`, the `GameState` facade, `database/`, and their tests.
 - [ ] Revisit generated API models here, when the domain classes are being reshaped anyway.
 
@@ -64,8 +72,8 @@ simulator. Milestones from the design:
       waypoints, markets, shipyards, price history, transactions, checkpoints, request log. WAL,
       one writer thread, entities stored as the API's JSON plus indexed columns.
 - [x] Reset detected from `GET /`; older resets archived on open.
-- [ ] Write transactions from buy and sell responses once behaviours make them.
-- [ ] Retire `database/` and the JSON caches under `profile/` together with the parked scripts.
+- [x] Write transactions from buy and sell responses; log every extraction (`extractions`).
+- [x] Retire `database/` and the JSON caches under `profile/` together with the parked scripts.
 
 ## 5. TUI polish
 

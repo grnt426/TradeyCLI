@@ -6,7 +6,7 @@ import com.varabyte.kotter.foundation.input.*
 import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.MainRenderScope
 import com.varabyte.kotter.runtime.RunScope
-import model.GameState
+import app.App
 import model.Profile
 import screen.RunningScreen.SelectedScreen
 import kotlin.math.max
@@ -25,7 +25,7 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
     override fun MainRenderScope.render() {
         selectIndex = min(selectIndex, objectsOnScreen)
         objectsOnScreen = 0
-        val snap = GameState.engine.state.value
+        val snap = App.engine.state.value
         val wp = snap.waypoints.values
 
         // a good starting zoom is 10

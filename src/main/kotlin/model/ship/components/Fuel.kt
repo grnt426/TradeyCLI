@@ -9,6 +9,7 @@ data class Fuel(
 
     /** Optional in the API; absent until a ship has burned fuel. */
     val consumed: FuelConsumed? = null,
-)
-
-fun hasfuelRatio(fuel: Fuel, ratio: Double): Boolean = fuel.current / fuel.capacity > ratio
+) {
+    /** Fraction of the tank that is full; a ship without a tank counts as full. */
+    val ratio: Double get() = if (capacity == 0L) 1.0 else current.toDouble() / capacity
+}

@@ -1,7 +1,7 @@
 # Script rewrite
 
-Status: design, agreed 2026-09-04. Replaces `src/main/kotlin/script/` (the enum state machines
-polled by timers) once the milestones below land. Step 3 of `todo.md`.
+Status: design agreed 2026-09-04; milestones 1 to 3 and 6 landed the same day (see "Where it
+stands" at the end). The old `src/main/kotlin/script/` layer is gone. Step 3 of `todo.md`.
 
 ## Goals, in priority order
 
@@ -87,6 +87,16 @@ trade volume; every verb re-reads the ship from the response so local state is n
 server's code; the verb layer maps the codes worth handling (ship already docked, cooldown, not
 enough fuel) into typed exceptions the behaviour can catch.
 
+As built (`engine/Verbs.kt`, `engine/ShipVerbs.kt`), two details differ from the sketch above:
+
+- Cooldown-bound verbs (`extract`, `survey`) wait *before* acting, not after. A ship can travel
+  during a cooldown, so waiting afterwards would waste it on the last extraction of a load.
+- There is one `Verbs` implementation, not two. `ShipVerbs` talks to a `GameApi` interface;
+  `SpaceTradersApi` implements it over HTTP and `sim.SimApi` implements it over the simulator.
+  The conformance test therefore runs the *same* verbs over the simulator directly and over the
+  simulator behind a fake HTTP server (`sim.FakeServer`) through the real client, which also
+  checks the wire format and the JSON models.
+
 ### Behaviours
 
 Plain `suspend` functions composed of verbs with ordinary loops and ifs, each about a page:
@@ -161,6 +171,18 @@ A test drives a behaviour for ten fill-and-sell cycles in milliseconds and asser
 phase trace, and the number of verb calls. The simulator is also what the dashboard can run
 against for UI work without spending requests.
 
+As built (`sim/`): `SimUniverse` holds the rules and state, `SimRules` the assumptions (each
+one marked as observed or guessed), `SimSeed` the snapshot it starts from (exported from the
+store, or `src/test/resources/x1-th77-seed.json`), `SimApi` the direct door, `FakeServer` the
+HTTP door, `VirtualClock` time over a test scheduler, and `SimRun` a whole plan on virtual time
+with a report. Line mode exposes it twice: `sim` runs a plan on virtual time and prints the
+report; `--sim` runs any command, including `run`, against the fake server at a chosen speed.
+
+The numbers the simulator does not know and guesses (yield per laser strength, cooldown length,
+survey lifetime and budget, price impact and recovery, how fast a rock destabilizes, and every
+price at a market no ship has visited) are what the live trial calibrates: the store's
+`extractions`, `transactions` and `market_prices` tables record the truth.
+
 ## Observability
 
 - Snapshot carries, per ship, the behaviour name, current phase, and a short status line.
@@ -189,7 +211,34 @@ Each lands green and behind `scriptsEnabled` until the last one.
 
 ## Open questions
 
-- Flight mode policy: `CRUISE` everywhere until fuel economics are modelled in the simulator.
+- Flight mode policy: `CRUISE` everywhere, `DRIFT` only when the tank cannot cover a leg and no
+  fuel stop is in reach (the ranking prices that leg honestly).
 - Whether surveys are worth the cooldown for a lone drone; decide with the simulator, not by hand.
 - Multi-agent: the plan is per agent, the pacer is per account. Cross-agent coordination waits
   until there is more than one agent.
+
+## Where it stands (2026-09-04)
+
+Landed: verbs, simulator and conformance test (milestone 1); `probeMarkets` and `mineAndSell`
+with their pure decisions (`behaviour/decisions/`), phase reporting and checkpoints (2);
+`plan.json`, `assign`, `unassign`, `plan`, `run` and the supervisor (3); the old layer deleted
+(6). Not yet: a live trial longer than a smoke test (4), `runContract`, `haul` and the expansion
+policy (5), and the console command line in the dashboard.
+
+The strategy the decisions encode, in order:
+
+1. `probeMarkets` sends a ship (the probe, which flies free) around every market whose prices
+   are unknown, nearest first, and finishes. Prices are only visible with a ship present.
+2. `Mining.rank` scores every asteroid against every market that buys something its deposit
+   traits yield: expected credits per unit from the market's prices (guesses, flagged, where no
+   ship has looked), times the share of extractions that market buys, per hour of the full cycle
+   (extract at the cooldown, travel out on cruise, travel back on cruise, through a fuel stop, or
+   drifting when the tank cannot cover the round trip), minus fuel. A risk factor cuts rocks the
+   game reports as UNSTABLE or CRITICAL_LIMIT, rocks with fragile or hazardous traits, and rocks
+   next to headquarters that everybody strips. STRIPPED rocks are out.
+3. `mineAndSell` re-runs the ranking every cycle, so it follows prices as they are read and walks
+   away from a rock the moment an extraction reports CRITICAL_LIMIT or the server refuses it.
+
+Resume after a restart is by re-running the behaviour from the top: every phase is idempotent
+(navigating to where the ship is costs nothing, selling nothing sells nothing), so the checkpoint
+row is informational for now.

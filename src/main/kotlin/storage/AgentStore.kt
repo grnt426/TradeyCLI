@@ -24,6 +24,7 @@ import org.jetbrains.exposed.sql.Transaction
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.batchInsert
 import org.jetbrains.exposed.sql.deleteAll
+import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.TransactionManager
@@ -41,6 +42,18 @@ import java.util.concurrent.Executors
 private val logger = KotlinLogging.logger {}
 
 data class PriceObservation(val good: MarketTradeGood, val observedAt: Instant)
+
+data class Checkpoint(val id: String, val behaviour: String, val entity: String?, val phase: String, val params: String, val updatedAt: Instant)
+
+data class ExtractionRecord(
+    val ship: String,
+    val waypoint: String,
+    val good: TradeSymbol,
+    val units: Int,
+    val surveySignature: String?,
+    val modifiers: List<String>,
+    val at: Instant,
+)
 
 /**
  * Everything known about one agent on one server reset, in one SQLite file. All access goes
@@ -163,6 +176,49 @@ class AgentStore private constructor(
         }
     }
 
+    suspend fun listTransactions(): List<MarketTransaction> = tx {
+        TransactionTable.selectAll().orderBy(TransactionTable.id, SortOrder.ASC).map { row ->
+            MarketTransaction(
+                shipSymbol = row[TransactionTable.shipSymbol],
+                waypointSymbol = row[TransactionTable.waypointSymbol],
+                tradeSymbol = TradeSymbol.valueOf(row[TransactionTable.tradeSymbol]),
+                type = enumValueOf(row[TransactionTable.type]),
+                units = row[TransactionTable.units],
+                pricePerUnit = row[TransactionTable.pricePerUnit],
+                totalPrice = row[TransactionTable.totalPrice],
+                timestamp = row[TransactionTable.timestamp],
+            )
+        }
+    }
+
+    suspend fun putExtraction(record: ExtractionRecord) = tx {
+        ExtractionTable.insert {
+            it[shipSymbol] = record.ship
+            it[waypointSymbol] = record.waypoint
+            it[tradeSymbol] = record.good.name
+            it[units] = record.units
+            it[surveySignature] = record.surveySignature
+            it[modifiers] = record.modifiers.joinToString(",").take(200)
+            it[at] = record.at.toEpochMilli()
+        }
+    }
+
+    suspend fun listExtractions(waypoint: String? = null): List<ExtractionRecord> = tx {
+        val query = ExtractionTable.selectAll()
+        if (waypoint != null) query.where { ExtractionTable.waypointSymbol eq waypoint }
+        query.orderBy(ExtractionTable.at, SortOrder.ASC).map { row ->
+            ExtractionRecord(
+                ship = row[ExtractionTable.shipSymbol],
+                waypoint = row[ExtractionTable.waypointSymbol],
+                good = TradeSymbol.valueOf(row[ExtractionTable.tradeSymbol]),
+                units = row[ExtractionTable.units],
+                surveySignature = row[ExtractionTable.surveySignature],
+                modifiers = row[ExtractionTable.modifiers].split(',').filter { it.isNotBlank() },
+                at = Instant.ofEpochMilli(row[ExtractionTable.at]),
+            )
+        }
+    }
+
     suspend fun logRequest(record: RequestRecord) = tx {
         RequestLogTable.insert {
             it[at] = java.lang.System.currentTimeMillis()
@@ -177,6 +233,14 @@ class AgentStore private constructor(
     suspend fun requestCount(): Long = tx { RequestLogTable.selectAll().count() }
 
     // Checkpoints (used by the scripting overhaul)
+
+    suspend fun listCheckpoints(): List<Checkpoint> = tx {
+        CheckpointTable.selectAll().map { row ->
+            Checkpoint(row[CheckpointTable.id], row[CheckpointTable.behaviour], row[CheckpointTable.entity], row[CheckpointTable.phase], row[CheckpointTable.params], Instant.ofEpochMilli(row[CheckpointTable.updatedAt]))
+        }
+    }
+
+    suspend fun deleteCheckpoint(id: String) = tx { CheckpointTable.deleteWhere { CheckpointTable.id eq id } }
 
     suspend fun putCheckpoint(id: String, behaviour: String, entity: String?, phase: String, params: String) = tx {
         CheckpointTable.upsert {

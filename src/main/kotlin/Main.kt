@@ -8,10 +8,10 @@ import com.varabyte.kotter.foundation.input.runUntilKeyPressed
 import com.varabyte.kotter.foundation.session
 import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.render.RenderScope
+import app.App
 import data.ensureRuntimeDirectories
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.launch
-import model.GameState
 import model.Profile
 import model.loadProfile
 import model.ship.ShipRole
@@ -73,15 +73,15 @@ suspend fun main(args: Array<String>) {
         val code = try {
             LineMode().run(args.toList())
         } finally {
-            GameState.shutdown()
+            App.shutdown()
         }
         exitProcess(code)
     }
 
     logger.info { "TradeyCLI starting" }
     Profile.createProfile(loadProfile())
-    GameState.profData = Profile.profileData
-    val engine = GameState.engine
+    App.profData = Profile.profileData
+    val engine = App.engine
 
     session {
         with(TextAnimationContainer) {
@@ -117,7 +117,7 @@ suspend fun main(args: Array<String>) {
             }
         }
     }
-    GameState.shutdown()
+    App.shutdown()
 }
 
 /**

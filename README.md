@@ -1,7 +1,8 @@
 # TradeyCLI
 
-A terminal client and (eventually, again) bot for [SpaceTraders](https://spacetraders.io), the game
-that is just an API. Kotlin, Kotter for the screen, SQLite for the bits worth keeping.
+A terminal client and bot for [SpaceTraders](https://spacetraders.io), the game that is just an
+API. Kotlin, Kotter for the screen, SQLite for the bits worth keeping, and a simulator so the bot
+can be tested without spending requests.
 
 ## Running it
 
@@ -27,17 +28,66 @@ Give it arguments and there is no dashboard, just an answer:
 
 ```
 TradeyCLI status
-TradeyCLI ships
+TradeyCLI ships                # with what each ship's behaviour is doing
 TradeyCLI waypoints            # home system; or name one
-TradeyCLI markets
+TradeyCLI markets              # imports, exports, and when prices were last read
 TradeyCLI market X1-AB12-C3
 TradeyCLI shipyards
+TradeyCLI asteroids            # every asteroid ranked by credits per hour for the mining ship
+TradeyCLI extractions          # everything mined this reset
 TradeyCLI --agent OTHERGUY --refresh ships
 TradeyCLI repl                 # reads commands from stdin until EOF
 ```
 
 Progress goes to stderr, results to stdout, so it pipes. `--refresh` re-fetches instead of using
 what is cached; `--agent` picks a folder under `profile/agents/`.
+
+## Automation
+
+Ships run *behaviours*, plain Kotlin `suspend` functions under `src/main/kotlin/behaviour/`. Which
+ship runs which is the *plan*, `profile/agents/<SYMBOL>/plan.json`, edited from line mode:
+
+```
+TradeyCLI behaviours                                   # what exists and what it takes
+TradeyCLI assign TRIPLEHAT-2 probeMarkets              # read every market's prices, then stop
+TradeyCLI assign TRIPLEHAT-1 mineAndSell               # best rock and market by the ranking, every cycle
+TradeyCLI assign TRIPLEHAT-1 mineAndSell --asteroid X1-TH77-B9 --market X1-TH77-B7 --surveys no
+TradeyCLI plan                                         # the plan, with anything wrong with it
+TradeyCLI unassign TRIPLEHAT-1
+TradeyCLI run --for 2h                                 # run the plan, printing every phase, then summarise
+TradeyCLI buy MINING_DRONE X1-TH77-H51                 # a ship of yours must be at the shipyard
+```
+
+`run` prints one line per phase change, extraction, sale and refuel to stderr and a summary table
+to stdout when the time is up or every behaviour has finished. `ships` shows the current phase of
+each ship while it runs. A behaviour that throws is restarted with backoff and the reason is
+printed; one that finishes (a probe with nothing left to read) is left alone.
+
+`docs/scripting-rewrite.md` is the design and the strategy the decisions encode.
+
+## The simulator
+
+`sim` runs the plan against a copy of the agent's system on virtual time: a day takes under a
+second and nothing touches the network. It is seeded from the agent's store (boot once first) or
+from a file.
+
+```
+TradeyCLI sim --hours 24                               # the current plan, or the default one
+TradeyCLI sim --hours 24 --buy MINING_DRONE            # buy first, put the new ship to work: does it pay back?
+TradeyCLI sim --hours 6 --trace                        # every phase change with its virtual time
+TradeyCLI sim --seed src/test/resources/x1-th77-seed.json
+```
+
+The report has credits by hour, sales by good, API calls per hour against the budget, what state
+each asteroid ended in, and where each ship was. Every rule the game does not document is a knob
+in `src/main/kotlin/sim/SimRules.kt`, each marked observed or guessed; prices at markets no ship
+has visited come from `knowledge/DefaultPrices.kt` and are marked `~` in the ranking. The store's
+`extractions`, `transactions` and `market_prices` tables are what corrects the guesses after a live
+run.
+
+`--sim` on any other command runs it against the same simulated system behind a fake HTTP server,
+at 60 times real speed by default (`--sim=10` for ten): `TradeyCLI --sim run --for 3h` watches the
+whole client, request pacer included, work a plan in three real minutes.
 
 ## Testing without the screen
 
@@ -56,42 +106,47 @@ script, a CI job, or an assistant driving a terminal. The rules it plays by:
 - **`repl` takes a script on stdin** and boots once for all of it:
 
   ```
-  printf "status\nships\nwaypoints\n" | TradeyCLI repl 2>/dev/null
+  printf "status\nships\nasteroids\n" | TradeyCLI repl 2>/dev/null
   ```
 
   A blank line, `quit`, or end of input ends it. `--refresh` on a line re-fetches for that command.
 - **It counts against the real rate limit.** Every command talks to the live API through the
   same per-account pacer as the dashboard, two requests a second. A `status` is two calls plus a
   fleet fetch; the first `waypoints` on a system is a few more, then it is served from the store.
-  Do not loop it.
+  Do not loop it; use `sim` or `--sim` for anything repetitive.
 - **Everything ends up in the store.** `profile/agents/<SYMBOL>/data-<reset>.db` is plain SQLite;
   `sqlite3` or any browser opens it. `request_log` has one row per API attempt with status and
   duration, which is the first place to look when something was slow or throttled.
 
 For tests that must not touch the network, go one layer down: `engine.Engine` takes a factory for
 the API client and one for the store, so a test can hand it Ktor's `MockEngine` and a temp folder.
-`src/test/kotlin/engine/EngineTest.kt` boots a whole engine that way and asserts on the snapshot
-and on which paths were requested. `cli.LineMode` likewise takes an engine and streams, so its
-output can be captured in a test without a process.
+`src/test/kotlin/engine/EngineTest.kt` boots a whole engine that way. Behaviour tests use
+`sim.SimRun` on virtual time against `src/test/resources/x1-th77-seed.json`, a real home system;
+`sim.VerbConformanceTest` runs the verbs both straight into the simulator and through the fake
+server and the real client, so the two cannot drift apart.
 
 ## Where things stand
 
-The dashboard renders and talks to the API. Ship automation is switched off
-(`GameState.scriptsEnabled`) until the scripting layer gets rebuilt. `todo.md` has the plan;
-`docs/codebase-review-2026-09.md` has the reasons.
+The dashboard renders and talks to the API; line mode runs behaviours and the simulator. The
+strategy so far is survey (probe reads prices), rank (asteroid against market by credits per hour,
+discounting rocks that are unstable, fragile or next to headquarters) and mine-and-sell.
+`todo.md` has the plan; `docs/scripting-rewrite.md` the design;
+`docs/codebase-review-2026-09.md` the reasons.
 
 ## Layout
 
-- `api-docs/` - cached OpenAPI spec and wiki. `api-docs/refresh.ps1` re-pulls them.
-- `src/main/kotlin/api/` - the paced, typed API client.
-- `src/main/kotlin/engine/` - owns the game state; the screens and line mode read its snapshots.
+- `api-docs/` - cached OpenAPI spec, error codes and wiki. `api-docs/refresh.ps1` re-pulls them.
+- `src/main/kotlin/api/` - the paced, typed API client, and `GameApi`, the interface the simulator also implements.
+- `src/main/kotlin/engine/` - owns the game state and the verbs; the screens and line mode read its snapshots.
+- `src/main/kotlin/behaviour/` - the behaviours and, under `decisions/`, the pure functions they decide with.
+- `src/main/kotlin/plan/` - the plan file and the supervisor that runs it.
+- `src/main/kotlin/sim/` - the simulator: rules, seed, virtual clock, fake server, runner.
+- `src/main/kotlin/knowledge/` - what the game does not tell us: deposit traits to goods, price guesses.
 - `src/main/kotlin/storage/` - one SQLite file per agent and server reset.
 - `src/main/kotlin/cli/` - line mode.
 - `src/main/kotlin/screen/` - the Kotter screens.
-- `src/main/kotlin/model/` - the API models, plus `GameState`, a facade the old scripts still use.
-- `src/main/kotlin/script/` - the old automation. Parked, not running.
+- `src/main/kotlin/model/` - the API models.
 - `profile/` - settings and the account token; `profile/agents/<SYMBOL>/` holds each agent's
-  token and its `data-<reset>.db` (git-ignored). Older resets end up in `archive/`.
-- `database/` - the old SQLite file; only the parked scripts and their tests still use it.
+  token, `plan.json` and its `data-<reset>.db` (git-ignored). Older resets end up in `archive/`.
 
 Weekly server resets wipe the universe. Tokens die with it; mint a new one and `Start` again.

@@ -60,7 +60,11 @@ object NotificationManager {
             )
             is Event.Warning -> errorNotification(event.message)
             is Event.Failure -> if (event.cause is Exception) exceptNotification(event.message, "", event.cause) else errorNotification(event.message)
-            is Event.ShipsLoaded, is Event.MarketUpdated -> Unit
+            is Event.BehaviourFailed -> errorNotification("${event.ship} ${event.behaviour} failed", event.reason)
+            is Event.BehaviourFinished -> createNotification("${event.ship} ${event.behaviour} finished", "")
+            is Event.ShipPurchased -> createNotification("Bought ${event.ship}", "${event.type} for ${event.credits}")
+            is Event.ShipsLoaded, is Event.MarketUpdated, is Event.PhaseChanged, is Event.BehaviourStarted,
+            is Event.Extracted, is Event.Sold, is Event.Refueled, is Event.Surveyed -> Unit
         }
     }
 

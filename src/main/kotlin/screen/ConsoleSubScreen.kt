@@ -19,22 +19,17 @@ import com.varabyte.kotterx.grid.GridCharacters
 import com.varabyte.kotterx.grid.grid
 import commandHistory
 import commandHistoryIndex
-import data.FileWritingQueue
 import io.github.oshai.kotlinlogging.KotlinLogging
 import makeHeader
-import model.GameState
+import app.App
 import model.market.Market
 import model.ship.ShipNavStatus
-import model.ship.calculateExpirationSeconds
 import model.ship.components.Inventory
-import model.ship.components.shortName
-import model.ship.hasCooldown
 import model.system.Waypoint
 import notification.NotificationManager
 import reduceToSiNotation
 import runningRenderContext
 import screen.RunningScreen.SelectedScreen
-import script.ScriptExecutor
 import java.awt.Color
 import java.time.Instant
 import kotlin.math.*
@@ -59,14 +54,14 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
 
     override fun MainRenderScope.render() {
         logger.info { "Rendering" }
-        val snap = GameState.engine.state.value
+        val snap = App.engine.state.value
         val selectedQuad = runningRenderContext.selectedQuad
         val currentView = runningRenderContext.selectedView
         val selectedShip = runningRenderContext.selectedShip
         var selectedWaypoint: Waypoint? = null
         var selectedMarket: Market? = null
 
-        grid(Cols.uniform(COLUMNS, GameState.profData.termWidth / COLUMNS), characters = GridCharacters.Curved) {
+        grid(Cols.uniform(COLUMNS, App.profData.termWidth / COLUMNS), characters = GridCharacters.Curved) {
             val visibleWaypoints = mutableListOf<Waypoint>()
             selectIndex = min(selectIndex, objectsOnScreen)
             cell(colSpan = 3, rowSpan = 4) {
@@ -268,9 +263,9 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                         }
 
                         snap.ships.values.sortedBy { it.symbol }.forEach { s ->
-                            text("${shortName(s)} [")
+                            text("${s.registration.name.substringAfterLast("-")} [")
                             applyShipRoleColor(s.registration.role)
-                            val status = s.script?.currentState ?: "No Script"
+                            val status = snap.shipStatus[s.symbol]?.let { "${it.behaviour}: ${it.phase}" } ?: "idle"
                             text("] $status")
                             if (s.cooldown.remainingSeconds > 0)
                                 textLine(" (${s.cooldown.remainingSeconds})")
@@ -311,7 +306,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                     makeHeader("Agent")
                 }
                 textLine("${snap.agent?.symbol ?: "?"}: $${snap.agent?.credits ?: 0}")
-                textLine("${snap.ships.size} 🚀 ${GameState.scriptsRunning.size} 📰")
+                textLine("${snap.ships.size} 🚀 ${snap.shipStatus.size} 📰")
             }
 
             cell {
@@ -320,7 +315,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 rgb(HEADER_COLOR.rgb) {
                     makeHeader("Job Pressure")
                 }
-                val pressureWindow = GameState.pacer.queueHistory
+                val pressureWindow = App.engine.pacer.queueHistory
                 (0..4).forEach { h ->
                     if (h != 3) {
                         pressureWindow.forEach { w ->
@@ -402,14 +397,9 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 applyShipRoleColor(ship.registration.role, false)
                 textLine(" ${ship.nav.status}@${ship.nav.waypointSymbol}")
                 text(" C: ${ship.cargo.units}/${ship.cargo.capacity} F: ${ship.fuel.current}/${ship.fuel.capacity} ")
-                textLine(if (ship.script != null) "${ship.script!!.currentState}" else "NS")
-                if (hasCooldown(ship)) {
-                    val expire = if (ship.cooldown.remainingSeconds > 0) {
-                        ship.cooldown.remainingSeconds
-                    } else {
-                        calculateExpirationSeconds(ship)
-                    }
-                    textLine("Cool: ${reduceToSiNotation(expire.toDouble(), "s")}")
+                textLine(snap.shipStatus[ship.symbol]?.let { "${it.phase} ${it.detail}" } ?: "idle")
+                ship.cooldown.expiresAt(Instant.now())?.let { until ->
+                    textLine("Cool: ${reduceToSiNotation((until.epochSecond - Instant.now().epochSecond).toDouble(), "s")}")
                 }
             }
 
@@ -429,10 +419,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
 
             cell(colSpan = 2) {
                 rgb(HEADER_COLOR.rgb) { makeHeader("Console Stats", 2) }
-                val writes = FileWritingQueue.totalFileWrites
-                val states = ScriptExecutor.totalStateChanges
-                val stats = GameState.api.client.stats
-                textLine("Writes $writes | Requests ${stats.requests.get()} | Errors ${stats.errors.get()} | Throttled ${stats.throttled.get()} | State => $states")
+                val stats = App.engine.apiClient?.stats
+                textLine("Requests ${stats?.requests?.get() ?: 0} | Errors ${stats?.errors?.get() ?: 0} | Throttled ${stats?.throttled?.get() ?: 0} | Behaviours ${snap.shipStatus.size}")
             }
         }
         text("> ")

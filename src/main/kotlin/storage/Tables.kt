@@ -71,6 +71,19 @@ object CheckpointTable : Table("checkpoints") {
     override val primaryKey = PrimaryKey(id)
 }
 
+/** Every extraction we made: the dataset that calibrates the simulator's yield model. */
+object ExtractionTable : Table("extractions") {
+    val id = long("id").autoIncrement()
+    val shipSymbol = varchar("ship_symbol", 64)
+    val waypointSymbol = varchar("waypoint_symbol", 64).index()
+    val tradeSymbol = varchar("trade_symbol", 64)
+    val units = integer("units")
+    val surveySignature = varchar("survey_signature", 128).nullable()
+    val modifiers = varchar("modifiers", 200)
+    val at = long("at").index()
+    override val primaryKey = PrimaryKey(id)
+}
+
 /** One row per API attempt, for tuning the pacer and for blame when something goes wrong. */
 object RequestLogTable : Table("request_log") {
     val id = long("id").autoIncrement()
@@ -85,5 +98,5 @@ object RequestLogTable : Table("request_log") {
 
 val ALL_TABLES = listOf(
     MetaTable, AgentTable, ShipTable, SystemTable, WaypointTable, MarketTable, ShipyardTable,
-    PriceTable, TransactionTable, CheckpointTable, RequestLogTable,
+    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, RequestLogTable,
 )

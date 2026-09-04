@@ -32,6 +32,15 @@ object Layout {
 
     fun archiveDir(symbol: String): File = File(agentDir(symbol), "archive")
 
+    /** The plan: which ship runs which behaviour. Edited by `assign` and `unassign`. */
+    fun planFile(symbol: String): File = File(agentDir(symbol), "plan.json")
+
+    /** The newest per-reset database of an agent, or null when it has never booted. */
+    fun latestDatabase(symbol: String): File? =
+        agentDir(symbol).listFiles { f -> f.isFile && f.name.startsWith("data-") && f.name.endsWith(".db") }?.maxByOrNull { it.name }
+
+    fun resetDateOf(database: File): String = database.name.removePrefix("data-").removeSuffix(".db")
+
     /** Agents that have a folder, whether or not a token is present. */
     fun listAgents(): List<String> =
         agentsDir.listFiles()?.filter { it.isDirectory }?.map { it.name }?.sorted() ?: emptyList()

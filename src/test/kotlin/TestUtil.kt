@@ -3,11 +3,7 @@ import model.faction.FactionSymbol
 import model.market.Market
 import model.ship.*
 import model.ship.components.*
-import script.ScriptExecutor
 import java.time.Instant
-
-class TestUtil {
-}
 
 fun createShip(symbol: String = "0"): Ship {
     return Ship(
@@ -23,7 +19,7 @@ fun createShip(symbol: String = "0"): Ship {
                 Instant.now()
             ),
             ShipNavStatus.IN_ORBIT,
-            "FlightMode"
+            FlightMode.CRUISE,
         ),
         Crew(0L, 0L, 0L, "", 0L, 0L),
         Fuel(0L, 0L, FuelConsumed(0L, "")),
@@ -37,9 +33,8 @@ fun createShip(symbol: String = "0"): Ship {
         emptyList(),
         emptyList(),
         Registration("", FactionSymbol.VOID.toString(), ShipRole.TRANSPORT),
-        Cargo(100, 0, mutableListOf())
+        Cargo(100, 0)
     )
-
 }
 
 fun createLocation(): Location {
@@ -52,23 +47,4 @@ fun createLocation(): Location {
     )
 }
 
-fun createMarket(): Market {
-    return Market(
-        "market",
-        mutableListOf(),
-        mutableListOf(),
-        mutableListOf()
-    )
-}
-
-/**
- * Polls until [script] reports [expected] as its current state, or [timeoutMs] elapses.
- * Scripts run on their own timer thread, so a fixed sleep is racy; callers should still
- * assert on the state afterwards so a timeout produces a clear failure message.
- */
-fun awaitState(script: ScriptExecutor<*>, expected: Any?, timeoutMs: Long = 2_000, pollMs: Long = 5) {
-    val deadline = System.currentTimeMillis() + timeoutMs
-    while (script.currentState != expected && System.currentTimeMillis() < deadline) {
-        Thread.sleep(pollMs)
-    }
-}
+fun createMarket(): Market = Market("market")
