@@ -82,6 +82,9 @@ TradeyCLI buy MINING_DRONE X1-TH77-H51                 # a ship of yours must be
 Only one `run` may drive an agent at a time: it holds `profile/agents/<SYMBOL>/run.lock` with a
 heartbeat, a second `run` refuses, and the dashboard's Intentions panel says who is driving.
 
+Rebuilding while a `run` is alive replaces the jars under it; the next class it has not loaded
+yet fails, usually when it finishes or stops. Stop runs before `installDist`, then start them again.
+
 Several agents on one account: `TradeyCLI register SYMBOL FACTION` (account token in
 `profile/accounttoken.secret`), then `--agent SYMBOL` on any command; each agent has its own plan,
 store and run.
