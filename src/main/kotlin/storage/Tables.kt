@@ -72,6 +72,24 @@ object CheckpointTable : Table("checkpoints") {
     override val primaryKey = PrimaryKey(id)
 }
 
+/** Every contract seen, with what it paid and what fulfilling it cost us: do they grow in value? */
+object ContractTable : Table("contracts") {
+    val id = varchar("id", 64)
+    val json = text("json")
+    val faction = varchar("faction", 32)
+    val type = varchar("type", 32)
+    val tradeSymbol = varchar("trade_symbol", 64).nullable()
+    val units = integer("units")
+    val destination = varchar("destination", 64).nullable()
+    val onAccepted = long("on_accepted")
+    val onFulfilled = long("on_fulfilled")
+    val cost = long("cost")
+    val acceptedAt = long("accepted_at").nullable()
+    val fulfilledAt = long("fulfilled_at").nullable()
+    val seenAt = long("seen_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
 /** The bank after every change we caused: the credits graph and its trend. */
 object CreditsTable : Table("credits_history") {
     val id = long("id").autoIncrement()
@@ -107,5 +125,5 @@ object RequestLogTable : Table("request_log") {
 
 val ALL_TABLES = listOf(
     MetaTable, AgentTable, ShipTable, SystemTable, WaypointTable, MarketTable, ShipyardTable,
-    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, RequestLogTable,
+    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, RequestLogTable,
 )

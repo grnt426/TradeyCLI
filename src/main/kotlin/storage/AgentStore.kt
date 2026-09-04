@@ -9,6 +9,7 @@ import kotlinx.serialization.encodeToString
 import model.Agent
 import model.ApiJson
 import model.Shipyard
+import model.contract.Contract
 import model.market.Market
 import model.market.MarketTradeGood
 import model.market.MarketTransaction
@@ -44,6 +45,11 @@ import java.util.concurrent.Executors
 private val logger = KotlinLogging.logger {}
 
 data class PriceObservation(val good: MarketTradeGood, val observedAt: Instant)
+
+data class ContractRecord(val contract: Contract, val cost: Long, val acceptedAt: Instant?, val fulfilledAt: Instant?, val seenAt: Instant) {
+    val payment: Long get() = contract.terms.payment.onAccepted + contract.terms.payment.onFulfilled
+    val profit: Long get() = payment - cost
+}
 
 data class Checkpoint(val id: String, val behaviour: String, val entity: String?, val phase: String, val params: String, val updatedAt: Instant, val detail: String = "")
 
@@ -241,6 +247,39 @@ class AgentStore private constructor(
     suspend fun listCheckpoints(): List<Checkpoint> = tx {
         CheckpointTable.selectAll().map { row ->
             Checkpoint(row[CheckpointTable.id], row[CheckpointTable.behaviour], row[CheckpointTable.entity], row[CheckpointTable.phase], row[CheckpointTable.params], Instant.ofEpochMilli(row[CheckpointTable.updatedAt]), row[CheckpointTable.detail] ?: "")
+        }
+    }
+
+    /** Upserts a contract; [cost] adds to what has been spent on it, [acceptedAt]/[fulfilledAt] are set once known. */
+    suspend fun putContract(contract: Contract, cost: Long = 0, acceptedAt: Instant? = null, fulfilledAt: Instant? = null, now: Instant = Instant.now()) = tx {
+        val existing = ContractTable.selectAll().where { ContractTable.id eq contract.id }.firstOrNull()
+        val term = contract.terms.deliver.firstOrNull()
+        ContractTable.upsert {
+            it[id] = contract.id
+            it[json] = ApiJson.encodeToString(contract)
+            it[faction] = contract.factionSymbol
+            it[type] = contract.type
+            it[tradeSymbol] = term?.tradeSymbol?.name
+            it[units] = term?.unitsRequired?.toInt() ?: 0
+            it[destination] = term?.destinationSymbol
+            it[onAccepted] = contract.terms.payment.onAccepted
+            it[onFulfilled] = contract.terms.payment.onFulfilled
+            it[ContractTable.cost] = (existing?.get(ContractTable.cost) ?: 0L) + cost
+            it[ContractTable.acceptedAt] = acceptedAt?.toEpochMilli() ?: existing?.get(ContractTable.acceptedAt)
+            it[ContractTable.fulfilledAt] = fulfilledAt?.toEpochMilli() ?: existing?.get(ContractTable.fulfilledAt)
+            it[seenAt] = existing?.get(seenAt) ?: now.toEpochMilli()
+        }
+    }
+
+    suspend fun listContractRecords(): List<ContractRecord> = tx {
+        ContractTable.selectAll().orderBy(ContractTable.seenAt, SortOrder.ASC).map { row ->
+            ContractRecord(
+                contract = decode(row[ContractTable.json]),
+                cost = row[ContractTable.cost],
+                acceptedAt = row[ContractTable.acceptedAt]?.let { Instant.ofEpochMilli(it) },
+                fulfilledAt = row[ContractTable.fulfilledAt]?.let { Instant.ofEpochMilli(it) },
+                seenAt = Instant.ofEpochMilli(row[ContractTable.seenAt]),
+            )
         }
     }
 

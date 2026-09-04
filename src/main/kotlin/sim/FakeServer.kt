@@ -57,6 +57,8 @@ class FakeServer(val universe: SimUniverse) {
                 path == "/my/ships" && method == "GET" -> paged(universe.listShips(), request)
                 path == "/my/ships" && method == "POST" -> data(universe.purchaseShip(enumValueOf<ShipType>(body!!.str("shipType")), body.str("waypointSymbol")), HttpStatusCode.Created)
                 path.startsWith("/my/ships/") -> ship(path.removePrefix("/my/ships/"), method, body)
+                path == "/my/contracts" -> paged(universe.listContracts(), request)
+                path.startsWith("/my/contracts/") -> contract(path.removePrefix("/my/contracts/"), body)
                 path.startsWith("/systems/") -> systems(path.removePrefix("/systems/"), request)
                 else -> respond("""{"error":{"code":404,"message":"no route $method $path"}}""", HttpStatusCode.NotFound, jsonHeaders)
             }
@@ -85,8 +87,22 @@ class FakeServer(val universe: SimUniverse) {
             action == "refuel" -> data(universe.refuel(symbol, body?.get("units")?.takeUnless { it is JsonNull }?.jsonPrimitive?.content?.toIntOrNull()))
             action == "sell" -> data(universe.sell(symbol, enumValueOf<TradeSymbol>(body!!.str("symbol")), body.str("units").toInt()), HttpStatusCode.Created)
             action == "purchase" -> data(universe.purchase(symbol, enumValueOf<TradeSymbol>(body!!.str("symbol")), body.str("units").toInt()), HttpStatusCode.Created)
+            action == "siphon" -> data(universe.siphon(symbol), HttpStatusCode.Created)
+            action == "chart" -> data(universe.chart(symbol), HttpStatusCode.Created)
+            action == "negotiate/contract" -> data(universe.negotiateContract(symbol), HttpStatusCode.Created)
             action == "jettison" -> raw("""{"data":{"cargo":${ApiJson.encodeToString(universe.jettison(symbol, enumValueOf<TradeSymbol>(body!!.str("symbol")), body.str("units").toInt()))}}}""")
             else -> respond("""{"error":{"code":404,"message":"no ship route $action"}}""", HttpStatusCode.NotFound, jsonHeaders)
+        }
+    }
+
+    private fun MockRequestHandleScope.contract(rest: String, body: JsonObject?): HttpResponseData {
+        val id = rest.substringBefore('/')
+        return when (rest.substringAfter('/', "")) {
+            "" -> data(universe.listContracts().first { it.id == id })
+            "accept" -> data(universe.acceptContract(id))
+            "deliver" -> data(universe.deliverContract(id, body!!.str("shipSymbol"), enumValueOf<TradeSymbol>(body.str("tradeSymbol")), body.str("units").toInt()))
+            "fulfill" -> data(universe.fulfillContract(id))
+            else -> respond("""{"error":{"code":404,"message":"no contract route $rest"}}""", HttpStatusCode.NotFound, jsonHeaders)
         }
     }
 

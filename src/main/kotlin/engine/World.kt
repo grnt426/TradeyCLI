@@ -5,6 +5,8 @@ import model.ServerStatus
 import model.Shipyard
 import behaviour.decisions.CreditPoint
 import model.actions.Survey
+import model.contract.Contract
+import storage.ExtractionRecord
 import model.market.Market
 import model.market.MarketTransaction
 import plan.Plan
@@ -35,6 +37,13 @@ class World {
 
     /** Surveys by signature. Expired ones are dropped on read. */
     val surveys = ConcurrentHashMap<String, Survey>()
+
+    /** Contracts by id, as last seen from the server. */
+    val contracts = ConcurrentHashMap<String, Contract>()
+
+    /** Recent extractions, oldest first: the yield history the mining ranking reads. */
+    @Volatile
+    var extractions: List<ExtractionRecord> = emptyList()
 
     /** What each ship's behaviour is doing, by ship symbol. */
     val shipStatus = ConcurrentHashMap<String, ShipStatus>()
@@ -69,6 +78,8 @@ class World {
         creditsHistory = creditsHistory,
         recentTransactions = recentTransactions,
         plan = plan,
+        contracts = contracts.values.sortedBy { it.id },
+        extractions = extractions,
     )
 }
 
@@ -89,7 +100,10 @@ data class Snapshot(
     val creditsHistory: List<CreditPoint> = emptyList(),
     val recentTransactions: List<MarketTransaction> = emptyList(),
     val plan: Plan? = null,
+    val contracts: List<Contract> = emptyList(),
+    val extractions: List<ExtractionRecord> = emptyList(),
 ) {
+    fun gasGiantsIn(system: String): List<Waypoint> = waypointsIn(system).filter { it.isSiphonable }
     fun waypointsIn(system: String): List<Waypoint> = waypoints.values.filter { it.systemSymbol == system }.sortedBy { it.symbol }
     fun marketsIn(system: String): List<Market> = markets.values.filter { OrbitalNames.getSectorSystem(it.symbol) == system }.sortedBy { it.symbol }
     fun shipyardsIn(system: String): List<Shipyard> = shipyards.values.filter { OrbitalNames.getSectorSystem(it.symbol) == system }.sortedBy { it.symbol }
@@ -122,4 +136,8 @@ sealed interface Event {
     data class Refueled(val ship: String, val waypoint: String, val units: Int, val credits: Long) : Event
     data class Surveyed(val ship: String, val waypoint: String, val surveys: Int) : Event
     data class ShipPurchased(val ship: String, val type: String, val credits: Long) : Event
+    data class Charted(val ship: String, val waypoint: String, val credits: Long) : Event
+    data class ContractOffered(val id: String, val type: String, val payment: Long) : Event
+    data class Delivered(val ship: String, val contract: String, val good: String, val units: Int) : Event
+    data class ContractFulfilled(val id: String, val credits: Long) : Event
 }

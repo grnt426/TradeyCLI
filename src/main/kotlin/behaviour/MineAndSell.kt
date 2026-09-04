@@ -18,7 +18,7 @@ import kotlin.time.Duration.Companion.seconds
  */
 val mineAndSellSpec = BehaviourSpec(
     name = "mineAndSell",
-    description = "Mine an asteroid until full, sell at a market, refuel, repeat. Picks the best pair itself unless told.",
+    description = "Mine an asteroid (or siphon a gas giant) until full, sell at a market, refuel, repeat. Picks the best pair itself unless told; one ship per rock.",
     params = listOf(
         ParamSpec("asteroid", "Asteroid to mine; default: best by ranking, re-chosen every cycle"),
         ParamSpec("market", "Market to sell at; default: best for the asteroid"),
@@ -26,10 +26,10 @@ val mineAndSellSpec = BehaviourSpec(
     ),
     validate = { snapshot, ship, params ->
         buildList {
-            if (!ship.canMine) add("${ship.symbol} has no mining laser")
+            if (!ship.canMine && !ship.canSiphon) add("${ship.symbol} has no mining laser or gas siphon")
             params["asteroid"]?.let { a ->
                 val w = snapshot.waypoints[a]
-                if (w == null) add("unknown waypoint $a") else if (!w.isMineable) add("$a is a ${w.type}, not an asteroid")
+                if (w == null) add("unknown waypoint $a") else if (!w.isMineable && !w.isSiphonable) add("$a is a ${w.type}, not an asteroid or gas giant")
                 else if (w.systemSymbol != ship.nav.systemSymbol) add("$a is not in ${ship.nav.systemSymbol}")
             }
             params["market"]?.let { m ->
@@ -52,6 +52,8 @@ suspend fun BehaviourScope.mineAndSell() {
         val plan = phase("plan") {
             val ranked = Mining.rank(snapshot(), me, clock.now())
                 .filter { it.asteroid.symbol !in avoid }
+                // One ship per rock: two lasers on one asteroid destabilize it twice as fast for the same total yield.
+                .filter { !shared.claimedByOther(it.asteroid.symbol, ship) }
                 .filter { fixedAsteroid == null || it.asteroid.symbol == fixedAsteroid }
                 .filter { fixedMarket == null || it.market.symbol == fixedMarket }
             ranked.firstOrNull() ?: throw BehaviourFailure(
@@ -109,14 +111,14 @@ private suspend fun BehaviourScope.extractUntilFull(plan: MiningPlan, useSurveys
     var extracted = 0
     val wanted = plan.prices.keys
     while (!me.cargoFull) {
-        var survey = if (useSurveys && me.canSurvey) Surveys.pick(surveysFor(plan.asteroid.symbol), plan) else null
-        if (survey == null && useSurveys && me.canSurvey && surveysFor(plan.asteroid.symbol).isEmpty()) {
+        var survey = if (useSurveys && me.canSurvey && !plan.asteroid.isSiphonable) Surveys.pick(surveysFor(plan.asteroid.symbol), plan) else null
+        if (survey == null && useSurveys && me.canSurvey && !plan.asteroid.isSiphonable && surveysFor(plan.asteroid.symbol).isEmpty()) {
             status(detail = "surveying")
             survey(ship)
             survey = Surveys.pick(surveysFor(plan.asteroid.symbol), plan)
         }
         val got = try {
-            extract(ship, survey)
+            if (plan.asteroid.isSiphonable) siphon(ship) else extract(ship, survey)
         } catch (e: VerbFailure.SurveyUnusable) {
             continue
         } catch (e: VerbFailure.AsteroidDestabilized) {

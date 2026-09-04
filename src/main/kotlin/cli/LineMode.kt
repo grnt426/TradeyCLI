@@ -145,6 +145,7 @@ class LineMode(
             "asteroids" -> asteroids(args)
             "trades" -> trades(args)
             "intentions" -> intentions()
+            "contracts" -> contracts()
             "plan" -> plan()
             "assign" -> return assign(args)
             "unassign" -> return unassign(args)
@@ -286,16 +287,16 @@ class LineMode(
         val shipArg = args.indexOf("--ship").takeIf { it >= 0 }?.let { args.getOrNull(it + 1)?.uppercase() }
         val system = systemOrHome(args.firstOrNull()?.takeUnless { it.startsWith("--") || it == shipArg }) ?: return
         val snap = loaded(system)
-        val ship = (shipArg?.let { snap.ships[it] } ?: snap.ships.values.filter { it.canMine }.minByOrNull { it.symbol })
-            ?: return err.println("No ship with a mining laser; name one with --ship")
+        val ship = (shipArg?.let { snap.ships[it] } ?: snap.ships.values.filter { it.canMine || it.canSiphon }.minByOrNull { it.symbol })
+            ?: return err.println("No ship with a mining laser or siphon; name one with --ship")
         val plans = Mining.bestPerAsteroid(Mining.rank(snap, ship, engine.clock.now()))
         err.println("Ranked for ${ship.symbol} (laser strength ${ship.miningStrength}, cargo ${ship.cargo.capacity}, speed ${ship.engine.speed}). Prices marked ~ are guesses: no ship has read that market yet.")
         table(
-            listOf("asteroid", "deposits", "market", "cr/h", "cr/unit", "sellable", "cycle", "dist", "fuel", "return", "risk", "notes"),
+            listOf("asteroid", "deposits", "market", "cr/h", "cr/unit", "sellable", "cycle", "dist", "fuel", "return", "risk", "notes / observed"),
             plans.map { p ->
                 listOf(
                     p.asteroid.symbol,
-                    p.asteroid.traits.map { it.symbol.name }.filter { it.endsWith("DEPOSITS") || it == "ICE_CRYSTALS" || it == "FROZEN" }.joinToString(",") { it.removeSuffix("_DEPOSITS") },
+                    if (p.asteroid.isSiphonable) "GAS" else p.asteroid.traits.map { it.symbol.name }.filter { it.endsWith("DEPOSITS") || it == "ICE_CRYSTALS" || it == "FROZEN" }.joinToString(",") { it.removeSuffix("_DEPOSITS") },
                     p.market.symbol,
                     (if (p.estimated) "~" else "") + p.creditsPerHour.toInt(),
                     "%.0f".format(p.valuePerUnit),
@@ -349,6 +350,26 @@ class LineMode(
         out.println(" ".repeat(8) + graph.axis())
         out.println(" ".repeat(8) + graph.axisLabels())
         out.println("history (#) then projection (+); now ${snap.agent?.credits}, ${trend.perHour.toLong()}/h, in ${graph.projectionSpan.toMinutes()}m about ${graph.projectedEnd.toLong()}")
+    }
+
+    /** Every contract seen this reset with what it paid and what it cost, oldest first: do they grow? */
+    private suspend fun contracts() {
+        val store = engine.store ?: return err.println("No store open")
+        val records = store.listContractRecords()
+        table(
+            listOf("contract", "type", "faction", "deliver", "to", "on accept", "on fulfil", "cost", "profit", "accepted", "fulfilled", "deadline"),
+            records.map { r ->
+                val c = r.contract
+                val term = c.terms.deliver.firstOrNull()
+                listOf(
+                    c.id.takeLast(8), c.type, c.factionSymbol,
+                    term?.let { "${it.unitsFulfilled}/${it.unitsRequired} ${it.tradeSymbol}" } ?: "-", term?.destinationSymbol ?: "-",
+                    c.terms.payment.onAccepted.toString(), c.terms.payment.onFulfilled.toString(), r.cost.toString(), r.profit.toString(),
+                    r.acceptedAt?.let { time(it) } ?: (if (c.accepted) "yes" else "-"), r.fulfilledAt?.let { time(it) } ?: (if (c.fulfilled) "yes" else "-"),
+                    c.terms.deadline.take(16),
+                )
+            },
+        )
     }
 
     private suspend fun extractions() {
@@ -451,6 +472,10 @@ class LineMode(
                     is Event.BehaviourFailed -> err.println("${time(engine.clock.now())} ${e.ship} ${e.behaviour} FAILED: ${e.reason}; restart in ${e.restartIn}")
                     is Event.BehaviourFinished -> err.println("${time(engine.clock.now())} ${e.ship} ${e.behaviour} finished")
                     is Event.ShipPurchased -> err.println("${time(engine.clock.now())} bought ${e.ship} (${e.type}) for ${e.credits}")
+                    is Event.ContractOffered -> err.println("${time(engine.clock.now())} contract ${e.id.takeLast(6)} offered: ${e.type} paying ${e.payment}")
+                    is Event.Delivered -> err.println("${time(engine.clock.now())} ${e.ship} delivered ${e.units} ${e.good} for contract ${e.contract.takeLast(6)}")
+                    is Event.ContractFulfilled -> err.println("${time(engine.clock.now())} contract ${e.id.takeLast(6)} fulfilled: +${e.credits}")
+                    is Event.Charted -> err.println("${time(engine.clock.now())} ${e.ship} charted ${e.waypoint}: +${e.credits}")
                     is Event.Warning -> err.println("${time(engine.clock.now())} warning: ${e.message}")
                     is Event.Failure -> err.println("${time(engine.clock.now())} failure: ${e.message}")
                     else -> Unit
@@ -601,6 +626,7 @@ class LineMode(
               asteroids [SYSTEM] [--ship S]   asteroids ranked by credits per hour for a mining ship
               trades [--ship S] [--all]  buy-here-sell-there routes ranked by credits per hour
               intentions                 what the bot is doing and saving for, and the credits trend
+              contracts                  every contract seen with its payment, our cost and the dates
               extractions                every extraction made this reset
               plan                       the plan: which ship runs which behaviour
               assign SHIP BEHAVIOUR [--param value ...]   add or replace an assignment (see 'behaviours')
@@ -624,7 +650,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "extractions",
             "plan", "assign", "unassign", "goal", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")

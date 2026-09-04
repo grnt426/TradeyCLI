@@ -30,6 +30,7 @@ import kotlinx.coroutines.withContext
 import behaviour.decisions.CreditPoint
 import model.Agent
 import model.Shipyard
+import model.contract.Contract
 import plan.Plan
 import model.actions.Survey
 import model.market.Market
@@ -140,6 +141,12 @@ class Engine(
 
         verbs = ShipVerbs(api, world, clock, EngineSink())
 
+        progress("Loading contracts")
+        runCatching { api.listContracts() }.onSuccess { list ->
+            list.forEach { world.contracts[it.id] = it }
+            list.forEach { store.putContract(it, now = clock.now()) }
+        }.onFailure { logger.warn(it) { "contracts not loaded" } }
+
         val hq = world.hqSystemSymbol() ?: error("Agent ${agent.symbol} has no headquarters")
         progress("Loading home system $hq")
         ensureSystem(hq)
@@ -244,6 +251,7 @@ class Engine(
         }
         world.creditsHistory = store.listCredits(since)
         world.recentTransactions = store.listTransactions(since)
+        world.extractions = store.listExtractions().takeLast(2000)
         world.plan = runCatching { Plan.load(Layout.planFile(agentSymbol)) }.getOrNull()
     }
 
@@ -341,6 +349,13 @@ class Engine(
 
         override suspend fun extraction(record: ExtractionRecord) {
             store?.putExtraction(record)
+            world.extractions = (world.extractions + record).takeLast(2000)
+        }
+
+        override suspend fun contractChanged(contract: Contract, cost: Long, accepted: Boolean, fulfilled: Boolean) {
+            val now = clock.now()
+            store?.putContract(contract, cost, acceptedAt = if (accepted) now else null, fulfilledAt = if (fulfilled) now else null, now = now)
+            publish()
         }
 
         override suspend fun statusChanged(ship: String, status: ShipStatus?, params: String) {

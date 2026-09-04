@@ -9,6 +9,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import model.Agent
 import model.Shipyard
 import model.actions.Survey
+import model.contract.Contract
 import model.market.Market
 import model.market.MarketTransaction
 import model.market.TradeSymbol
@@ -35,6 +36,7 @@ interface VerbSink {
     suspend fun transaction(transaction: MarketTransaction)
     suspend fun extraction(record: ExtractionRecord)
     suspend fun statusChanged(ship: String, status: ShipStatus?, params: String)
+    suspend fun contractChanged(contract: Contract, cost: Long = 0, accepted: Boolean = false, fulfilled: Boolean = false)
     fun event(event: Event)
 }
 
@@ -262,6 +264,82 @@ class ShipVerbs(
         val ship = update(response.ship)
         sink.event(Event.ShipPurchased(ship.symbol, type.name, response.transaction.price.toLong()))
         return ship
+    }
+
+    override suspend fun siphon(ship: String): Extracted {
+        var current = settled(ship)
+        if (!current.canSiphon) throw VerbFailure.CannotMine(ship, "no gas siphon")
+        if (current.cargoFull) throw VerbFailure.CargoFull(ship)
+        awaitCooldown(current)
+        if (current.isDocked) current = orbit(ship)
+        val response = try {
+            call(retryOnCooldown = true) { api.siphon(ship) }
+        } catch (e: VerbFailure.Api) {
+            throw when (e.error.code) {
+                ApiErrorCodes.WAYPOINT_NO_YIELD -> VerbFailure.NoYield(current.nav.waypointSymbol)
+                ApiErrorCodes.CARGO_FULL -> VerbFailure.CargoFull(ship)
+                else -> e
+            }
+        }
+        current = update(current.copy(cargo = response.cargo, cooldown = response.cooldown))
+        val here = waypoint(current.nav.waypointSymbol)
+        val yield = response.siphon.yield
+        sink.extraction(ExtractionRecord(ship, here.symbol, yield.symbol, yield.units.toInt(), null, emptyList(), clock.now()))
+        sink.event(Event.Extracted(ship, here.symbol, yield.symbol.name, yield.units.toInt(), "${response.cargo.units}/${response.cargo.capacity}"))
+        return Extracted(ship, here.symbol, yield.symbol, yield.units.toInt(), response.cargo, emptyList())
+    }
+
+    override suspend fun chart(ship: String): Long {
+        val current = settled(ship)
+        val response = call { api.chart(ship) }
+        world.waypoints[response.waypoint.symbol] = response.waypoint
+        sink.waypointChanged(response.waypoint)
+        agentChanged(response.agent)
+        sink.event(Event.Charted(ship, current.nav.waypointSymbol, response.transaction.totalPrice))
+        return response.transaction.totalPrice
+    }
+
+    override fun contracts(): List<Contract> = world.contracts.values.sortedBy { it.id }
+
+    override suspend fun negotiateContract(ship: String): Contract {
+        val current = settled(ship)
+        if (!current.isDocked) dock(ship)
+        val response = call { api.negotiateContract(ship) }
+        return remember(response.contract).also { sink.event(Event.ContractOffered(it.id, it.type, it.terms.payment.onAccepted + it.terms.payment.onFulfilled)) }
+    }
+
+    override suspend fun acceptContract(id: String): Contract {
+        val response = call { api.acceptContract(id) }
+        response.agent?.let { agentChanged(it) }
+        world.contracts[id] = response.contract
+        sink.contractChanged(response.contract, accepted = true)
+        return response.contract
+    }
+
+    override suspend fun deliverContract(id: String, ship: String, good: TradeSymbol, units: Int): Contract {
+        var current = settled(ship)
+        if (!current.isDocked) current = dock(ship)
+        val response = call { api.deliverContract(id, ship, good, units) }
+        update(current.copy(cargo = response.cargo))
+        world.contracts[id] = response.contract
+        sink.contractChanged(response.contract)
+        sink.event(Event.Delivered(ship, id, good.name, units))
+        return response.contract
+    }
+
+    override suspend fun fulfillContract(id: String): Contract {
+        val response = call { api.fulfillContract(id) }
+        response.agent?.let { agentChanged(it) }
+        world.contracts[id] = response.contract
+        sink.contractChanged(response.contract, fulfilled = true)
+        sink.event(Event.ContractFulfilled(id, response.contract.terms.payment.onFulfilled))
+        return response.contract
+    }
+
+    private suspend fun remember(contract: Contract): Contract {
+        world.contracts[contract.id] = contract
+        sink.contractChanged(contract)
+        return contract
     }
 
     override suspend fun setStatus(ship: String, status: ShipStatus?, params: String) {

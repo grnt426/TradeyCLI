@@ -16,7 +16,7 @@ class ParamSpec(val name: String, val description: String, val required: Boolean
 
 /** Every behaviour the plan may name. */
 object Behaviours {
-    val all: Map<String, BehaviourSpec> = listOf(probeMarketsSpec, mineAndSellSpec, tradeSpec, expandSpec).associateBy { it.name }
+    val all: Map<String, BehaviourSpec> = listOf(probeMarketsSpec, mineAndSellSpec, tradeSpec, expandSpec, runContractSpec).associateBy { it.name }
 
     fun get(name: String): BehaviourSpec? = all[name]
 
@@ -24,7 +24,7 @@ object Behaviours {
     fun defaultFor(ship: Ship): String? = when {
         !ship.usesFuel -> "probeMarkets"
         ship.cargo.capacity >= 30 -> "trade"
-        ship.canMine -> "mineAndSell"
+        ship.canMine || ship.canSiphon -> "mineAndSell"
         else -> null
     }
 

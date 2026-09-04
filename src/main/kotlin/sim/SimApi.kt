@@ -7,7 +7,12 @@ import model.Shipyard
 import model.actions.Survey
 import model.market.Market
 import model.market.TradeSymbol
+import model.contract.Contract
 import model.responsebody.BuySellCargoResponse
+import model.responsebody.ChartResponse
+import model.responsebody.ContractResponse
+import model.responsebody.DeliverResponse
+import model.responsebody.SiphonResponse
 import model.responsebody.ExtractionResponse
 import model.responsebody.NavigationResponse
 import model.responsebody.RefuelResponse
@@ -42,4 +47,11 @@ class SimApi(val universe: SimUniverse) : GameApi {
     override suspend fun purchaseCargo(ship: String, symbol: TradeSymbol, units: Int): BuySellCargoResponse = universe.purchase(ship, symbol, units)
     override suspend fun jettison(ship: String, symbol: TradeSymbol, units: Int): Cargo = universe.jettison(ship, symbol, units)
     override suspend fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse = universe.purchaseShip(type, waypoint)
+    override suspend fun siphon(ship: String): SiphonResponse = universe.siphon(ship)
+    override suspend fun chart(ship: String): ChartResponse = universe.chart(ship)
+    override suspend fun listContracts(): List<Contract> = universe.listContracts()
+    override suspend fun negotiateContract(ship: String): ContractResponse = universe.negotiateContract(ship)
+    override suspend fun acceptContract(id: String): ContractResponse = universe.acceptContract(id)
+    override suspend fun deliverContract(id: String, ship: String, symbol: TradeSymbol, units: Int): DeliverResponse = universe.deliverContract(id, ship, symbol, units)
+    override suspend fun fulfillContract(id: String): ContractResponse = universe.fulfillContract(id)
 }

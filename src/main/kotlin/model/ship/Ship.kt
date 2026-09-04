@@ -38,5 +38,8 @@ data class Ship(
     /** Summed strength of the mining lasers; the simulator's yield knob. */
     val miningStrength: Long get() = mounts.filter { it.symbol.name.startsWith("MOUNT_MINING_LASER") }.sumOf { it.strength }
 
+    /** Summed strength of the gas siphons. */
+    val siphonStrength: Long get() = mounts.filter { it.symbol.name.startsWith("MOUNT_GAS_SIPHON") }.sumOf { it.strength }
+
     fun unitsOf(good: TradeSymbol): Int = cargo.unitsOf(good)
 }

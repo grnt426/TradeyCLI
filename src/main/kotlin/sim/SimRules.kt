@@ -66,6 +66,12 @@ data class SimRules(
     /** Trade volume for goods at markets whose prices were never seen. */
     val defaultTradeVolume: Int = 20,
 
+    /** Contracts: pay this multiple of the goods' sale value at the destination (the live offer paid 2.6x), with this long to deliver. */
+    val contractPayMultiple: Double = 2.6,
+    val contractDeadlineHours: Long = 24 * 7,
+    /** Credits for charting a waypoint. Guess; nothing here is uncharted to measure. */
+    val chartReward: Long = 5_000,
+
     /** Fuel: one market unit fills 100 ship units (from the refuel endpoint's description). */
     val fuelUnitsPerMarketUnit: Int = 100,
 )

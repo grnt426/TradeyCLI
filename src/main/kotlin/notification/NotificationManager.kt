@@ -63,8 +63,11 @@ object NotificationManager {
             is Event.BehaviourFailed -> errorNotification("${event.ship} ${event.behaviour} failed", event.reason)
             is Event.BehaviourFinished -> createNotification("${event.ship} ${event.behaviour} finished", "")
             is Event.ShipPurchased -> createNotification("Bought ${event.ship}", "${event.type} for ${event.credits}")
+            is Event.ContractFulfilled -> createNotification("Contract fulfilled", "+${event.credits}")
+            is Event.Charted -> createNotification("Charted ${event.waypoint}", "+${event.credits}")
             is Event.ShipsLoaded, is Event.MarketUpdated, is Event.PhaseChanged, is Event.BehaviourStarted,
-            is Event.Extracted, is Event.Sold, is Event.Bought, is Event.Refueled, is Event.Surveyed -> Unit
+            is Event.Extracted, is Event.Sold, is Event.Bought, is Event.Refueled, is Event.Surveyed,
+            is Event.ContractOffered, is Event.Delivered -> Unit
         }
     }
 

@@ -19,6 +19,9 @@ object Deposits {
         WaypointTraitSymbol.FROZEN to mapOf(TradeSymbol.ICE_WATER to 60.0, TradeSymbol.AMMONIA_ICE to 40.0),
     )
 
+    /** What a gas siphon pulls out of a gas giant. Even weights; a guess until the extraction log says otherwise. */
+    val gasGiant: Map<TradeSymbol, Double> = mapOf(TradeSymbol.HYDROCARBON to 0.34, TradeSymbol.LIQUID_HYDROGEN to 0.33, TradeSymbol.LIQUID_NITROGEN to 0.33)
+
     /** Traits that hint the rock is fragile and may destabilize sooner under repeated extraction. */
     val fragileTraits: Set<WaypointTraitSymbol> = setOf(WaypointTraitSymbol.UNSTABLE_COMPOSITION, WaypointTraitSymbol.HOLLOWED_INTERIOR)
 

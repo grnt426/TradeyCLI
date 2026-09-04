@@ -3,6 +3,7 @@ package engine
 import api.ApiError
 import model.Agent
 import model.actions.Survey
+import model.contract.Contract
 import model.market.Market
 import model.market.MarketTransaction
 import model.market.TradeSymbol
@@ -67,6 +68,18 @@ interface Verbs {
 
     /** Publishes what a behaviour is doing with [ship]; null clears it. [params] is the checkpoint payload. */
     suspend fun setStatus(ship: String, status: ShipStatus?, params: String = "{}")
+
+    /** Waits out any cooldown, then siphons once at a gas giant. Orbits first when docked. */
+    suspend fun siphon(ship: String): Extracted
+
+    /** Charts the waypoint the ship is at; returns the reward. */
+    suspend fun chart(ship: String): Long
+
+    fun contracts(): List<Contract>
+    suspend fun negotiateContract(ship: String): Contract
+    suspend fun acceptContract(id: String): Contract
+    suspend fun deliverContract(id: String, ship: String, good: TradeSymbol, units: Int): Contract
+    suspend fun fulfillContract(id: String): Contract
 }
 
 data class Extracted(

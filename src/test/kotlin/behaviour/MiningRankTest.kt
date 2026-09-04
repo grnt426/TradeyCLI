@@ -36,7 +36,7 @@ class MiningRankTest {
         val plans = Mining.rank(snap, snap.ships.getValue(Fixtures.COMMAND_SHIP), now)
         assertTrue(plans.isNotEmpty())
         plans.forEach { p ->
-            assertTrue(p.asteroid.isMineable, p.asteroid.symbol)
+            assertTrue(p.asteroid.isMineable || p.asteroid.isSiphonable, p.asteroid.symbol)
             assertTrue(p.prices.keys.all { p.market.trades(it) }, "${p.market.symbol} buys ${p.prices.keys}")
             assertTrue(p.creditsPerHour > 0, p.summary())
             assertTrue(p.tradedShare in 0.0..1.0001)

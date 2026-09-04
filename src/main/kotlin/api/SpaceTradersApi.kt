@@ -11,7 +11,9 @@ import model.actions.Survey
 import model.faction.FactionSymbol
 import model.market.Market
 import model.market.TradeSymbol
+import model.contract.Contract
 import model.requestbody.CargoTransferRequest
+import model.requestbody.ContractDeliverRequest
 import model.requestbody.FlightModeRequest
 import model.requestbody.JettisonRequest
 import model.requestbody.RefuelRequest
@@ -19,6 +21,10 @@ import model.requestbody.RegisterRequest
 import model.requestbody.SellCargoRequest
 import model.requestbody.ShipPurchaseRequest
 import model.responsebody.BuySellCargoResponse
+import model.responsebody.ChartResponse
+import model.responsebody.ContractResponse
+import model.responsebody.DeliverResponse
+import model.responsebody.SiphonResponse
 import model.responsebody.ExtractionResponse
 import model.responsebody.NavigationResponse
 import model.responsebody.RefuelResponse
@@ -119,6 +125,29 @@ class SpaceTradersApi(val client: ApiClient) : GameApi {
 
     override suspend fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse =
         client.post("my/ships", ShipPurchaseRequest(type, waypoint), Priority.ACTION).decode()
+
+    override suspend fun siphon(ship: String): SiphonResponse =
+        client.post("my/ships/$ship/siphon", Priority.ACTION).decode()
+
+    override suspend fun chart(ship: String): ChartResponse =
+        client.post("my/ships/$ship/chart", Priority.ACTION).decode()
+
+    // Contracts
+
+    override suspend fun listContracts(): List<Contract> =
+        client.getAll("my/contracts", Priority.INTERACTIVE).map { it.decode<Contract>() }
+
+    override suspend fun negotiateContract(ship: String): ContractResponse =
+        client.post("my/ships/$ship/negotiate/contract", Priority.ACTION).decode()
+
+    override suspend fun acceptContract(id: String): ContractResponse =
+        client.post("my/contracts/$id/accept", Priority.ACTION).decode()
+
+    override suspend fun deliverContract(id: String, ship: String, symbol: TradeSymbol, units: Int): DeliverResponse =
+        client.post("my/contracts/$id/deliver", ContractDeliverRequest(ship, symbol.name, units), Priority.ACTION).decode()
+
+    override suspend fun fulfillContract(id: String): ContractResponse =
+        client.post("my/contracts/$id/fulfill", Priority.ACTION).decode()
 }
 
 inline fun <reified T> JsonElement.decode(): T = ApiJson.decodeFromJsonElement(this)

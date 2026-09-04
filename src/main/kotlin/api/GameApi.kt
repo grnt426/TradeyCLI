@@ -6,7 +6,12 @@ import model.Shipyard
 import model.actions.Survey
 import model.market.Market
 import model.market.TradeSymbol
+import model.contract.Contract
 import model.responsebody.BuySellCargoResponse
+import model.responsebody.ChartResponse
+import model.responsebody.ContractResponse
+import model.responsebody.DeliverResponse
+import model.responsebody.SiphonResponse
 import model.responsebody.ExtractionResponse
 import model.responsebody.NavigationResponse
 import model.responsebody.RefuelResponse
@@ -46,4 +51,13 @@ interface GameApi {
     suspend fun purchaseCargo(ship: String, symbol: TradeSymbol, units: Int): BuySellCargoResponse
     suspend fun jettison(ship: String, symbol: TradeSymbol, units: Int): Cargo
     suspend fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse
+
+    suspend fun siphon(ship: String): SiphonResponse
+    suspend fun chart(ship: String): ChartResponse
+
+    suspend fun listContracts(): List<Contract>
+    suspend fun negotiateContract(ship: String): ContractResponse
+    suspend fun acceptContract(id: String): ContractResponse
+    suspend fun deliverContract(id: String, ship: String, symbol: TradeSymbol, units: Int): DeliverResponse
+    suspend fun fulfillContract(id: String): ContractResponse
 }

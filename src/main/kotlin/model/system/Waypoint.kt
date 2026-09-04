@@ -31,4 +31,9 @@ data class Waypoint(
     /** Waypoint types a mining laser can work. */
     val isMineable: Boolean
         get() = type == WaypointType.ASTEROID || type == WaypointType.ENGINEERED_ASTEROID || type == WaypointType.ASTEROID_FIELD
+
+    /** Waypoint types a gas siphon can work. */
+    val isSiphonable: Boolean get() = type == WaypointType.GAS_GIANT
+
+    val isCharted: Boolean get() = !hasTrait(WaypointTraitSymbol.UNCHARTED)
 }

@@ -17,6 +17,12 @@ import model.ServerStatus
 import model.Shipyard
 import model.WaypointTraitSymbol
 import model.actions.Extraction
+import model.contract.Contract
+import model.responsebody.ChartResponse
+import model.responsebody.ChartTransaction
+import model.responsebody.ContractResponse
+import model.responsebody.DeliverResponse
+import model.responsebody.SiphonResponse
 import model.actions.Survey
 import model.actions.SurveyDeposit
 import model.actions.SurveySize
@@ -93,6 +99,8 @@ class SimUniverse(
     val markets: Map<String, SimMarket> = seed.markets.associate { it.symbol to SimMarket.from(it, rules, clock.now(), observedBases) }
 
     private val surveys = mutableMapOf<String, SimSurvey>()
+    private val contractBook = mutableMapOf<String, Contract>()
+    private var contractsIssued = 0
     private val asteroids = mutableMapOf<String, AsteroidState>()
     private val hq: Waypoint? = waypoints[seed.agent.headquarters]
 
@@ -306,6 +314,100 @@ class SimUniverse(
         val cooldown = cooldown(symbol, rules.extractCooldown.inWholeSeconds, now)
         val updated = put(ship.copy(cargo = ship.cargo.adjusted(good, units), cooldown = cooldown))
         ExtractionResponse(Extraction(symbol, Yield(good, units.toLong())), cooldown, updated.cargo, modifiers)
+    }
+
+    fun siphon(symbol: String): SiphonResponse = counted {
+        val ship = settle(symbol)
+        if (!ship.isInOrbit) throw error(400, ApiErrorCodes.SHIP_NOT_IN_ORBIT, "$symbol must be in orbit")
+        if (!ship.canSiphon) throw error(400, 4258, "$symbol has no gas siphon")
+        val here = waypoints.getValue(ship.nav.waypointSymbol)
+        if (!here.isSiphonable) throw error(400, 4259, "${here.symbol} cannot be siphoned")
+        if (ship.cargoFull) throw error(400, ApiErrorCodes.CARGO_FULL, "$symbol's cargo is full")
+        checkCooldown(ship)
+        val now = clock.now()
+        val good = draw(Deposits.gasGiant)
+        val strength = ship.siphonStrength.toDouble()
+        val raw = strength * (rules.yieldPerStrengthMin + random.nextDouble() * (rules.yieldPerStrengthMax - rules.yieldPerStrengthMin))
+        val units = raw.roundToInt().coerceAtLeast(1).coerceAtMost(ship.cargoSpaceLeft)
+        extractions += Triple(here.symbol, good, units)
+        val cooldown = cooldown(symbol, rules.extractCooldown.inWholeSeconds, now)
+        val updated = put(ship.copy(cargo = ship.cargo.adjusted(good, units), cooldown = cooldown))
+        SiphonResponse(Extraction(symbol, Yield(good, units.toLong())), cooldown, updated.cargo)
+    }
+
+    fun chart(symbol: String): ChartResponse = counted {
+        val ship = settle(symbol)
+        val here = waypoints.getValue(ship.nav.waypointSymbol)
+        if (here.isCharted) throw error(400, 4230, "${here.symbol} is already charted")
+        val now = clock.now()
+        val reward = rules.chartReward
+        val charted = here.copy(traits = here.traits.filterNot { it.symbol == WaypointTraitSymbol.UNCHARTED }, chart = model.system.Chart(agent.symbol, now.toString()))
+        waypoints[here.symbol] = charted
+        agent = agent.copy(credits = agent.credits + reward)
+        ChartResponse(charted.chart!!, charted, ChartTransaction(here.symbol, symbol, reward, now.toString()), agent)
+    }
+
+    // Contracts: procurement of a good some market here imports, paid at a multiple of its sale value.
+
+    fun listContracts(): List<Contract> = counted { contractBook.values.sortedBy { it.id } }
+
+    fun negotiateContract(symbol: String): ContractResponse = counted {
+        val ship = settle(symbol)
+        val here = waypoints.getValue(ship.nav.waypointSymbol)
+        if (here.faction == null) throw error(400, 4700, "${here.symbol} has no faction")
+        if (contractBook.values.any { !it.fulfilled }) throw error(400, 4511, "an unfulfilled contract already exists")
+        val now = clock.now()
+        val candidates = markets.values.flatMap { m -> m.imports.map { g -> m.symbol to g } }.filter { (_, g) -> markets.values.any { it.symbol != it.symbol || true } }
+        val (destination, good) = candidates[random.nextInt(candidates.size)]
+        val units = 20 + random.nextInt(60)
+        val value = markets.getValue(destination).goods.getValue(good).sellPrice(now).toLong() * units
+        contractsIssued++
+        val contract = Contract(
+            id = "sim-contract-${contractsIssued.toString().padStart(4, '0')}",
+            factionSymbol = here.faction!!.symbol.name,
+            type = "PROCUREMENT",
+            terms = model.contract.ContractTerms(
+                deadline = now.plusSeconds(rules.contractDeadlineHours * 3600).toString(),
+                payment = model.contract.PaymentTerm((value * rules.contractPayMultiple * 0.15).toLong(), (value * rules.contractPayMultiple * 0.85).toLong()),
+                deliver = listOf(model.contract.DeliverTerm(good, destination, units.toLong(), 0)),
+            ),
+            accepted = false, fulfilled = false,
+            expiration = now.plusSeconds(3600).toString(), deadlineToAccept = now.plusSeconds(3600).toString(),
+        )
+        contractBook[contract.id] = contract
+        ContractResponse(contract, agent)
+    }
+
+    fun acceptContract(id: String): ContractResponse = counted {
+        val c = contractBook[id] ?: throw error(404, 404, "no contract $id")
+        if (c.accepted) throw error(400, 4501, "already accepted")
+        val updated = c.copy(accepted = true)
+        contractBook[id] = updated
+        agent = agent.copy(credits = agent.credits + c.terms.payment.onAccepted)
+        ContractResponse(updated, agent)
+    }
+
+    fun deliverContract(id: String, symbol: String, good: TradeSymbol, units: Int): DeliverResponse = counted {
+        val c = contractBook[id] ?: throw error(404, 404, "no contract $id")
+        if (!c.accepted) throw error(400, 4505, "not accepted")
+        val ship = settle(symbol)
+        val term = c.terms.deliver.firstOrNull { it.tradeSymbol == good } ?: throw error(400, 4508, "$good is not in the terms")
+        if (ship.nav.waypointSymbol != term.destinationSymbol) throw error(400, 4510, "$symbol is not at ${term.destinationSymbol}")
+        if (ship.unitsOf(good) < units || units <= 0) throw error(400, 4219, "$symbol has ${ship.unitsOf(good)} $good")
+        val accepted = minOf(units.toLong(), term.unitsRequired - term.unitsFulfilled).toInt()
+        val updated = c.copy(terms = c.terms.copy(deliver = c.terms.deliver.map { if (it.tradeSymbol == good) it.copy(unitsFulfilled = it.unitsFulfilled + accepted) else it }))
+        contractBook[id] = updated
+        val after = put(ship.copy(cargo = ship.cargo.adjusted(good, -accepted)))
+        DeliverResponse(updated, after.cargo)
+    }
+
+    fun fulfillContract(id: String): ContractResponse = counted {
+        val c = contractBook[id] ?: throw error(404, 404, "no contract $id")
+        if (c.terms.deliver.any { it.unitsFulfilled < it.unitsRequired }) throw error(400, 4502, "delivery incomplete")
+        val updated = c.copy(fulfilled = true)
+        contractBook[id] = updated
+        agent = agent.copy(credits = agent.credits + c.terms.payment.onFulfilled)
+        ContractResponse(updated, agent)
     }
 
     fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse = counted {

@@ -69,6 +69,6 @@ class BehaviourSimTest {
         // The probe cannot mine; validation catches that before anything runs.
         val plan = Plan(listOf(Assignment(Fixtures.PROBE, "mineAndSell")))
         val problems = plan.validate(sim.SimRun.worldFrom(sim.SimUniverse(Fixtures.seed(), sim.VirtualClock(kotlinx.coroutines.test.TestCoroutineScheduler(), java.time.Instant.EPOCH))).snapshot(1))
-        assertEquals(listOf("${Fixtures.PROBE}: ${Fixtures.PROBE} has no mining laser"), problems)
+        assertEquals(listOf("${Fixtures.PROBE}: ${Fixtures.PROBE} has no mining laser or gas siphon"), problems)
     }
 }

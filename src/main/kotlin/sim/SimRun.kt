@@ -46,6 +46,10 @@ class TraceSink : VerbSink {
     override suspend fun statusChanged(ship: String, status: ShipStatus?, params: String) {
         if (status != null) phases += ship to status
     }
+    override suspend fun contractChanged(contract: model.contract.Contract, cost: Long, accepted: Boolean, fulfilled: Boolean) {
+        contracts[contract.id] = contract
+    }
+    val contracts = mutableMapOf<String, model.contract.Contract>()
     override fun event(event: Event) { events += event }
 
     fun phaseNames(ship: String): List<String> = phases.filter { it.first == ship }.map { it.second.phase }

@@ -62,6 +62,21 @@ sealed class ReturnLeg {
     }
 }
 
+/** What the extraction log says about one rock (or gas giant). */
+data class ObservedRock(
+    val waypoint: String,
+    val extractions: Int,
+    val unitsPerExtraction: Double,
+    /** Extractions per hour over the observed span, when the span is long enough to say. */
+    val perHour: Double?,
+    /** Modifiers the rock has reported, worst last. */
+    val modifiersSeen: List<String>,
+    val lastAt: Instant,
+) {
+    fun summary(): String = "$extractions ext, ${"%.1f".format(unitsPerExtraction)}/ext" +
+        (perHour?.let { ", ${"%.0f".format(it)}/h" } ?: "") + (if (modifiersSeen.isEmpty()) "" else ", seen ${modifiersSeen.joinToString("+")}")
+}
+
 /** What the ranking assumes about the game; the simulator's rules are the same numbers. */
 data class MiningAssumptions(
     val extractCooldownSeconds: Long = 70,
@@ -76,22 +91,44 @@ data class MiningAssumptions(
 
 object Mining {
 
+    /** Per-waypoint yield history from the extraction log: what a rock actually gives, and how hard it has been worked. */
+    fun observe(records: List<storage.ExtractionRecord>, now: Instant): Map<String, ObservedRock> =
+        records.groupBy { it.waypoint }.mapValues { (waypoint, list) ->
+            val sorted = list.sortedBy { it.at }
+            val spanHours = (sorted.last().at.toEpochMilli() - sorted.first().at.toEpochMilli()) / 3_600_000.0
+            ObservedRock(
+                waypoint = waypoint,
+                extractions = sorted.size,
+                unitsPerExtraction = sorted.map { it.units }.average(),
+                perHour = if (spanHours >= 0.25) (sorted.size - 1) / spanHours else null,
+                modifiersSeen = sorted.flatMap { it.modifiers }.distinct(),
+                lastAt = sorted.last().at,
+            )
+        }
+
     /**
-     * Every asteroid paired with every market that buys something it yields, best first. Prices
-     * come from markets a ship has visited; the rest are guesses and flagged as such.
+     * Every asteroid (and, for a ship with a siphon, gas giant) paired with every market that buys
+     * something it yields, best first. Yield per extraction is what the log has seen at that rock
+     * once three or more extractions are recorded, else the laser-strength guess. Prices come from
+     * markets a ship has visited; the rest are guesses and flagged as such.
      */
     fun rank(snapshot: Snapshot, ship: Ship, now: Instant, assumptions: MiningAssumptions = MiningAssumptions()): List<MiningPlan> {
         val system = ship.nav.systemSymbol
         val hq = snapshot.agent?.headquarters?.let { snapshot.waypoints[it] }
         val markets = snapshot.marketsIn(system)
-        val yieldPerExtract = (ship.miningStrength * assumptions.yieldPerStrength).coerceAtLeast(1.0)
         val capacity = ship.cargo.capacity.takeIf { it > 0 } ?: return emptyList()
+        val observed = observe(snapshot.extractions, now)
+        val candidates = (if (ship.canMine) snapshot.asteroidsIn(system) else emptyList()) + (if (ship.canSiphon) snapshot.gasGiantsIn(system) else emptyList())
 
-        return snapshot.asteroidsIn(system).flatMap { asteroid ->
-            val mix = Deposits.yieldMix(asteroid.traitSymbols)
+        return candidates.flatMap { asteroid ->
+            val mix = if (asteroid.isSiphonable) Deposits.gasGiant else Deposits.yieldMix(asteroid.traitSymbols)
             if (mix.isEmpty()) return@flatMap emptyList()
             if (asteroid.hasTrait(WaypointTraitSymbol.STRIPPED) || asteroid.hasModifier(WaypointModifiers.STRIPPED)) return@flatMap emptyList()
             val (risk, notes) = riskOf(asteroid, hq, assumptions)
+            val strength = if (asteroid.isSiphonable) ship.siphonStrength else ship.miningStrength
+            val seen = observed[asteroid.symbol]?.takeIf { it.extractions >= 3 }
+            val yieldPerExtract = seen?.unitsPerExtraction ?: (strength * assumptions.yieldPerStrength).coerceAtLeast(1.0)
+            val observedNotes = seen?.let { listOf("observed ${it.summary()}") } ?: emptyList()
             markets.mapNotNull { market ->
                 val marketWaypoint = snapshot.waypoints[market.symbol] ?: return@mapNotNull null
                 val prices = mutableMapOf<TradeSymbol, Int>()
@@ -127,7 +164,7 @@ object Mining {
                 }
                 val creditsPerCycle = capacity * valuePerUnit - fuelPerCycle * assumptions.creditsPerFuelUnit
                 val perHour = creditsPerCycle / cycleSeconds * 3600 * risk
-                MiningPlan(asteroid, market, perHour, valuePerUnit, tradedShare, cycleSeconds, distance, fuelPerCycle, returnLeg, risk, notes, prices, estimated)
+                MiningPlan(asteroid, market, perHour, valuePerUnit, tradedShare, cycleSeconds, distance, fuelPerCycle, returnLeg, risk, notes + observedNotes, prices, estimated)
             }
         }.sortedByDescending { it.creditsPerHour }
     }
