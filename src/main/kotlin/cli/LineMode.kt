@@ -567,7 +567,7 @@ class LineMode(
                     out.println("chain ${c.id}: ships ${c.ships.joinToString(",")}; enrolled ${time(c.enrolled)}; ${if (c.hold) "held" else "auto"}; reserve ${Intentions.format(c.reserve)}; ${c.note}".trimEnd())
                     table(
                         listOf("leg", "bought", "spent", "sold", "earned", "net"),
-                        ledger.legs.map { l -> listOf(l.toString(), l.bought.toString(), l.spent.toString(), l.sold.toString(), l.earned.toString(), l.net.toString()) } +
+                        ledger.legs.map { l -> listOf("${l.good} ${l.from} -> ${l.to}", l.bought.toString(), l.spent.toString(), l.sold.toString(), l.earned.toString(), l.net.toString()) } +
                             listOf(listOf("fuel", "", ledger.fuel.toString(), "", "", (-ledger.fuel).toString())),
                     )
                     out.println("net ${ledger.net} over ${"%.1f".format(ledger.hoursObserved)} h: ${"%.0f".format(ledger.rawPerHour)}/h raw, ${"%.0f".format(ledger.smoothedPerHour)}/h smoothed; team free-agent baseline ${"%.0f".format(verdict.alternativePerHour)}/h")
