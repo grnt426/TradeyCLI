@@ -180,7 +180,8 @@ class SimRun(
             universe.listWaypoints(universe.system.symbol).forEach { waypoints[it.symbol] = it }
             seed?.markets?.forEach { markets[it.symbol] = it }
             universe.markets.keys.forEach { symbol -> universe.market(symbol).let { if (it.hasPrices || markets[symbol] == null) markets[symbol] = it } }
-            universe.shipyards.keys.forEach { shipyards[it] = universe.shipyard(it) }
+            seed?.shipyards?.forEach { shipyards[it.symbol] = it }
+            universe.shipyards.keys.forEach { symbol -> universe.shipyard(symbol).let { if (it.ships.isNotEmpty() || shipyards[symbol] == null) shipyards[symbol] = it } }
             universe.listShips().forEach { ships[it.symbol] = it }
         }
 

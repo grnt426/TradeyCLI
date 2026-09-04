@@ -3,8 +3,11 @@ package engine
 import model.Agent
 import model.ServerStatus
 import model.Shipyard
+import behaviour.decisions.CreditPoint
 import model.actions.Survey
 import model.market.Market
+import model.market.MarketTransaction
+import plan.Plan
 import model.ship.Ship
 import model.system.OrbitalNames
 import model.system.System
@@ -36,6 +39,18 @@ class World {
     /** What each ship's behaviour is doing, by ship symbol. */
     val shipStatus = ConcurrentHashMap<String, ShipStatus>()
 
+    /** The bank over the last couple of hours, oldest first. */
+    @Volatile
+    var creditsHistory: List<CreditPoint> = emptyList()
+
+    /** Our buys and sells over the last couple of hours. */
+    @Volatile
+    var recentTransactions: List<MarketTransaction> = emptyList()
+
+    /** The plan as last read from its file. */
+    @Volatile
+    var plan: Plan? = null
+
     fun hqSystemSymbol(): String? = agent?.let { OrbitalNames.getSectorSystem(it.headquarters) }
 
     fun snapshot(version: Long): Snapshot = Snapshot(
@@ -51,6 +66,9 @@ class World {
         ships = HashMap(ships),
         surveys = surveys.values.toList(),
         shipStatus = HashMap(shipStatus),
+        creditsHistory = creditsHistory,
+        recentTransactions = recentTransactions,
+        plan = plan,
     )
 }
 
@@ -68,6 +86,9 @@ data class Snapshot(
     val ships: Map<String, Ship>,
     val surveys: List<Survey> = emptyList(),
     val shipStatus: Map<String, ShipStatus> = emptyMap(),
+    val creditsHistory: List<CreditPoint> = emptyList(),
+    val recentTransactions: List<MarketTransaction> = emptyList(),
+    val plan: Plan? = null,
 ) {
     fun waypointsIn(system: String): List<Waypoint> = waypoints.values.filter { it.systemSymbol == system }.sortedBy { it.symbol }
     fun marketsIn(system: String): List<Market> = markets.values.filter { OrbitalNames.getSectorSystem(it.symbol) == system }.sortedBy { it.symbol }

@@ -60,14 +60,23 @@ object TransactionTable : Table("transactions") {
     override val primaryKey = PrimaryKey(id)
 }
 
-/** Where a behaviour was when it last saved itself; the scripting overhaul's resume point. */
+/** Where a behaviour is: its phase and detail, written at every status change; also the resume point. */
 object CheckpointTable : Table("checkpoints") {
     val id = varchar("id", 64)
     val behaviour = varchar("behaviour", 64)
     val entity = varchar("entity", 64).nullable().index()
     val phase = varchar("phase", 64)
     val params = text("params")
+    val detail = text("detail").nullable()
     val updatedAt = long("updated_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+/** The bank after every change we caused: the credits graph and its trend. */
+object CreditsTable : Table("credits_history") {
+    val id = long("id").autoIncrement()
+    val at = long("at").index()
+    val credits = long("credits")
     override val primaryKey = PrimaryKey(id)
 }
 
@@ -98,5 +107,5 @@ object RequestLogTable : Table("request_log") {
 
 val ALL_TABLES = listOf(
     MetaTable, AgentTable, ShipTable, SystemTable, WaypointTable, MarketTable, ShipyardTable,
-    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, RequestLogTable,
+    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, RequestLogTable,
 )

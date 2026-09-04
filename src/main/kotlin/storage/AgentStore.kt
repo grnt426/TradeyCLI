@@ -1,6 +1,7 @@
 package storage
 
 import api.RequestRecord
+import behaviour.decisions.CreditPoint
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -20,6 +21,7 @@ import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.Transaction
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.batchInsert
@@ -43,7 +45,7 @@ private val logger = KotlinLogging.logger {}
 
 data class PriceObservation(val good: MarketTradeGood, val observedAt: Instant)
 
-data class Checkpoint(val id: String, val behaviour: String, val entity: String?, val phase: String, val params: String, val updatedAt: Instant)
+data class Checkpoint(val id: String, val behaviour: String, val entity: String?, val phase: String, val params: String, val updatedAt: Instant, val detail: String = "")
 
 data class ExtractionRecord(
     val ship: String,
@@ -176,8 +178,10 @@ class AgentStore private constructor(
         }
     }
 
-    suspend fun listTransactions(): List<MarketTransaction> = tx {
-        TransactionTable.selectAll().orderBy(TransactionTable.id, SortOrder.ASC).map { row ->
+    suspend fun listTransactions(since: Instant? = null): List<MarketTransaction> = tx {
+        val query = TransactionTable.selectAll()
+        if (since != null) query.where { TransactionTable.timestamp greaterEq since.toString() }
+        query.orderBy(TransactionTable.id, SortOrder.ASC).map { row ->
             MarketTransaction(
                 shipSymbol = row[TransactionTable.shipSymbol],
                 waypointSymbol = row[TransactionTable.waypointSymbol],
@@ -236,20 +240,33 @@ class AgentStore private constructor(
 
     suspend fun listCheckpoints(): List<Checkpoint> = tx {
         CheckpointTable.selectAll().map { row ->
-            Checkpoint(row[CheckpointTable.id], row[CheckpointTable.behaviour], row[CheckpointTable.entity], row[CheckpointTable.phase], row[CheckpointTable.params], Instant.ofEpochMilli(row[CheckpointTable.updatedAt]))
+            Checkpoint(row[CheckpointTable.id], row[CheckpointTable.behaviour], row[CheckpointTable.entity], row[CheckpointTable.phase], row[CheckpointTable.params], Instant.ofEpochMilli(row[CheckpointTable.updatedAt]), row[CheckpointTable.detail] ?: "")
         }
+    }
+
+    suspend fun putCredits(at: Instant, credits: Long) = tx {
+        CreditsTable.insert {
+            it[CreditsTable.at] = at.toEpochMilli()
+            it[CreditsTable.credits] = credits
+        }
+    }
+
+    suspend fun listCredits(since: Instant): List<CreditPoint> = tx {
+        CreditsTable.selectAll().where { CreditsTable.at greaterEq since.toEpochMilli() }.orderBy(CreditsTable.at, SortOrder.ASC)
+            .map { CreditPoint(Instant.ofEpochMilli(it[CreditsTable.at]), it[CreditsTable.credits]) }
     }
 
     suspend fun deleteCheckpoint(id: String) = tx { CheckpointTable.deleteWhere { CheckpointTable.id eq id } }
 
-    suspend fun putCheckpoint(id: String, behaviour: String, entity: String?, phase: String, params: String) = tx {
+    suspend fun putCheckpoint(id: String, behaviour: String, entity: String?, phase: String, params: String, detail: String = "", at: Instant = Instant.now()) = tx {
         CheckpointTable.upsert {
             it[CheckpointTable.id] = id
             it[CheckpointTable.behaviour] = behaviour
             it[CheckpointTable.entity] = entity
             it[CheckpointTable.phase] = phase
             it[CheckpointTable.params] = params
-            it[updatedAt] = java.lang.System.currentTimeMillis()
+            it[CheckpointTable.detail] = detail
+            it[updatedAt] = at.toEpochMilli()
         }
     }
 
@@ -295,7 +312,7 @@ class AgentStore private constructor(
                 },
             )
             transaction(db) {
-                SchemaUtils.create(*ALL_TABLES.toTypedArray())
+                SchemaUtils.createMissingTablesAndColumns(*ALL_TABLES.toTypedArray())
                 MetaTable.upsert { it[key] = "agent"; it[value] = agentSymbol }
                 MetaTable.upsert { it[key] = "resetDate"; it[value] = resetDate }
                 MetaTable.upsert { it[key] = "schemaVersion"; it[value] = SCHEMA_VERSION.toString() }

@@ -22,6 +22,15 @@ Want the client to do the registering? Put an account token (account settings on
 Esc quits. Everything the app has to say ends up in `log.txt`, so look there first when something
 is off.
 
+## The dashboard and the bot
+
+`TradeyCLI run` in a terminal does the work; the dashboard (no arguments) watches it. They share
+the agent's SQLite store: the run writes every phase, sale, purchase and the bank after each
+change, and the dashboard re-reads them every five seconds without spending a request. The
+console screen shows the bank over the last hour with the trend projected ahead in yellow, an
+"Intentions" panel (what each ship is doing, how the trading is going, what the fleet goal is
+saving for and how far off it is) and the plan. `intentions` in line mode prints the same.
+
 ## Line mode
 
 Give it arguments and there is no dashboard, just an answer:
@@ -35,6 +44,7 @@ TradeyCLI market X1-AB12-C3
 TradeyCLI shipyards
 TradeyCLI asteroids            # every asteroid ranked by credits per hour for the mining ship
 TradeyCLI trades               # buy-here-sell-there routes ranked by credits per hour
+TradeyCLI intentions           # what the bot is doing and saving for, and the credits trend
 TradeyCLI extractions          # everything mined this reset
 TradeyCLI --agent OTHERGUY --refresh ships
 TradeyCLI repl                 # reads commands from stdin until EOF

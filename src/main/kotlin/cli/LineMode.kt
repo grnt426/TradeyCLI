@@ -144,6 +144,7 @@ class LineMode(
             "shipyards" -> shipyards(args.firstOrNull())
             "asteroids" -> asteroids(args)
             "trades" -> trades(args)
+            "intentions" -> intentions()
             "plan" -> plan()
             "assign" -> return assign(args)
             "unassign" -> return unassign(args)
@@ -324,6 +325,33 @@ class LineMode(
                 listOf(p.good.name, p.source.symbol, p.buyPrice.toString(), p.destination.symbol, p.sellPrice.toString(), p.units.toString(), p.profit.toString(), p.creditsPerHour.toInt().toString(), "${p.cycleSeconds / 60}m", "${p.legToSource.toInt()}+${p.legToDestination.toInt()}")
             },
         )
+    }
+
+    /** The dashboard's credits graph and intentions panel, as text. */
+    private fun intentions() {
+        val snap = engine.snapshot
+        val now = engine.clock.now()
+        val trend = behaviour.decisions.CreditsTrend.trend(snap.creditsHistory, now)
+        behaviour.decisions.Intentions.describe(snap, now, trend).forEach { out.println("[${it.tone.name.lowercase()}] ${it.text}") }
+        val graph = behaviour.decisions.CreditsTrend.graph(snap.creditsHistory, now)
+        if (snap.creditsHistory.isEmpty()) return
+        out.println()
+        val rows = 6
+        for (row in 0 until rows) {
+            val fromTop = rows - row
+            val label = when (row) { 0 -> behaviour.decisions.CreditsTrend.compact(graph.max); rows - 1 -> behaviour.decisions.CreditsTrend.compact(graph.min); else -> "" }
+            val line = StringBuilder(label.padStart(7) + " ")
+            graph.columns.forEach { c ->
+                val v = c.value
+                line.append(if (v == null) " " else {
+                    val e = graph.eighths(v, rows); val below = (rows - fromTop) * 8
+                    // ASCII only: Windows consoles without UTF-8 turn block characters into question marks
+                    when { e >= below + 8 -> if (c.projected) "+" else "#"; e <= below -> " "; else -> if (c.projected) "." else "=" }
+                })
+            }
+            out.println(line)
+        }
+        out.println("        last ${graph.historySpan.toMinutes()}m of history (#), then ${graph.projectionSpan.toMinutes()}m projected (+); now ${snap.agent?.credits}, ${trend.perHour.toLong()}/h, projected ${graph.projectedEnd.toLong()}")
     }
 
     private suspend fun extractions() {
@@ -575,6 +603,7 @@ class LineMode(
               shipyards [SYSTEM]         shipyards of a system and what they sell
               asteroids [SYSTEM] [--ship S]   asteroids ranked by credits per hour for a mining ship
               trades [--ship S] [--all]  buy-here-sell-there routes ranked by credits per hour
+              intentions                 what the bot is doing and saving for, and the credits trend
               extractions                every extraction made this reset
               plan                       the plan: which ship runs which behaviour
               assign SHIP BEHAVIOUR [--param value ...]   add or replace an assignment (see 'behaviours')
@@ -598,7 +627,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "extractions",
             "plan", "assign", "unassign", "goal", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")

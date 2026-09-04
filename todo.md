@@ -39,7 +39,8 @@ Order matters: each step is the floor the next one stands on. Details and reason
 - [x] Dashboard is a reader: one snapshot per render, repaint on every state change, events become
       notifications. No `Timer`, `runBlocking` or write queue on the engine path; the ones left
       belong to the parked scripts and go with them.
-- [ ] Console command line in the dashboard runs the same commands as line mode.
+- [x] Dashboard follows the store: credits graph with projection, intentions, plan panels.
+- [ ] Console command line in the dashboard runs the same commands as line mode (`run` included).
 
 ## 3. Scripting overhaul
 

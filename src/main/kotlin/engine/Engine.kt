@@ -13,9 +13,12 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -24,8 +27,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import behaviour.decisions.CreditPoint
 import model.Agent
 import model.Shipyard
+import plan.Plan
 import model.actions.Survey
 import model.market.Market
 import model.market.MarketTransaction
@@ -39,6 +44,7 @@ import storage.Layout
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.time.Duration.Companion.seconds
 
 private val logger = KotlinLogging.logger {}
 
@@ -125,6 +131,8 @@ class Engine(
         store.listMarkets().forEach { world.markets[it.symbol] = it }
         store.listShipyards().forEach { world.shipyards[it.symbol] = it }
         store.listShips().forEach { world.ships[it.symbol] = it }
+        loadActivity(store, agent.symbol)
+        store.putCredits(clock.now(), agent.credits)
         publish()
 
         progress("Loading ships")
@@ -204,6 +212,41 @@ class Engine(
     /** The verb layer; only available once booted. */
     fun verbs(): Verbs = verbs ?: error("Engine is not connected; boot first")
 
+    /**
+     * Keeps the world in step with the store while another process (line mode's `run`) does the
+     * work: every [every], re-reads the agent, the fleet, the ships' phases, the credits history,
+     * the recent transactions and the plan file, and publishes. Costs no requests. For the
+     * dashboard, which watches rather than drives.
+     */
+    fun followStore(every: kotlin.time.Duration = 5.seconds): Job = scope.launch {
+        while (isActive) {
+            delay(every)
+            val store = store ?: continue
+            try {
+                val agent = store.getAgent()
+                if (agent != null) world.agent = agent
+                store.listShips().forEach { world.ships[it.symbol] = it }
+                loadActivity(store, world.agent?.symbol ?: continue)
+                publish()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.warn(e) { "following the store failed" }
+            }
+        }
+    }
+
+    /** Phases, credits history, recent transactions and the plan, from the store and the plan file. */
+    private suspend fun loadActivity(store: AgentStore, agentSymbol: String) {
+        val since = clock.now().minus(java.time.Duration.ofHours(2))
+        store.listCheckpoints().forEach { c ->
+            world.shipStatus[c.id] = ShipStatus(c.behaviour, c.phase, c.detail, c.updatedAt)
+        }
+        world.creditsHistory = store.listCredits(since)
+        world.recentTransactions = store.listTransactions(since)
+        world.plan = runCatching { Plan.load(Layout.planFile(agentSymbol)) }.getOrNull()
+    }
+
     fun shutdown() {
         scope.cancel()
         runCatching { apiClient?.close() }
@@ -267,6 +310,9 @@ class Engine(
 
         override suspend fun agentChanged(agent: Agent) {
             store?.putAgent(agent)
+            val now = clock.now()
+            store?.putCredits(now, agent.credits)
+            world.creditsHistory = (world.creditsHistory + CreditPoint(now, agent.credits)).filter { it.at.isAfter(now.minus(java.time.Duration.ofHours(2))) }
             publish()
         }
 
@@ -290,6 +336,7 @@ class Engine(
 
         override suspend fun transaction(transaction: MarketTransaction) {
             store?.putTransaction(transaction)
+            world.recentTransactions = world.recentTransactions + transaction
         }
 
         override suspend fun extraction(record: ExtractionRecord) {
@@ -300,7 +347,7 @@ class Engine(
             if (status == null) {
                 store?.deleteCheckpoint(ship)
             } else {
-                store?.putCheckpoint(ship, status.behaviour, ship, status.phase, params)
+                store?.putCheckpoint(ship, status.behaviour, ship, status.phase, params, status.detail, status.since)
             }
             publish()
         }

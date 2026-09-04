@@ -22,6 +22,9 @@ import commandHistoryIndex
 import io.github.oshai.kotlinlogging.KotlinLogging
 import makeHeader
 import app.App
+import behaviour.decisions.CreditsTrend
+import behaviour.decisions.Intent
+import behaviour.decisions.Intentions
 import model.market.Market
 import model.ship.ShipNavStatus
 import model.ship.components.Inventory
@@ -42,6 +45,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
 
     companion object {
         const val COLUMNS = 8
+        const val GRAPH_ROWS = 6
+        private val BLOCKS = listOf(" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█")
     }
 
     private var zoom = SystemSubScreen.Point(1.0, 1.0)
@@ -61,7 +66,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
         var selectedWaypoint: Waypoint? = null
         var selectedMarket: Market? = null
 
-        grid(Cols.uniform(COLUMNS, App.profData.termWidth / COLUMNS), characters = GridCharacters.Curved) {
+        val columnWidth = App.profData.termWidth / COLUMNS
+        grid(Cols.uniform(COLUMNS, columnWidth), characters = GridCharacters.Curved) {
             val visibleWaypoints = mutableListOf<Waypoint>()
             selectIndex = min(selectIndex, objectsOnScreen)
             cell(colSpan = 3, rowSpan = 4) {
@@ -248,9 +254,10 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 }
             }
 
-            // row 4
+            // row 4: the bank over the last hour and where it is heading
             cell(colSpan = 3) {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Unused", 3) }
+                rgb(HEADER_COLOR.rgb) { makeHeader("Credits", 3) }
+                creditsGraph(snap, columnWidth * 3)
             }
 
             // below system view, row 5
@@ -367,20 +374,19 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 }
             }
 
-            cell {
-
-            }
-
-            cell {
-
-            }
-
-            cell {
-
-            }
-
-            cell {
-
+            cell(colSpan = 4) {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Intentions", 4) }
+                val trend = CreditsTrend.trend(snap.creditsHistory, Instant.now())
+                Intentions.describe(snap, Instant.now(), trend).forEach { intent ->
+                    wrap(intent.text, columnWidth * 4 - 1).forEachIndexed { i, line ->
+                        val shown = if (i == 0) line else "  $line"
+                        when (intent.tone) {
+                            Intent.Tone.GOOD -> green { textLine(shown) }
+                            Intent.Tone.WARN -> yellow { textLine(shown) }
+                            Intent.Tone.NEUTRAL -> textLine(shown)
+                        }
+                    }
+                }
             }
 
             // ROW 3
@@ -421,6 +427,15 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 rgb(HEADER_COLOR.rgb) { makeHeader("Console Stats", 2) }
                 val stats = App.engine.apiClient?.stats
                 textLine("Requests ${stats?.requests?.get() ?: 0} | Errors ${stats?.errors?.get() ?: 0} | Throttled ${stats?.throttled?.get() ?: 0} | Behaviours ${snap.shipStatus.size}")
+            }
+
+            cell(colSpan = 2) {
+                rgb(HEADER_COLOR.rgb) { makeHeader("Plan", 2) }
+                val plan = snap.plan
+                if (plan == null || plan.assignments.isEmpty()) textLine("(empty)")
+                plan?.assignments?.sortedBy { it.ship }?.forEach { a -> textLine("${a.ship} ${a.describe()}".take(columnWidth * 2 - 1)) }
+                plan?.goals?.fleet?.forEach { g -> textLine("fleet: ${g.count} x ${g.type.name.removePrefix("SHIP_")}, reserve ${Intentions.format(g.reserve)}".take(columnWidth * 2 - 1)) }
+                plan?.goals?.credits?.let { textLine("credits goal ${Intentions.format(it)}") }
             }
         }
         text("> ")
@@ -535,6 +550,68 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
         } else {
             return parent.getActiveSelectedScreen() as SelectedScreen
         }
+    }
+
+    /** Word-wraps [text] to lines of at most [width] characters; continuation lines are indented by the caller. */
+    private fun wrap(text: String, width: Int): List<String> {
+        val lines = mutableListOf<String>()
+        var current = StringBuilder()
+        text.split(' ').forEach { word ->
+            val limit = if (lines.isEmpty()) width else width - 2
+            if (current.isNotEmpty() && current.length + 1 + word.length > limit) {
+                lines += current.toString()
+                current = StringBuilder()
+            }
+            if (current.isNotEmpty()) current.append(' ')
+            current.append(word.take(limit))
+        }
+        if (current.isNotEmpty()) lines += current.toString()
+        return lines
+    }
+
+    /**
+     * The bank over the last hour as bars, then the trend's projection in yellow. Every row is
+     * exactly [width] characters so the grid stays aligned.
+     */
+    private fun MainRenderScope.creditsGraph(snap: engine.Snapshot, width: Int) {
+        val labelWidth = 8
+        val columns = (width - labelWidth - 1).coerceAtLeast(20)
+        val projection = columns / 3
+        val graph = CreditsTrend.graph(snap.creditsHistory, Instant.now(), historyColumns = columns - projection, projectionColumns = projection)
+        val rows = GRAPH_ROWS
+        if (snap.creditsHistory.isEmpty()) {
+            textLine("No credits history yet; it fills as the bot trades.")
+            return
+        }
+        for (row in 0 until rows) {
+            val fromTop = rows - row // 1 at the top row
+            val label = when (row) {
+                0 -> CreditsTrend.compact(graph.max)
+                rows - 1 -> CreditsTrend.compact(graph.min)
+                else -> ""
+            }
+            text(label.padStart(labelWidth - 1) + " ")
+            graph.columns.forEach { column ->
+                val value = column.value
+                val glyph = if (value == null) " " else {
+                    val eighths = graph.eighths(value, rows)
+                    val rowsBelow = (rows - fromTop) * 8
+                    when {
+                        eighths >= rowsBelow + 8 -> "█"
+                        eighths <= rowsBelow -> " "
+                        else -> BLOCKS[eighths - rowsBelow]
+                    }
+                }
+                if (column.projected) yellow { text(glyph) } else green { text(glyph) }
+            }
+            textLine()
+        }
+        val trend = graph.trend
+        val now = snap.agent?.credits ?: 0
+        val ahead = graph.projectionSpan.toMinutes()
+        val minutesBack = graph.historySpan.toMinutes()
+        textLine(" ".repeat(labelWidth) + "last ${minutesBack}m".padEnd(columns - projection) + "next ${ahead}m")
+        textLine("now ${Intentions.format(now)}   ${if (trend.perHour >= 0) "+" else ""}${Intentions.format(trend.perHour.toLong())}/h   in ${ahead}m: ~${Intentions.format(graph.projectedEnd.toLong())}".take(width - 1))
     }
 
     private fun OffscreenRenderScope.applyEffects(

@@ -36,7 +36,7 @@ class BootScreen(var userAskedNew: Boolean = false) : Screen() {
         textLine("Debug - Same as Start while automation is disabled")
         textLine("Esc - Quit")
         textLine()
-        textLine("Ship automation is switched off pending the scripting overhaul.")
+        textLine("The dashboard watches; `TradeyCLI run` in a terminal does the work and this screen follows it.")
         text("> ")
         input()
     }
@@ -96,6 +96,7 @@ class BootScreen(var userAskedNew: Boolean = false) : Screen() {
             try {
                 action()
                 BootProgress.finish()
+                App.engine.followStore()
                 appState = RUNNING
             } catch (e: CancellationException) {
                 throw e

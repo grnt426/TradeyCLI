@@ -81,4 +81,28 @@ class AgentStoreTest {
         assertEquals("2026-08-30", store.resetDate)
         store.close()
     }
+
+    @Test
+    fun `credits history and checkpoint detail round trip, and an old database gains the new columns`() = runBlocking {
+        val dir = tempDir()
+        // A database from before credits_history and checkpoints.detail existed.
+        org.jetbrains.exposed.sql.Database.connect("jdbc:sqlite:${File(dir, "data-2026-08-30.db").path}", "org.sqlite.JDBC").let { db ->
+            org.jetbrains.exposed.sql.transactions.transaction(db) {
+                exec("create table checkpoints (id varchar(64) primary key, behaviour varchar(64), entity varchar(64), phase varchar(64), params text, updated_at bigint)")
+                exec("insert into checkpoints values ('S-1', 'trade', 'S-1', 'sell', '{}', 1000)")
+            }
+            org.jetbrains.exposed.sql.transactions.TransactionManager.closeAndUnregister(db)
+        }
+        val store = AgentStore.open(dir, "TEST", "2026-08-30")
+        assertEquals("", store.listCheckpoints().single().detail, "the old row reads with an empty detail")
+        store.putCheckpoint("S-1", "trade", "S-1", "buy", "{}", "SHIP_PARTS at D41", Instant.ofEpochMilli(5_000))
+        val c = store.listCheckpoints().single()
+        assertEquals("SHIP_PARTS at D41", c.detail)
+        assertEquals(Instant.ofEpochMilli(5_000), c.updatedAt)
+        store.putCredits(Instant.ofEpochMilli(1_000), 100)
+        store.putCredits(Instant.ofEpochMilli(2_000), 250)
+        assertEquals(listOf(100L, 250L), store.listCredits(Instant.EPOCH).map { it.credits })
+        assertEquals(listOf(250L), store.listCredits(Instant.ofEpochMilli(1_500)).map { it.credits })
+        store.close()
+    }
 }
