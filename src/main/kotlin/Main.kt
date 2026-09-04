@@ -8,11 +8,16 @@ import com.varabyte.kotter.foundation.input.runUntilKeyPressed
 import com.varabyte.kotter.foundation.session
 import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.render.RenderScope
+import data.ensureRuntimeDirectories
+import io.github.oshai.kotlinlogging.KotlinLogging
 import model.Profile
 import model.ship.ShipRole
+import notification.NotificationManager
 import screen.*
 import java.awt.Color
 import kotlin.math.round
+
+private val logger = KotlinLogging.logger {}
 
 enum class Window {
     MAIN,
@@ -52,6 +57,8 @@ val runningRenderContext = RunningRenderContext()
 fun isActiveScreen(screen: Screen): Boolean = screen == appState.screen
 fun getActiveAppState(): AppState = appState
 suspend fun main() {
+    ensureRuntimeDirectories()
+    logger.info { "TradeyCLI starting" }
 
     // The below needs to come from the profile.settings.json file
     session {
@@ -65,21 +72,40 @@ suspend fun main() {
         }.runUntilKeyPressed(Keys.Escape) {
             val runScope = this
             onInputEntered {
-                with(appState.screen) {
-                    val prevState = appState
-                    appState = onInput(runScope)
-                    if (prevState != appState)
-                        rerender()
+                guarded("input") {
+                    with(appState.screen) {
+                        val prevState = appState
+                        appState = onInput(runScope)
+                        if (prevState != appState)
+                            rerender()
+                    }
                 }
             }
             onKeyPressed {
-                with(appState.screen) {
-                    appState = onKeyPressed(runScope)
+                guarded("key press") {
+                    with(appState.screen) {
+                        appState = onKeyPressed(runScope)
+                    }
                 }
             }
         }
     }
-    SpaceTradersClient.client.close()
+    SpaceTradersClient.closeIfOpen()
+}
+
+/**
+ * Screens run their handlers on Kotter's key-processing coroutine. An exception escaping it kills
+ * that coroutine and leaves the screen frozen with no message, so every handler is wrapped: the
+ * failure is logged, surfaced as a notification, and the current screen stays put.
+ */
+private inline fun guarded(what: String, block: () -> Unit) {
+    try {
+        block()
+    } catch (e: Exception) {
+        NotificationManager.exceptNotification(
+            "Unhandled error while handling $what", e.message ?: e::class.simpleName ?: "unknown error", e
+        )
+    }
 }
 
 fun RenderScope.makeHeader(text: String, spansColumns: Int = 1) {

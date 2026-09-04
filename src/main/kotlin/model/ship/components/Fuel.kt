@@ -6,7 +6,9 @@ import kotlinx.serialization.Serializable
 data class Fuel(
     val current: Long,
     val capacity: Long,
-    val consumed: FuelConsumed
+
+    /** Optional in the API; absent until a ship has burned fuel. */
+    val consumed: FuelConsumed? = null,
 )
 
 fun hasfuelRatio(fuel: Fuel, ratio: Double): Boolean = fuel.current / fuel.capacity > ratio

@@ -7,7 +7,7 @@ import io.ktor.client.request.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import model.ApiJson
 import model.GameState
 import model.api
 import model.extension.LastRead
@@ -56,7 +56,7 @@ suspend fun writeMarket(resp: Market) {
         if (market.transactions != null) orig.transactions = market.transactions
     }
     println("Market $symbol updated @ ${market.lastRead.atZone(ZoneId.systemDefault())}")
-    println(Json.encodeToString(market))
+    println(ApiJson.encodeToString(market))
     FileWritingQueue.enqueue(File(FileWritingQueue.marketDir(symbol)), market)
 }
 

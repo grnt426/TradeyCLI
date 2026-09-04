@@ -14,11 +14,10 @@ data class Waypoint(
     val y: Int,
     val orbitals: List<WaypointOrbital> = emptyList(),
     val traits: List<WaypointTrait> = emptyList(),
-    val modifiers: List<String> = emptyList(),
+    val modifiers: List<WaypointModifier> = emptyList(),
     val isUnderConstruction: Boolean,
 
     val chart: Chart? = null,
     val faction: Faction? = null,
     val orbits: String? = null,
 ) : LastRead()
-

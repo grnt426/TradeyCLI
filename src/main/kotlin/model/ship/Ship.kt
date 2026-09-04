@@ -118,7 +118,7 @@ fun shipsInSameSystem(first: Ship, second: Ship): Boolean = first.nav.systemSymb
 
 fun refuel(ship: Ship) = buyFuel(ship)
 fun buyFuel(ship: Ship) {
-    if (ship.fuel.consumed.amount != 0L) {
+    if ((ship.fuel.consumed?.amount ?: 0L) != 0L) {
         SpaceTradersClient.enqueueRequest<RefuelResponse>(
             ::ignoredCallback,
             ::ignoredFailback,

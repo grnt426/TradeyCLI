@@ -4,14 +4,15 @@ import Symbol
 import client.SpaceTradersClient
 import client.SpaceTradersClient.callGet
 import client.SpaceTradersClient.ignoredFailback
+import data.AGENT_TOKEN_FILE
 import data.DbClient
 import data.FileWritingQueue
 import data.SavedScripts
+import data.readSecret
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.request.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import model.GameState.GAME_API
 import model.GameState.shipsToScripts
 import model.contract.Contract
@@ -19,6 +20,7 @@ import model.exceptions.ProfileLoadingFailure
 import model.market.Market
 import model.responsebody.RegisterResponse
 import model.ship.Ship
+import model.ship.ShipRole
 import model.ship.listShips
 import model.system.OrbitalNames
 import model.system.System
@@ -72,13 +74,19 @@ object GameState {
 
     fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE) {
         logger.info { "Booting GameState from existing Agent" }
-        profData = Json.decodeFromString<ProfileData>(File(profileDataFile).readText())
+        profData = ApiJson.decodeFromString<ProfileData>(File(profileDataFile).readText())
         Profile.createProfile(profData)
-        SpaceTradersClient.createClient(File("$DEFAULT_PROF_DIR/authtoken.secret"))
+        val token = readSecret(AGENT_TOKEN_FILE) ?: throw ProfileLoadingFailure(
+            "No agent token at $AGENT_TOKEN_FILE. Type NEW to register an agent, or paste an existing agent token into that file."
+        )
+        SpaceTradersClient.createClient(token)
         initializeDataManagers()
 
         SpaceTradersClient.beginPollingRequests()
-        agent = (getAgentData() ?: failedToLoad("Agent")) as Agent
+        agent = getAgentData() ?: throw ProfileLoadingFailure(
+            "The API did not return the agent for the token in $AGENT_TOKEN_FILE. " +
+                    "If the server has reset since it was issued, type NEW. Details are in log.txt."
+        )
         postInitGameLoading()
         loadScripts()
     }
@@ -95,7 +103,10 @@ object GameState {
         SpaceTradersClient.beginPollingRequests()
         agent = registerResponse.agent
         contract = registerResponse.contract
-        commandShip = registerResponse.ship
+        registerResponse.ships.forEach { ships[it.symbol] = it }
+        commandShip = registerResponse.ships.firstOrNull { it.registration.role == ShipRole.COMMAND }
+            ?: registerResponse.ships.firstOrNull()
+            ?: throw ProfileLoadingFailure("Registration returned no ships")
         postInitGameLoading()
 
         timer("initialLoading", true, 0, 100) {
@@ -112,8 +123,8 @@ object GameState {
         // basic strategy
         awaitingScripts.add(CommandShipStartScript(commandShip!!))
 
-        // ships are 1-indexed
-        ships["agent.symbol${-2}"]?.let { PriceFetcherScript(it).execute() }
+        // Registration currently includes a probe; put it to work fetching prices
+        ships.values.firstOrNull { it.registration.role == ShipRole.SATELLITE }?.let { PriceFetcherScript(it).execute() }
         PriceDiscoveryScript(getHqSystem().symbol)
     }
 
@@ -134,7 +145,7 @@ object GameState {
             "Name ${profData.name}"
             "HQ ${agent.headquarters}"
         }
-        File("$DEFAULT_PROF_DIR/agent/${profData.name}").writeText(Json.encodeToString(agent))
+        File("$DEFAULT_PROF_DIR/agent/${profData.name}").writeText(ApiJson.encodeToString(agent))
         loadAllData()
         refreshSystem(OrbitalNames.getSectorSystem(agent.headquarters)) ?: failedToLoad("Headquarters")
         if (waypoints.isEmpty()) {
@@ -186,7 +197,7 @@ object GameState {
         shipyards[shipyardResults.symbol] = shipyardResults
         shipyardsBySystem.getOrPut(system) { mutableListOf() }.add(shipyardResults)
         File("$DEFAULT_PROF_DIR/shipyards/${shipyardResults.symbol}")
-            .writeText(Json.encodeToString(shipyardResults))
+            .writeText(ApiJson.encodeToString(shipyardResults))
         initObjRequestsFilled++
     }
 
@@ -195,14 +206,14 @@ object GameState {
         markets[market.symbol] = market
         marketsBySystem.getOrPut(system) { mutableListOf() }.add(market)
         File("$DEFAULT_PROF_DIR/markets/${market.symbol}")
-            .writeText(Json.encodeToString(market))
+            .writeText(ApiJson.encodeToString(market))
         initObjRequestsFilled++
     }
 
     private suspend fun waypointCb(waypoint: Waypoint) {
         waypoints[waypoint.symbol] = waypoint
         File("$DEFAULT_PROF_DIR/waypoints/${waypoint.symbol}")
-            .writeText(Json.encodeToString(waypoint))
+            .writeText(ApiJson.encodeToString(waypoint))
         if (waypoint.traits.any { wt -> wt.symbol == WaypointTraitSymbol.MARKETPLACE }) {
             initObjRequests++
             fetchWaypointByType(waypoint.systemSymbol, waypoint.symbol, "market", ::marketCb)
@@ -318,7 +329,7 @@ object GameState {
             .filter { f -> f.isFile && f.canRead() }
             .associateBy(
                 keySelector = { it.nameWithoutExtension.uppercase() },
-                valueTransform = { Json.decodeFromString<T>(it.readText()) }
+                valueTransform = { ApiJson.decodeFromString<T>(it.readText()) }
             )
             .toMutableMap()
 
@@ -347,10 +358,10 @@ object GameState {
     }
 
     private fun saveSystem(systemName: String) {
-        File("$DEFAULT_PROF_DIR/systems/$systemName").writeText(Json.encodeToString(systems[systemName]))
+        File("$DEFAULT_PROF_DIR/systems/$systemName").writeText(ApiJson.encodeToString(systems[systemName]))
     }
 }
 
-fun api(params: String): String = "$GAME_API/$params"
+fun api(params: String): String = "$GAME_API$params"
 
 fun getScriptForShip(ship: Ship): ScriptExecutor<*>? = shipsToScripts[ship]

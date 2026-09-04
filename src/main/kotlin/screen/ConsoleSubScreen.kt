@@ -218,7 +218,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                     textLine("Orbitals: ${selectedWaypoint!!.orbitals.size}")
                     if (selectedWaypoint!!.orbits != null) textLine("Orbits ${selectedWaypoint!!.orbits}")
                     textLine("Traits: ${selectedWaypoint!!.traits.map { t -> t.symbol }.joinToString(", ")}")
-                    textLine("Modifiers: ${selectedWaypoint!!.modifiers.joinToString { ", " }}")
+                    textLine("Modifiers: ${selectedWaypoint!!.modifiers.joinToString(", ") { it.symbol }}")
                 }
             }
 
@@ -390,7 +390,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 rgb(headerColor.rgb) {
                     makeHeader("Command", 2)
                 }
-                val ship = getShips()[selectedShip - 1]
+                val ship = getShips().getOrNull(selectedShip - 1)
+                    ?: return@cell textLine("No ship #$selectedShip loaded")
                 text("${ship.registration.name}#")
                 applyShipRoleColor(ship.registration.role, false)
                 textLine(" ${ship.nav.status}@${ship.nav.waypointSymbol}")

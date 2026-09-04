@@ -6,5 +6,5 @@ import kotlinx.serialization.Serializable
 data class ContractTerms(
     val deadline: String,
     val payment: PaymentTerm,
-    val deliver: List<DeliverTerm>,
+    val deliver: List<DeliverTerm> = emptyList(),
 )

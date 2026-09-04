@@ -7,7 +7,8 @@ import java.time.Instant
 
 @Serializable
 data class Route(
-    val departure: Location,
+    /** Removed from the API in 2.2 in favour of [origin]; kept optional so older cached files still load. */
+    val departure: Location? = null,
     val origin: Location,
     val destination: Location,
     @Serializable(with = InstantSerializer::class) var arrival: Instant,

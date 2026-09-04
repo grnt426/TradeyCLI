@@ -12,12 +12,11 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.*
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
+import model.ApiJson
 import model.extension.LastRead
 import notification.NotificationManager
-import java.io.File
 import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.concurrent.timer
@@ -62,7 +61,10 @@ object SpaceTradersClient{
         }
     }
 
-    fun createClient(authFile: File): HttpClient = createClient(authFile.readText())
+    /** Closes the HTTP client if one was ever created; the boot menu can be quit before that happens. */
+    fun closeIfOpen() {
+        if (::client.isInitialized) client.close()
+    }
 
     fun createClient(authToken: String): HttpClient {
         client = HttpClient(CIO) {
@@ -71,10 +73,13 @@ object SpaceTradersClient{
                     loadTokens {
                         BearerTokens(authToken, authToken)
                     }
+                    // Send the token up front rather than waiting for a 401 challenge, which
+                    // would otherwise cost two requests per call against the rate limit.
+                    sendWithoutRequest { true }
                 }
             }
             install(ContentNegotiation) {
-                json()
+                json(ApiJson)
             }
         }
         return client
@@ -92,8 +97,8 @@ object SpaceTradersClient{
                         val response = client.get(request)
                         if (response.status.isSuccess() && response.bodyAsText().isNotEmpty()) {
                             println(response.bodyAsText())
-                            result = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
-                                Json.decodeFromJsonElement<T>(
+                            result = ApiJson.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
+                                ApiJson.decodeFromJsonElement<T>(
                                     it
                                 )
                             }!!
@@ -102,6 +107,9 @@ object SpaceTradersClient{
                             }
                         } else {
                             totalErrors++
+                            NotificationManager.errorNotification(
+                                "HTTP ${response.status.value} for ${request.url.encodedPath}", response.bodyAsText()
+                            )
                             println("${response.status} - ${response.bodyAsText()}")
                         }
                     }
@@ -141,8 +149,8 @@ object SpaceTradersClient{
                             if (response.status.isSuccess() && response.bodyAsText().isNotEmpty()) {
                                 println("Success ${response.bodyAsText()}")
                                 try {
-                                    val result = Json.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
-                                        Json.decodeFromJsonElement<T>(
+                                    val result = ApiJson.decodeFromString<JsonObject>(response.bodyAsText())["data"]?.let {
+                                        ApiJson.decodeFromJsonElement<T>(
                                             it
                                         )
                                     }!!

@@ -5,7 +5,8 @@ import model.extension.LastRead
 
 @Serializable
 class Agent(
-    val accountId: String,
+    /** Only present for your own agent, never for public agent listings. */
+    val accountId: String? = null,
     val symbol: String,
     val headquarters: String,
     var credits: Long,
