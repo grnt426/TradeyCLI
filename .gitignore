@@ -1,5 +1,11 @@
 *.secret
 profile/agents/
+# JSON caches the pre-engine code wrote; runtime output, not source
+profile/agent/
+profile/markets/
+profile/waypoints/
+profile/shipyards/
+profile/systems/
 database/
 
 # Standard stuff below
