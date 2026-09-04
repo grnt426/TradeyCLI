@@ -39,6 +39,41 @@ TradeyCLI repl                 # reads commands from stdin until EOF
 Progress goes to stderr, results to stdout, so it pipes. `--refresh` re-fetches instead of using
 what is cached; `--agent` picks a folder under `profile/agents/`.
 
+## Testing without the screen
+
+Line mode exists so the client can be exercised from anything that has a shell and no TTY: a
+script, a CI job, or an assistant driving a terminal. The rules it plays by:
+
+- **Run it from the repo root.** Paths are relative: `profile/` for settings and tokens,
+  `log.txt` for the log. `gradlew installDist` first, then
+  `build/install/TradeyCLI/bin/TradeyCLI` (`.bat` on Windows).
+- **stdout is data, stderr is commentary.** Tables go to stdout; boot progress, prompts and errors
+  go to stderr. `2>/dev/null` (or `2>$null`) leaves only the answer.
+- **Exit codes mean something.** `0` worked, `1` bad usage, `2` boot failed (no token, token
+  rejected, server unreachable). The failure reason is on stderr.
+- **Tables are stable.** Header row, dashed rule, one row per item, columns padded with two spaces
+  between, `(none)` when empty. Safe to grep and split on whitespace runs.
+- **`repl` takes a script on stdin** and boots once for all of it:
+
+  ```
+  printf "status\nships\nwaypoints\n" | TradeyCLI repl 2>/dev/null
+  ```
+
+  A blank line, `quit`, or end of input ends it. `--refresh` on a line re-fetches for that command.
+- **It counts against the real rate limit.** Every command talks to the live API through the
+  same per-account pacer as the dashboard, two requests a second. A `status` is two calls plus a
+  fleet fetch; the first `waypoints` on a system is a few more, then it is served from the store.
+  Do not loop it.
+- **Everything ends up in the store.** `profile/agents/<SYMBOL>/data-<reset>.db` is plain SQLite;
+  `sqlite3` or any browser opens it. `request_log` has one row per API attempt with status and
+  duration, which is the first place to look when something was slow or throttled.
+
+For tests that must not touch the network, go one layer down: `engine.Engine` takes a factory for
+the API client and one for the store, so a test can hand it Ktor's `MockEngine` and a temp folder.
+`src/test/kotlin/engine/EngineTest.kt` boots a whole engine that way and asserts on the snapshot
+and on which paths were requested. `cli.LineMode` likewise takes an engine and streams, so its
+output can be captured in a test without a process.
+
 ## Where things stand
 
 The dashboard renders and talks to the API. Ship automation is switched off
