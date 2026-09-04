@@ -53,11 +53,12 @@ data class SimRules(
     val buyImpactPerVolume: Double = 0.0056,
     val buyImpactGrowth: Double = 1.22,
     /**
-     * Recovery, one observation on 2026-09-04: an import price knocked down 75% by a full load had
-     * recovered a quarter of the way three minutes later, so roughly the whole way in a quarter
-     * hour. The export side had not moved back at all after four minutes. Modelled as one rate.
+     * Recovery, measured over five hours on 2026-09-04: prices we pushed did not come back on the
+     * hour scale. Export prices we bought up kept rising with every load and never fell; the one
+     * clear recovery was an export spike (2.5x) that came 42% of the way back in 107 minutes.
+     * Import prices we sold into drifted lower still. Modelled as a slow drift toward the seed.
      */
-    val priceRecoveryPerHour: Double = 3.0,
+    val priceRecoveryPerHour: Double = 0.2,
     /** Kept for the old linear model; the ranking uses its own [behaviour.decisions.TradingAssumptions]. */
     val priceImpactPerVolume: Double = 0.03,
     val priceFloor: Double = 0.15,

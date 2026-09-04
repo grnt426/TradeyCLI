@@ -24,6 +24,7 @@ val tradeSpec = BehaviourSpec(
     params = listOf(
         ParamSpec("good", "Only trade this good"),
         ParamSpec("minMargin", "Minimum credits per unit after prices move (default 20)"),
+        ParamSpec("minMarginRatio", "Stop a route once the margin drops below this share of the buy price (default 0.15)"),
     ),
     validate = { _, ship, _ -> buildList { if (ship.cargo.capacity == 0) add("${ship.symbol} has no cargo hold") } },
     run = { trade() },
@@ -31,7 +32,10 @@ val tradeSpec = BehaviourSpec(
 
 suspend fun BehaviourScope.trade() {
     val onlyGood = param("good")?.uppercase()
-    val assumptions = param("minMargin")?.toIntOrNull()?.let { TradingAssumptions(minMarginPerUnit = it) } ?: TradingAssumptions()
+    val assumptions = TradingAssumptions(
+        minMarginPerUnit = param("minMargin")?.toIntOrNull() ?: 20,
+        minMarginRatio = param("minMarginRatio")?.toDoubleOrNull() ?: 0.15,
+    )
     val setAside = mutableMapOf<String, Instant>()
 
     if (!me.cargo.isEmpty) phase("sell leftovers") { sellLeftovers() }
@@ -119,7 +123,7 @@ private suspend fun BehaviourScope.buyLoad(plan: TradePlan, market: Market, assu
         val affordable = ((agent().credits * assumptions.capitalShare) / offer.purchasePrice).toInt()
         val batch = minOf(offer.tradeVolume, space, affordable, plan.units - bought)
         if (batch <= 0) break
-        if (plan.sellPrice - offer.purchasePrice < assumptions.minMarginPerUnit) break
+        if (plan.sellPrice - offer.purchasePrice < assumptions.floor(offer.purchasePrice.toDouble())) break
         val purchase = try {
             purchase(ship, plan.good, batch)
         } catch (e: VerbFailure.NotEnoughCredits) {

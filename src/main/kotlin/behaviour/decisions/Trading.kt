@@ -47,7 +47,17 @@ data class TradingAssumptions(
     val creditsPerFuelUnit: Double = 0.72,
     /** Below this margin per unit, after impact, a pair is not worth the trip. */
     val minMarginPerUnit: Int = 20,
-)
+    /**
+     * The steady-state rule: stop buying a batch once its margin falls below this share of its
+     * buy price, and skip a route already below it. Prices in this system do not recover on the
+     * hour scale (measured 2026-09-04), so taking the last few percent of a spread only empties
+     * the market for good; leaving 15% on the table keeps the route alive.
+     */
+    val minMarginRatio: Double = 0.15,
+) {
+    /** The smallest margin worth having on a unit bought at [buyPrice]. */
+    fun floor(buyPrice: Double): Double = maxOf(minMarginPerUnit.toDouble(), buyPrice * minMarginRatio)
+}
 
 object Trading {
 
@@ -71,7 +81,7 @@ object Trading {
                 for (destination in markets) {
                     if (destination.symbol == source.symbol) continue
                     val bid = destination.good(offer.symbol) ?: continue
-                    if (bid.sellPrice - offer.purchasePrice < assumptions.minMarginPerUnit) continue
+                    if (bid.sellPrice - offer.purchasePrice < assumptions.floor(offer.purchasePrice.toDouble())) continue
                     val destinationWaypoint = snapshot.waypoints[destination.symbol] ?: continue
                     val legToDestination = Travel.distance(sourceWaypoint.x, sourceWaypoint.y, destinationWaypoint.x, destinationWaypoint.y)
                     if (ship.usesFuel && Travel.fuelCost(legToDestination, FlightMode.CRUISE) > ship.fuel.capacity) continue
@@ -108,7 +118,7 @@ object Trading {
         val step = min(buyVolume, sellVolume).coerceAtLeast(1)
         while (units < capacity) {
             val batch = min(step, capacity - units)
-            if (sellAt - buyAt < assumptions.minMarginPerUnit) break
+            if (sellAt - buyAt < assumptions.floor(buyAt)) break
             val batchCost = (buyAt * batch).toLong()
             if (cost + batchCost > budget) break
             units += batch
@@ -127,6 +137,6 @@ object Trading {
     fun stillPays(plan: TradePlan, source: Market, assumptions: TradingAssumptions = TradingAssumptions()): Int? {
         val live = source.good(plan.good)?.purchasePrice ?: return null
         val margin = plan.sellPrice - live
-        return margin.takeIf { it >= assumptions.minMarginPerUnit }
+        return margin.takeIf { it >= assumptions.floor(live.toDouble()) }
     }
 }
