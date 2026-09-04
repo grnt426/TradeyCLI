@@ -11,21 +11,23 @@ Order matters: each step is the floor the next one stands on. Details and reason
 - Lenient JSON and the model fixes needed to decode API 2.3 on the load path.
 - Ship automation switched off (`GameState.scriptsEnabled`) so the dashboard can be exercised safely.
 
-## 1. API layer (in progress)
+## 1. API layer
 
-- [ ] One typed client: bearer auth, `data`/`error` envelope handling, `ApiError` with the API's code
-      and message, generous timeouts.
-- [ ] Account-wide request pacer implementing the documented pools (2 per second static, 30 per
-      minute burst) with priority lanes: interactive, ship actions, background refresh. The limit
-      is per account, so every agent of the account shares it.
-- [ ] Retry with backoff on 429 and 5xx, honouring `Retry-After`.
-- [ ] Paged reads (`/systems/{s}/waypoints`, `/my/ships`) instead of one request per entity.
-- [ ] Model drift test against `api-docs/live/openapi-bundled.json` so a spec refresh shows
-      exactly which fields and enum values moved. Generated models were considered; parked until
-      the domain is reshaped in step 3, because the generated classes are immutable and named
-      differently, and the old script layer mutates models everywhere.
-- [ ] Boot path (`Start`, `New`) on the new client; the old `SpaceTradersClient` queue stays only
-      for the parked scripts.
+- [x] One typed client (`api.ApiClient`): bearer auth, `data`/`error` envelope handling,
+      `ApiError` with the API's code and message, 15 s timeouts.
+- [x] Account-wide request pacer (`api.RequestPacer`) implementing the documented pools (2 per
+      second static, 30 per minute burst) with priority lanes: interactive, ship actions,
+      background refresh. The limit is per account, so every agent of the account shares it.
+- [x] Retry with backoff on 429 and 5xx, honouring `Retry-After`.
+- [x] Paged reads (`/systems/{s}/waypoints`, `/my/ships`) instead of one request per entity.
+- [x] Model drift test (`ModelDriftTest`) against `api-docs/live/openapi-bundled.json`: refresh
+      the spec, run the build, read what moved. Generated models were considered and parked until
+      the domain is reshaped in step 3: the generated classes are immutable and named differently,
+      and the old script layer mutates models everywhere.
+- [x] Boot path (`Start`, `New`) on the new client. The old `SpaceTradersClient` queue stays only
+      for the parked scripts and goes with them.
+- [ ] Typed bindings for the endpoints the old scripts never used (contracts, surveys, jump and
+      warp, scan, mounts, construction), as the new behaviours need them.
 
 ## 2. Headless engine and line mode
 

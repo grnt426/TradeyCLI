@@ -6,7 +6,8 @@ import QuadSelect
 import SELECTED_HEADER_COLOR
 import Window
 import applyShipRoleColor
-import client.SpaceTradersClient
+import api.JobPressure
+import api.pressureOf
 import com.varabyte.kotter.foundation.anim.text
 import com.varabyte.kotter.foundation.input.*
 import com.varabyte.kotter.foundation.text.*
@@ -320,16 +321,16 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 rgb(HEADER_COLOR.rgb) {
                     makeHeader("Job Pressure")
                 }
-                val pressureWindow = SpaceTradersClient.jobPressureWindow
+                val pressureWindow = GameState.pacer.queueHistory
                 (0..4).forEach { h ->
                     if (h != 3) {
                         pressureWindow.forEach { w ->
                             if (h < 4) {
-                                val pressure = SpaceTradersClient.getJobPressure(w)
+                                val pressure = pressureOf(w)
                                 // Every row must emit exactly one character per column, or the
                                 // rows drift out of alignment with each other.
                                 when (pressure) {
-                                    SpaceTradersClient.JobPressure.LOW -> {
+                                    JobPressure.LOW -> {
                                         if (h == 2) {
                                             green {
                                                 text(blocks[w])
@@ -339,7 +340,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                                         }
                                     }
 
-                                    SpaceTradersClient.JobPressure.OK -> {
+                                    JobPressure.OK -> {
                                         yellow {
                                             if (h == 1) {
                                                 text(blocks[w - 8])
@@ -351,7 +352,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                                         }
                                     }
 
-                                    SpaceTradersClient.JobPressure.HIGH -> {
+                                    JobPressure.HIGH -> {
                                         red {
                                             if (h > 0) {
                                                 text(FULL_BLOCK)
@@ -431,8 +432,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 rgb(HEADER_COLOR.rgb) { makeHeader("Console Stats", 2) }
                 val writes = FileWritingQueue.totalFileWrites
                 val states = ScriptExecutor.totalStateChanges
-                val errors = SpaceTradersClient.totalErrors
-                textLine("Writes $writes | Errors $errors | State => $states")
+                val stats = GameState.api.client.stats
+                textLine("Writes $writes | Requests ${stats.requests.get()} | Errors ${stats.errors.get()} | Throttled ${stats.throttled.get()} | State => $states")
             }
         }
         text("> ")

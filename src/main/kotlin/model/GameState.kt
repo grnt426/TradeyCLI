@@ -1,17 +1,27 @@
 package model
 
-import Symbol
+import api.ApiClient
+import api.ApiError
+import api.RequestPacer
+import api.SpaceTradersApi
 import client.SpaceTradersClient
-import client.SpaceTradersClient.callGet
-import client.SpaceTradersClient.ignoredFailback
 import data.AGENT_TOKEN_FILE
 import data.DbClient
 import data.FileWritingQueue
 import data.SavedScripts
 import data.readSecret
 import io.github.oshai.kotlinlogging.KotlinLogging
-import io.ktor.client.request.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineName
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import model.GameState.GAME_API
 import model.GameState.shipsToScripts
@@ -21,10 +31,8 @@ import model.market.Market
 import model.responsebody.RegisterResponse
 import model.ship.Ship
 import model.ship.ShipRole
-import model.ship.listShips
 import model.system.OrbitalNames
 import model.system.System
-import model.system.SystemWaypoint
 import model.system.Waypoint
 import notification.Notification
 import notification.NotificationManager
@@ -37,20 +45,26 @@ import script.repo.CommandShipStartScript
 import script.repo.pricing.PriceDiscoveryScript
 import script.repo.pricing.PriceFetcherScript
 import java.io.File
-import java.lang.Thread.sleep
 import java.time.Instant
-import kotlin.concurrent.timer
-import kotlin.reflect.KSuspendFunction1
+import java.util.concurrent.ConcurrentHashMap
 
 const val DEFAULT_PROF_DIR = "profile"
 const val DEFAULT_PROF_FILE = "$DEFAULT_PROF_DIR/profile.settings.json"
 
 private val logger = KotlinLogging.logger {}
+
 object GameState {
 
     const val GAME_API = "https://api.spacetraders.io/v2/"
 
-    val stateDispatcher = Dispatchers.Default
+    /** Everything that talks to the API or mutates state off the UI thread runs here. */
+    val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("engine"))
+
+    /** One pacer per process: the rate limit is per account, so every agent shares it. */
+    val pacer: RequestPacer by lazy { RequestPacer(engineScope) }
+
+    lateinit var api: SpaceTradersApi
+        private set
 
     // we can only ever have one contract for now
     var contract: Contract? = null
@@ -58,19 +72,23 @@ object GameState {
 
     lateinit var profData: ProfileData
     lateinit var agent: Agent
-    lateinit var systems: MutableMap<String, System>
-    lateinit var waypoints: MutableMap<String, Waypoint>
-    lateinit var shipyards: MutableMap<String, Shipyard>
-    var ships = mutableMapOf<String, Ship>()
-    val shipsToScripts: MutableMap<Ship, ScriptExecutor<*>> = mutableMapOf()
-    lateinit var markets: MutableMap<String, Market>
+
+    // Read on the render thread while the engine fills them in, hence concurrent maps.
+    val systems: MutableMap<String, System> = ConcurrentHashMap()
+    val waypoints: MutableMap<String, Waypoint> = ConcurrentHashMap()
+    val shipyards: MutableMap<String, Shipyard> = ConcurrentHashMap()
+    val ships: MutableMap<String, Ship> = ConcurrentHashMap()
+    val markets: MutableMap<String, Market> = ConcurrentHashMap()
     val marketsBySystem = mutableMapOf<String, MutableList<Market>>()
     val shipyardsBySystem = mutableMapOf<String, MutableList<Shipyard>>()
+
+    val shipsToScripts: MutableMap<Ship, ScriptExecutor<*>> = mutableMapOf()
     val scriptsRunning = mutableListOf<ScriptExecutor<*>>()
     var engineeredAsteroid: String = ""
-    private var initObjRequests = 0
-    private var initObjRequestsFilled = 0
     private var awaitingScripts = mutableListOf<ScriptExecutor<*>>()
+
+    /** Completes once the home system's waypoints, markets and shipyards have been fetched. */
+    private val systemLoaded = CompletableDeferred<Unit>()
 
     /**
      * Master switch for ship automation. Off pending the scripting overhaul (see
@@ -87,14 +105,17 @@ object GameState {
         val token = readSecret(AGENT_TOKEN_FILE) ?: throw ProfileLoadingFailure(
             "No agent token at $AGENT_TOKEN_FILE. Type NEW to register an agent, or paste an existing agent token into that file."
         )
-        SpaceTradersClient.createClient(token)
+        connectApi(token)
         initializeDataManagers()
 
-        SpaceTradersClient.beginPollingRequests()
-        agent = getAgentData() ?: throw ProfileLoadingFailure(
-            "The API did not return the agent for the token in $AGENT_TOKEN_FILE. " +
-                    "If the server has reset since it was issued, mint a new token or type NEW. Details are in log.txt."
-        )
+        agent = try {
+            runBlocking { api.getMyAgent() }
+        } catch (e: ApiError) {
+            throw ProfileLoadingFailure(
+                "The API rejected the token in $AGENT_TOKEN_FILE: ${e.apiMessage} (HTTP ${e.status}, code ${e.code}). " +
+                        "If the server has reset since it was issued, mint a new token or type NEW."
+            )
+        }
         // The token decides which agent this is; the profile name follows it.
         if (!profData.name.equals(agent.symbol, ignoreCase = true)) {
             logger.info { "Profile name '${profData.name}' does not match the token's agent '${agent.symbol}'; updating the profile" }
@@ -110,11 +131,10 @@ object GameState {
 
         profData = profileData
         Profile.createProfile(profileData)
-        SpaceTradersClient.createClient(registerResponse.token)
+        connectApi(registerResponse.token)
         initializeDataManagers()
 
         registerResponse.token = "" // clear auth token from our memory
-        SpaceTradersClient.beginPollingRequests()
         agent = registerResponse.agent
         contract = registerResponse.contract
         registerResponse.ships.forEach { ships[it.symbol] = it }
@@ -128,15 +148,12 @@ object GameState {
             return
         }
 
-        timer("initialLoading", true, 0, 100) {
-            if (initObjRequestsFilled == initObjRequests) {
-                this.cancel()
-
-                // Give us a little more time, to avoid race conditions
-                sleep(2_000)
-                logger.info { "Finished loading at $initObjRequestsFilled/$initObjRequests" }
-                awaitingScripts.forEach { s -> s.execute() }
-            }
+        engineScope.launch {
+            systemLoaded.await()
+            // Give us a little more time, to avoid race conditions
+            delay(2_000)
+            logger.info { "System loaded; starting ${awaitingScripts.size} scripts" }
+            awaitingScripts.forEach { s -> s.execute() }
         }
 
         // basic strategy
@@ -145,6 +162,20 @@ object GameState {
         // Registration currently includes a probe; put it to work fetching prices
         ships.values.firstOrNull { it.registration.role == ShipRole.SATELLITE }?.let { PriceFetcherScript(it).execute() }
         PriceDiscoveryScript(getHqSystem().symbol)
+    }
+
+    /** Stops the engine and closes the HTTP clients. Safe to call before anything was started. */
+    fun shutdown() {
+        engineScope.cancel()
+        if (::api.isInitialized) api.client.close()
+        SpaceTradersClient.closeIfOpen()
+    }
+
+    private fun connectApi(token: String) {
+        api = SpaceTradersApi(ApiClient(token, pacer))
+        // The parked script layer still talks through the old client; keep it usable but idle.
+        SpaceTradersClient.createClient(token)
+        if (scriptsEnabled) SpaceTradersClient.beginPollingRequests()
     }
 
     private fun initializeDataManagers() {
@@ -160,31 +191,88 @@ object GameState {
                 "Welcome to the command console"
             )
         )
-        logger.info {
-            "Name ${profData.name}"
-            "HQ ${agent.headquarters}"
-        }
-        File("$DEFAULT_PROF_DIR/agent/${profData.name}").writeText(ApiJson.encodeToString(agent))
+        logger.info { "Agent ${agent.symbol}, headquarters ${agent.headquarters}" }
+        writeCache("agent", agent.symbol, agent)
         loadAllData()
-        refreshSystem(OrbitalNames.getSectorSystem(agent.headquarters)) ?: failedToLoad("Headquarters")
-        if (waypoints.isEmpty()) {
-            refreshWaypoints(getHqSystem().symbol, getHqSystem().waypoints)
+
+        val hq = OrbitalNames.getSectorSystem(agent.headquarters)
+        refreshSystem(hq)
+        if (waypoints.values.none { it.systemSymbol == hq }) {
+            engineScope.launch { loadSystemContents(hq) }
+        } else {
+            logger.info { "Using cached waypoints, markets and shipyards for $hq" }
+            systemLoaded.complete(Unit)
         }
     }
 
-    private inline fun <reified T> fetchSystemsForWaypointsWithTraits(
-        systemSymbol: String, traitType: WaypointTraitSymbol,
-        endpoint: String, noinline callback: KSuspendFunction1<T, Unit>
-    ) {
-        waypoints.values
-            .filter { w ->
-                w.systemSymbol == systemSymbol && w.traits.find { t -> t.symbol == traitType } != null
+    private fun refreshSystem(systemSymbol: String) {
+        logger.info { "Ensuring home system $systemSymbol is loaded" }
+        val system = try {
+            runBlocking { api.getSystem(systemSymbol) }
+        } catch (e: ApiError) {
+            throw ProfileLoadingFailure("Could not load home system $systemSymbol: ${e.apiMessage} (HTTP ${e.status}, code ${e.code})")
+        }
+        systems[systemSymbol] = system
+        writeCache("systems", systemSymbol, system)
+    }
+
+    /**
+     * Fetches every waypoint of [system] (twenty per request), then the market and shipyard of each
+     * waypoint that has one. Runs on the engine scope; the dashboard fills in as results land.
+     */
+    private suspend fun loadSystemContents(system: String) {
+        try {
+            val loaded = api.listSystemWaypoints(system)
+            loaded.forEach { w ->
+                waypoints[w.symbol] = w
+                writeCache("waypoints", w.symbol, w)
             }
-            .forEach { w ->
-                SpaceTradersClient.enqueueRequest<T>(callback, ::ignoredFailback, request {
-                    url(api("systems/$systemSymbol/waypoints/${w.symbol}/$endpoint"))
-                })
+            logger.info { "Loaded ${loaded.size} waypoints in $system" }
+
+            coroutineScope {
+                loaded.filter { it.hasTrait(WaypointTraitSymbol.MARKETPLACE) }.forEach { w ->
+                    launch { fetchOrSkip("market ${w.symbol}") { storeMarket(api.getMarket(system, w.symbol)) } }
+                }
+                loaded.filter { it.hasTrait(WaypointTraitSymbol.SHIPYARD) }.forEach { w ->
+                    launch { fetchOrSkip("shipyard ${w.symbol}") { storeShipyard(api.getShipyard(system, w.symbol)) } }
+                }
             }
+            logger.info { "System $system loaded: ${markets.size} markets, ${shipyards.size} shipyards" }
+            NotificationManager.createNotification(
+                "$system loaded", "${loaded.size} waypoints, ${markets.size} markets, ${shipyards.size} shipyards"
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            NotificationManager.exceptNotification("Loading $system failed", e.message ?: e::class.simpleName ?: "", e)
+        } finally {
+            systemLoaded.complete(Unit)
+        }
+    }
+
+    private suspend fun fetchOrSkip(what: String, block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: ApiError) {
+            logger.warn { "Skipping $what: ${e.message}" }
+            NotificationManager.errorNotification("Skipping $what", e.apiMessage)
+        }
+    }
+
+    private fun storeMarket(market: Market) {
+        markets[market.symbol] = market
+        synchronized(marketsBySystem) {
+            marketsBySystem.getOrPut(OrbitalNames.getSectorSystem(market.symbol)) { mutableListOf() }.add(market)
+        }
+        writeCache("markets", market.symbol, market)
+    }
+
+    private fun storeShipyard(shipyard: Shipyard) {
+        shipyards[shipyard.symbol] = shipyard
+        synchronized(shipyardsBySystem) {
+            shipyardsBySystem.getOrPut(OrbitalNames.getSectorSystem(shipyard.symbol)) { mutableListOf() }.add(shipyard)
+        }
+        writeCache("shipyards", shipyard.symbol, shipyard)
     }
 
     private fun loadScripts() {
@@ -192,86 +280,15 @@ object GameState {
         if (scriptsEnabled) resumeSavedScripts() else logger.info { "Scripts are disabled; not resuming saved scripts" }
     }
 
-    private fun refreshShipyards() = fetchSystemsForWaypointsWithTraits(
-        getHqSystem().symbol, WaypointTraitSymbol.SHIPYARD,
-        "shipyard", ::shipyardCb
-    )
-
-    private fun refreshMarkets() = fetchSystemsForWaypointsWithTraits(
-        getHqSystem().symbol, WaypointTraitSymbol.MARKETPLACE,
-        "market", ::marketCb
-    )
-
-    private fun refreshWaypoints(systemSymbol: String, waypoints: List<SystemWaypoint>) {
-        logger.info { "Loading waypoints of $systemSymbol for ${waypoints.size} waypoints" }
-        initObjRequests += waypoints.size
-        waypoints.forEach { w ->
-            SpaceTradersClient.enqueueRequest(::waypointCb, ::ignoredFailback, request {
-                url(api("systems/$systemSymbol/waypoints/${w.symbol}"))
-            })
-        }
-    }
-
-    private suspend fun shipyardCb(shipyardResults: Shipyard) {
-        val system = OrbitalNames.getSectorSystem(shipyardResults.symbol)
-        shipyards[shipyardResults.symbol] = shipyardResults
-        shipyardsBySystem.getOrPut(system) { mutableListOf() }.add(shipyardResults)
-        File("$DEFAULT_PROF_DIR/shipyards/${shipyardResults.symbol}")
-            .writeText(ApiJson.encodeToString(shipyardResults))
-        initObjRequestsFilled++
-    }
-
-    private suspend fun marketCb(market: Market) {
-        val system = OrbitalNames.getSectorSystem(market.symbol)
-        markets[market.symbol] = market
-        marketsBySystem.getOrPut(system) { mutableListOf() }.add(market)
-        File("$DEFAULT_PROF_DIR/markets/${market.symbol}")
-            .writeText(ApiJson.encodeToString(market))
-        initObjRequestsFilled++
-    }
-
-    private suspend fun waypointCb(waypoint: Waypoint) {
-        waypoints[waypoint.symbol] = waypoint
-        File("$DEFAULT_PROF_DIR/waypoints/${waypoint.symbol}")
-            .writeText(ApiJson.encodeToString(waypoint))
-        if (waypoint.traits.any { wt -> wt.symbol == WaypointTraitSymbol.MARKETPLACE }) {
-            initObjRequests++
-            fetchWaypointByType(waypoint.systemSymbol, waypoint.symbol, "market", ::marketCb)
-        }
-
-        if (waypoint.traits.any { wt -> wt.symbol == WaypointTraitSymbol.SHIPYARD }) {
-            initObjRequests++
-            fetchWaypointByType(waypoint.systemSymbol, waypoint.symbol, "shipyard", ::shipyardCb)
-        }
-        initObjRequestsFilled++
-    }
-
-    private inline fun <reified T> fetchWaypointByType(
-        systemSymbol: String, waypointSymbol: String,
-        endpoint: String, noinline callback: KSuspendFunction1<T, Unit>
-    ) {
-        SpaceTradersClient.enqueueRequest<T>(callback, ::ignoredFailback, request {
-            url(api("systems/$systemSymbol/waypoints/$waypointSymbol/$endpoint"))
-        })
-    }
-
-    private fun loadAllData() {
-        logger.info { "Loading data from files" }
-        systems = loadDataFromJsonFile<System>("systems")
-        shipyards = loadDataFromJsonFile<Shipyard>("shipyards")
-        waypoints = loadDataFromJsonFile<Waypoint>("waypoints")
-        markets = loadDataFromJsonFile<Market>("markets")
-        markets.values.forEach { m ->
-            marketsBySystem.getOrPut(OrbitalNames.getSectorSystem(m.symbol)) {
-                mutableListOf()
-            }.add(m)
-        }
-        logger.info { "Done loading data from files" }
-    }
-
     private fun fetchAllShips() {
-        val shipList = listShips()
-        ships.putAll(convertToMap(shipList))
+        val fleet = try {
+            runBlocking { api.listMyShips() }
+        } catch (e: ApiError) {
+            logger.error { "Could not list ships: ${e.message}" }
+            NotificationManager.errorNotification("Could not list ships", e.apiMessage)
+            emptyList()
+        }
+        fleet.forEach { ships[it.symbol] = it }
         logger.info { "Loaded ${ships.size} ships" }
     }
 
@@ -334,57 +351,39 @@ object GameState {
         }
     }
 
-    private fun <T> convertToMap(list: List<T>?): MutableMap<String, T> where T : Symbol {
-        if (list != null) {
-            return list.associateBy(
-                keySelector = { it.symbol },
-                valueTransform = { it }
-            ).toMutableMap()
+    private fun loadAllData() {
+        logger.info { "Loading data from files" }
+        systems.putAll(loadDataFromJsonFile<System>("systems"))
+        shipyards.putAll(loadDataFromJsonFile<Shipyard>("shipyards"))
+        waypoints.putAll(loadDataFromJsonFile<Waypoint>("waypoints"))
+        markets.putAll(loadDataFromJsonFile<Market>("markets"))
+        markets.values.forEach { m ->
+            marketsBySystem.getOrPut(OrbitalNames.getSectorSystem(m.symbol)) { mutableListOf() }.add(m)
         }
-
-        return mutableMapOf()
+        logger.info { "Done loading data from files: ${systems.size} systems, ${waypoints.size} waypoints, ${markets.size} markets, ${shipyards.size} shipyards" }
     }
 
-
-    private inline fun <reified T> loadDataFromJsonFile(folderRoot: String): MutableMap<String, T> =
+    /** Reads one cached entity per file; a file an older model wrote that no longer decodes is skipped with a warning. */
+    private inline fun <reified T> loadDataFromJsonFile(folderRoot: String): Map<String, T> =
         File("$DEFAULT_PROF_DIR/$folderRoot")
             .walk()
             .filter { f -> f.isFile && f.canRead() }
-            .associateBy(
-                keySelector = { it.nameWithoutExtension.uppercase() },
-                valueTransform = { ApiJson.decodeFromString<T>(it.readText()) }
-            )
-            .toMutableMap()
+            .mapNotNull { f ->
+                runCatching { f.nameWithoutExtension.uppercase() to ApiJson.decodeFromString<T>(f.readText()) }
+                    .onFailure { logger.warn { "Skipping cache file ${f.path}: ${it.message}" } }
+                    .getOrNull()
+            }
+            .toMap()
+
+    private inline fun <reified T> writeCache(folder: String, name: String, value: T) {
+        File("$DEFAULT_PROF_DIR/$folder/$name").writeText(ApiJson.encodeToString(value))
+    }
 
     fun getHqSystem(): System = systems[OrbitalNames.getSectorSystem(agent.headquarters)]!!
-
-    private fun failedToLoad(what: String) {
-        throw ProfileLoadingFailure("Failed to load '$what' data.")
-    }
-
-    private fun getAgentData(): Agent? = callGet<Agent>(request {
-        url(api("my/agent"))
-    })
-
-    private fun refreshSystem(systemName: String): System? {
-        logger.info { "Ensuring home system $systemName is loaded" }
-        val system = callGet<System>(request {
-            url(api("systems/$systemName"))
-        })
-
-        if (system != null) {
-            systems[systemName] = system
-            saveSystem(systemName)
-        }
-
-        return system
-    }
-
-    private fun saveSystem(systemName: String) {
-        File("$DEFAULT_PROF_DIR/systems/$systemName").writeText(ApiJson.encodeToString(systems[systemName]))
-    }
 }
 
 fun api(params: String): String = "$GAME_API$params"
 
 fun getScriptForShip(ship: Ship): ScriptExecutor<*>? = shipsToScripts[ship]
+
+private fun Waypoint.hasTrait(trait: WaypointTraitSymbol): Boolean = traits.any { it.symbol == trait }

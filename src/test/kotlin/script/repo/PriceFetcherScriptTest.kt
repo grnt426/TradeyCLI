@@ -183,7 +183,8 @@ class PriceFetcherScriptTest : BaseTest() {
         ship.nav.status = ShipNavStatus.IN_TRANSIT
         ship.nav.route.arrival = Instant.now().plusSeconds(60)
         market.symbol = "destination"
-        GameState.markets = mutableMapOf("destination" to market)
+        GameState.markets.clear()
+        GameState.markets["destination"] = market
 
         script.execute()
         sleep(50)
@@ -197,7 +198,7 @@ class PriceFetcherScriptTest : BaseTest() {
         ship.nav.route.destination.symbol = "destination"
         ship.nav.status = ShipNavStatus.IN_TRANSIT
         ship.nav.route.arrival = Instant.now().plusSeconds(60)
-        GameState.markets = mutableMapOf()
+        GameState.markets.clear()
 
         script.execute()
         awaitState(script, ERROR)

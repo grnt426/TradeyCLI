@@ -51,6 +51,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
     testImplementation("io.mockk:mockk:1.14.11")
+    testImplementation("io.ktor:ktor-client-mock:$ktorVersion")
 }
 
 tasks.test {

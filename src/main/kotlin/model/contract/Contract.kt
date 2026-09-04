@@ -11,5 +11,5 @@ data class Contract(
     val accepted: Boolean,
     val fulfilled: Boolean,
     val expiration: String,
-    val deadlineToAccept: String,
+    val deadlineToAccept: String? = null,
 )

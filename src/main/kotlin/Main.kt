@@ -1,6 +1,5 @@
 
 import AppState.BOOT
-import client.SpaceTradersClient
 import com.varabyte.kotter.foundation.input.Keys
 import com.varabyte.kotter.foundation.input.onInputEntered
 import com.varabyte.kotter.foundation.input.onKeyPressed
@@ -10,6 +9,7 @@ import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.render.RenderScope
 import data.ensureRuntimeDirectories
 import io.github.oshai.kotlinlogging.KotlinLogging
+import model.GameState
 import model.Profile
 import model.ship.ShipRole
 import notification.NotificationManager
@@ -90,7 +90,7 @@ suspend fun main() {
             }
         }
     }
-    SpaceTradersClient.closeIfOpen()
+    GameState.shutdown()
 }
 
 /**
