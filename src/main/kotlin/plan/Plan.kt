@@ -73,7 +73,8 @@ data class Goals(
 /** A leg of a chain: haul [good] from [from] and sell it at [to]. */
 @Serializable
 data class Leg(val good: model.market.TradeSymbol, val from: String, val to: String) {
-    override fun toString(): String = "$good $from>$to"
+    init { require(from != to) { "a leg needs two different markets, got $from twice" } }
+    override fun toString(): String = "$good $from/$to"
 }
 
 /**

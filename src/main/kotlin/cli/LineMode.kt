@@ -473,8 +473,11 @@ class LineMode(
                 val id = args.getOrNull(1) ?: run { err.println("chain add ID --leg GOOD:FROM>TO [--leg ...] --ships A,B [--note text]"); return 1 }
                 val legs = args.withIndex().filter { it.value == "--leg" }.mapNotNull { (i, _) -> args.getOrNull(i + 1) }.map { spec ->
                     val good = runCatching { model.market.TradeSymbol.valueOf(spec.substringBefore(':').uppercase()) }.getOrNull() ?: run { err.println("bad leg '$spec'"); return 1 }
+                    // cmd.exe swallows '>' even inside an argument, so '/' and '..' are accepted too.
                     val route = spec.substringAfter(':')
-                    Leg(good, route.substringBefore('>').uppercase(), route.substringAfter('>').uppercase())
+                    val parts = route.split(">", "/", "..").map { it.trim().uppercase() }.filter { it.isNotEmpty() }
+                    if (parts.size != 2 || parts[0] == parts[1]) { err.println("bad leg '$spec': want GOOD:FROM/TO with two different markets"); return 1 }
+                    Leg(good, parts[0], parts[1])
                 }
                 val ships = option(args, "--ships")?.split(',')?.map { it.trim().uppercase() } ?: emptyList()
                 if (legs.isEmpty() || ships.isEmpty()) { err.println("chain add needs at least one --leg and --ships"); return 1 }
@@ -507,7 +510,7 @@ class LineMode(
                 Plan.save(file, plan.withChain(chain.copy(hold = args.getOrNull(2) != "on")))
                 out.println("chain $id: release policy ${if (args.getOrNull(2) == "on") "automatic" else "advisory (held)"}")
             }
-            else -> { err.println("chain [ledger] | chain add ID --leg GOOD:FROM>TO --ships A,B | chain release ID [SHIP] | chain auto ID on|off"); return 1 }
+            else -> { err.println("chain [ledger] | chain add ID --leg GOOD:FROM/TO --ships A,B | chain release ID [SHIP] | chain auto ID on|off"); return 1 }
         }
         return 0
     }
@@ -735,7 +738,7 @@ class LineMode(
               goal fleet TYPE N [--reserve C]   buy up to N of TYPE when a trader docks at a yard and C credits stay in the bank
               goal clear TYPE            drop that fleet goal
               chain                      the chains' ledgers and the release policy's verdicts
-              chain add ID --leg GOOD:FROM>TO ... --ships A,B [--reserve C]   enrol a team on a chain (records their free-agent rates)
+              chain add ID --leg GOOD:FROM/TO ... --ships A,B [--reserve C]   enrol a team on a chain (records their free-agent rates)
               chain release ID [SHIP]    put a ship (or the team) back on its default behaviour
               run [--for 2h]             run the plan, printing phases, then summarise
               buy TYPE SHIPYARD          buy a ship (a ship of yours must be at the shipyard)
