@@ -26,7 +26,9 @@ import model.system.OrbitalNames
 import plan.Assignment
 import plan.FleetGoal
 import plan.Plan
+import plan.RunLock
 import plan.Supervisor
+import kotlinx.coroutines.delay
 import sim.FakeServer
 import sim.SimReport
 import sim.SimRules
@@ -453,9 +455,29 @@ class LineMode(
             err.println("No plan.json; using the default: " + plan.assignments.joinToString(", ") { "${it.ship} ${it.behaviour}" })
         }
         engine.awaitSystem(engine.snapshot.hqSystem ?: return 1)
+        // One driver per agent: two supervisors would fight over the ships and the request budget.
+        val lockFile = Layout.runLockFile(engine.snapshot.agent?.symbol ?: return 1)
+        var lease = when (val outcome = RunLock.acquire(lockFile)) {
+            is RunLock.Outcome.Busy -> {
+                err.println("Another run (process ${outcome.lease.pid}, started ${outcome.lease.startedAt}, heartbeat ${outcome.lease.heartbeatAt}) is driving this agent. Stop it first, or wait ${RunLock.STALE_AFTER.seconds}s after it dies.")
+                return 3
+            }
+            is RunLock.Outcome.Held -> outcome.lease
+        }
+        val shutdownHook = Thread { RunLock.release(lockFile) }
+        Runtime.getRuntime().addShutdownHook(shutdownHook)
+        val heartbeat = engine.scope.launch {
+            while (true) {
+                delay(RunLock.HEARTBEAT_EVERY.toMillis())
+                lease = RunLock.heartbeat(lockFile, lease) ?: run {
+                    err.println("${time(engine.clock.now())} lost the run lease to another process; stopping")
+                    return@launch
+                }
+            }
+        }
         val supervisor = Supervisor(engine.scope, engine.verbs(), engine.clock, engine::emit, savePlan = { Plan.save(planFile(), it) })
         val problems = supervisor.apply(plan)
-        if (problems.isNotEmpty()) { problems.forEach { err.println(it) }; return 1 }
+        if (problems.isNotEmpty()) { problems.forEach { err.println(it) }; heartbeat.cancel(); RunLock.release(lockFile); return 1 }
         val startCredits = engine.snapshot.agent?.credits ?: 0
         val startRequests = engine.apiClient?.stats?.requests?.get() ?: 0
         var extracted = 0
@@ -482,9 +504,15 @@ class LineMode(
                 }
             }
         }
-        err.println("Running ${plan.assignments.size} assignment(s) for $duration; Ctrl+C stops early.")
-        withTimeoutOrNull(duration) { while (supervisor.active.isNotEmpty()) engine.clock.sleep(kotlin.time.Duration.parse("5s")) }
-        supervisor.stopAll()
+        err.println("Running ${plan.assignments.size} assignment(s) for $duration as process ${lease.pid}; Ctrl+C stops early.")
+        try {
+            withTimeoutOrNull(duration) { while (supervisor.active.isNotEmpty() && heartbeat.isActive) engine.clock.sleep(kotlin.time.Duration.parse("5s")) }
+        } finally {
+            supervisor.stopAll()
+            heartbeat.cancel()
+            RunLock.release(lockFile)
+            runCatching { Runtime.getRuntime().removeShutdownHook(shutdownHook) }
+        }
         printer.cancel()
         val endCredits = engine.snapshot.agent?.credits ?: 0
         table(

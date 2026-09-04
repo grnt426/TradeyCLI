@@ -32,6 +32,7 @@ import model.Agent
 import model.Shipyard
 import model.contract.Contract
 import plan.Plan
+import plan.RunLock
 import model.actions.Survey
 import model.market.Market
 import model.market.MarketTransaction
@@ -253,6 +254,7 @@ class Engine(
         world.recentTransactions = store.listTransactions(since)
         world.extractions = store.listExtractions().takeLast(2000)
         world.plan = runCatching { Plan.load(Layout.planFile(agentSymbol)) }.getOrNull()
+        world.runner = RunLock.read(Layout.runLockFile(agentSymbol))
     }
 
     fun shutdown() {

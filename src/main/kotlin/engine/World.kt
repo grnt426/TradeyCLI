@@ -10,6 +10,7 @@ import storage.ExtractionRecord
 import model.market.Market
 import model.market.MarketTransaction
 import plan.Plan
+import plan.RunLease
 import model.ship.Ship
 import model.system.OrbitalNames
 import model.system.System
@@ -60,6 +61,10 @@ class World {
     @Volatile
     var plan: Plan? = null
 
+    /** Who is driving the plan, as last read from the lease file; null when nobody has written one. */
+    @Volatile
+    var runner: RunLease? = null
+
     fun hqSystemSymbol(): String? = agent?.let { OrbitalNames.getSectorSystem(it.headquarters) }
 
     fun snapshot(version: Long): Snapshot = Snapshot(
@@ -78,6 +83,7 @@ class World {
         creditsHistory = creditsHistory,
         recentTransactions = recentTransactions,
         plan = plan,
+        runner = runner,
         contracts = contracts.values.sortedBy { it.id },
         extractions = extractions,
     )
@@ -100,6 +106,7 @@ data class Snapshot(
     val creditsHistory: List<CreditPoint> = emptyList(),
     val recentTransactions: List<MarketTransaction> = emptyList(),
     val plan: Plan? = null,
+    val runner: RunLease? = null,
     val contracts: List<Contract> = emptyList(),
     val extractions: List<ExtractionRecord> = emptyList(),
 ) {

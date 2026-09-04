@@ -83,7 +83,9 @@ class IntentionsTest {
     @Test
     fun `without a plan it says so, with one it reports each ship's phase and flags stale ones`() {
         val bare = snapshot()
-        assertEquals(Intent.Tone.WARN, Intentions.describe(bare, now).single().tone)
+        val bareLines = Intentions.describe(bare, now)
+        assertTrue(bareLines.first().text.startsWith("Nobody is running the plan"), bareLines.first().text)
+        assertTrue(bareLines.any { it.text.startsWith("No plan") && it.tone == Intent.Tone.WARN }, bareLines.toString())
         val plan = Plan(listOf(Assignment(Fixtures.COMMAND_SHIP, "trade"), Assignment(Fixtures.PROBE, "probeMarkets")))
         val snap = bare.copy(
             plan = plan,

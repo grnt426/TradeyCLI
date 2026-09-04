@@ -18,10 +18,21 @@ data class Intent(val text: String, val tone: Tone) {
  */
 object Intentions {
 
+    /** Lets a test decide which process ids count as alive. */
+    var processAlive: (Long) -> Boolean = plan.RunLock::processAlive
+
     fun describe(snapshot: Snapshot, now: Instant, trend: Trend = Trend(0.0, snapshot.agent?.credits?.toDouble() ?: 0.0, 0)): List<Intent> {
         val lines = mutableListOf<Intent>()
         val plan = snapshot.plan
         val credits = snapshot.agent?.credits ?: 0L
+
+        // Who is driving
+        val runner = snapshot.runner
+        lines += when {
+            runner == null -> Intent("Nobody is running the plan: start `TradeyCLI run` in a terminal", Intent.Tone.WARN)
+            runner.isLive(now, processAlive) -> Intent("Plan driven by process ${runner.pid} since ${runner.started.atZone(java.time.ZoneId.systemDefault()).toLocalTime().withNano(0)}, heartbeat ${Duration.between(runner.heartbeat, now).seconds}s ago", Intent.Tone.GOOD)
+            else -> Intent("Run process ${runner.pid} is gone (last heartbeat ${ago(runner.heartbeat, now)}); nothing is driving the plan", Intent.Tone.WARN)
+        }
 
         // What the ships are doing
         if (plan == null || plan.assignments.isEmpty()) {

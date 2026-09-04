@@ -35,6 +35,9 @@ object Layout {
     /** The plan: which ship runs which behaviour. Edited by `assign` and `unassign`. */
     fun planFile(symbol: String): File = File(agentDir(symbol), "plan.json")
 
+    /** The lease `run` holds while it drives the plan, so a second `run` refuses and the dashboard can tell. */
+    fun runLockFile(symbol: String): File = File(agentDir(symbol), "run.lock")
+
     /** The newest per-reset database of an agent, or null when it has never booted. */
     fun latestDatabase(symbol: String): File? =
         agentDir(symbol).listFiles { f -> f.isFile && f.name.startsWith("data-") && f.name.endsWith(".db") }?.maxByOrNull { it.name }
