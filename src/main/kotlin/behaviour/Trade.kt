@@ -52,6 +52,8 @@ suspend fun BehaviourScope.trade() {
                 // Another trader working this good at either end would eat our margin: take the next best route.
                 .filter { !shared.routeTakenByOther("${it.good}@${it.source.symbol}", ship) && !shared.routeTakenByOther("${it.good}@${it.destination.symbol}", ship) }
                 .firstOrNull()
+                // Claim before anything suspends, or two traders planning at once both take the same route.
+                ?.also { shared.claimRoute(ship, "${it.good}@${it.source.symbol}", "${it.good}@${it.destination.symbol}") }
         }
         if (plan == null) {
             // Nothing pays with the prices known right now; a probe may be reading more. Wait, do not fail.
@@ -60,7 +62,6 @@ suspend fun BehaviourScope.trade() {
             continue
         }
         status("plan", plan.summary())
-        shared.claimRoute(ship, "${plan.good}@${plan.source.symbol}", "${plan.good}@${plan.destination.symbol}")
         val key = "${plan.good}:${plan.source.symbol}:${plan.destination.symbol}"
 
         phase("travel to source", plan.source.symbol) {

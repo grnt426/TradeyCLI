@@ -56,12 +56,14 @@ suspend fun BehaviourScope.mineAndSell() {
                 .filter { !shared.claimedByOther(it.asteroid.symbol, ship) }
                 .filter { fixedAsteroid == null || it.asteroid.symbol == fixedAsteroid }
                 .filter { fixedMarket == null || it.market.symbol == fixedMarket }
-            ranked.firstOrNull() ?: throw BehaviourFailure(
+            val chosen = ranked.firstOrNull() ?: throw BehaviourFailure(
                 "no mineable asteroid with a buying market" + (fixedAsteroid?.let { " for $it" } ?: "") + (fixedMarket?.let { " at $it" } ?: "")
             )
+            // Claim before anything suspends, or two ships planning at once both pick the same rock.
+            shared.claim(ship, chosen.asteroid.symbol)
+            chosen
         }
         status("plan", plan.summary())
-        shared.claim(ship, plan.asteroid.symbol)
 
         phase("travel to asteroid", plan.asteroid.symbol) {
             ensureFuel(plan.fuelPerCycle + 10)
