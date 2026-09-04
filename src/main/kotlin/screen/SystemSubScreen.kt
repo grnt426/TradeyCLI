@@ -25,7 +25,8 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
     override fun MainRenderScope.render() {
         selectIndex = min(selectIndex, objectsOnScreen)
         objectsOnScreen = 0
-        val wp = GameState.waypoints.values
+        val snap = GameState.engine.state.value
+        val wp = snap.waypoints.values
 
         // a good starting zoom is 10
         val zoom = (Point(15.0, 15.0) + self.zoom) * aspectRatio
@@ -91,7 +92,7 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
         text(" ")
         rgb(HEADER_COLOR.rgb) {
             underline {
-                val header = "Waypoints in ${wp.firstOrNull()?.systemSymbol ?: GameState.getHqSystem().symbol}"
+                val header = "Waypoints in ${wp.firstOrNull()?.systemSymbol ?: snap.hqSystem ?: "?"}"
                 text(header)
                 repeat(Profile.profileData.termWidth - header.length - 75) { text(" ") }
             }

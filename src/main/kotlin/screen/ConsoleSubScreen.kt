@@ -23,13 +23,11 @@ import data.FileWritingQueue
 import io.github.oshai.kotlinlogging.KotlinLogging
 import makeHeader
 import model.GameState
-import model.GameState.getHqSystem
 import model.market.Market
 import model.ship.ShipNavStatus
 import model.ship.calculateExpirationSeconds
 import model.ship.components.Inventory
 import model.ship.components.shortName
-import model.ship.getShips
 import model.ship.hasCooldown
 import model.system.Waypoint
 import notification.NotificationManager
@@ -61,6 +59,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
 
     override fun MainRenderScope.render() {
         logger.info { "Rendering" }
+        val snap = GameState.engine.state.value
         val selectedQuad = runningRenderContext.selectedQuad
         val currentView = runningRenderContext.selectedView
         val selectedShip = runningRenderContext.selectedShip
@@ -73,7 +72,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
             cell(colSpan = 3, rowSpan = 4) {
                 rgb(HEADER_COLOR.rgb) { makeHeader("System View", 3) }
                 objectsOnScreen = 0
-                val wp = GameState.waypoints.values
+                val wp = snap.waypoints.values
 
                 // a good starting zoom is 10
                 val zoom = (SystemSubScreen.Point(3.0, 3.0) + this@ConsoleSubScreen.zoom) * aspectRatio
@@ -102,7 +101,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                         val selected = visibleWaypoints.size == selectIndex
                         if (selected) {
                             selectedWaypoint = w
-                            selectedMarket = GameState.markets[w.symbol]
+                            selectedMarket = snap.markets[w.symbol]
                         }
                         visibleWaypoints.add(w)
                         map[y][x] = {
@@ -125,7 +124,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
             }
 
             cell(colSpan = 2, rowSpan = 4) {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Waypoints In ${getHqSystem().symbol}", 2) }
+                rgb(HEADER_COLOR.rgb) { makeHeader("Waypoints In ${snap.hqSystem ?: "?"}", 2) }
                 visibleWaypoints.take(30).forEachIndexed { i, w ->
                     val entry = {
                         text("${w.symbol} ")
@@ -265,10 +264,10 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 when (currentView) {
                     Window.MAIN -> {
                         rgb(headerColor.rgb) {
-                            makeHeader("Fleet Status: ${getHqSystem().symbol}", 2)
+                            makeHeader("Fleet Status: ${snap.hqSystem ?: "?"}", 2)
                         }
 
-                        getShips().forEach { s ->
+                        snap.ships.values.sortedBy { it.symbol }.forEach { s ->
                             text("${shortName(s)} [")
                             applyShipRoleColor(s.registration.role)
                             val status = s.script?.currentState ?: "No Script"
@@ -311,8 +310,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 rgb(headerColor.rgb) {
                     makeHeader("Agent")
                 }
-                textLine("${GameState.agent.symbol}: $${GameState.agent.credits}")
-                textLine("${GameState.ships.size} 🚀 ${GameState.scriptsRunning.size} 📰")
+                textLine("${snap.agent?.symbol ?: "?"}: $${snap.agent?.credits ?: 0}")
+                textLine("${snap.ships.size} 🚀 ${GameState.scriptsRunning.size} 📰")
             }
 
             cell {
@@ -397,7 +396,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 rgb(headerColor.rgb) {
                     makeHeader("Command", 2)
                 }
-                val ship = getShips().getOrNull(selectedShip - 1)
+                val ship = snap.ships.values.sortedBy { it.symbol }.getOrNull(selectedShip - 1)
                     ?: return@cell textLine("No ship #$selectedShip loaded")
                 text("${ship.registration.name}#")
                 applyShipRoleColor(ship.registration.role, false)

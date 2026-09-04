@@ -190,7 +190,7 @@ class MarketSubScreen(private val parent: Screen) : SubScreen<RunningScreen.Sele
         (height - (value / normalizedCharValue).roundToInt()).coerceIn(0..<height)
 
     fun RenderScope.tradeOpportunities() {
-        val markets = GameState.markets.values
+        val markets = GameState.engine.state.value.markets.values
         val opportunities = mutableListOf<TradeOpportunity>()
         TradeSymbol.entries.forEach { t ->
             val exports = markets

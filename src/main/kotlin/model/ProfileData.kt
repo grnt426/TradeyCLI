@@ -8,7 +8,7 @@ import java.io.File
 
 @Serializable
 data class ProfileData(
-    /** Agent symbol. On START it is kept in sync with the agent the token belongs to. */
+    /** The active agent. Its token and data live under `profile/agents/<name>/`. */
     var name: String,
     val termWidth: Int,
 
@@ -20,7 +20,11 @@ data class ProfileData(
 private val ProfileJson = Json {
     prettyPrint = true
     encodeDefaults = true
+    ignoreUnknownKeys = true
 }
+
+fun loadProfile(path: String = DEFAULT_PROF_FILE): ProfileData =
+    ProfileJson.decodeFromString(File(path).readText())
 
 fun saveProfile(path: String, data: ProfileData) {
     File(path).writeText(ProfileJson.encodeToString(data))

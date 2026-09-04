@@ -5,6 +5,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import model.Agent
 import model.ApiJson
+import model.ServerStatus
 import model.Shipyard
 import model.market.Market
 import model.market.TradeSymbol
@@ -35,6 +36,10 @@ import model.system.WaypointSymbol
 class SpaceTradersApi(val client: ApiClient) {
 
     // Reads
+
+    /** Server status and, importantly, the date of the current reset. Needs no token. */
+    suspend fun getStatus(): ServerStatus =
+        client.getRoot("", Priority.INTERACTIVE).decode()
 
     suspend fun getMyAgent(): Agent =
         client.get("my/agent", Priority.INTERACTIVE).decode()

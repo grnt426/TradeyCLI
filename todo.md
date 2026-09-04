@@ -31,11 +31,15 @@ Order matters: each step is the floor the next one stands on. Details and reason
 
 ## 2. Headless engine and line mode
 
-- [ ] Single-threaded engine loop that owns all game state: commands in through a channel, state
-      changes out as a flow.
-- [ ] Line-mode commands runnable without the TUI (`status`, `ships`, `waypoints`,
-      `market <symbol>`), so the client can be driven from a plain terminal and from tests.
-- [ ] Dashboard becomes a reader of engine state; no `Timer`, no `runBlocking`, no write queues.
+- [x] `engine.Engine` owns all game state on one engine thread. Operations are `suspend`
+      functions that run there and suspend on the API instead of blocking, so they interleave
+      without locks; state goes out as a `StateFlow<Snapshot>`, happenings as a `SharedFlow<Event>`.
+- [x] Line mode (`cli.LineMode`): `status`, `agent`, `ships`, `waypoints`, `markets`, `market`,
+      `shipyards`, `repl`, with `--agent` and `--refresh`. Stdout for results, stderr for progress.
+- [x] Dashboard is a reader: one snapshot per render, repaint on every state change, events become
+      notifications. No `Timer`, `runBlocking` or write queue on the engine path; the ones left
+      belong to the parked scripts and go with them.
+- [ ] Console command line in the dashboard runs the same commands as line mode.
 
 ## 3. Scripting overhaul
 
@@ -48,10 +52,14 @@ Order matters: each step is the floor the next one stands on. Details and reason
 
 ## 4. Storage
 
-- [ ] Account token at the top, one folder per agent (settings, token, caches).
-- [ ] One SQLite database per agent and reset: agent, ships, waypoints, markets, price history,
-      shipyards, transactions, checkpoints, request log. Single writer, WAL mode.
-- [ ] Detect a server reset from `GET /` and archive automatically.
+- [x] Account token at the top, one folder per agent under `profile/agents/<SYMBOL>/` with its
+      token and databases (`storage.Layout`). A token at the old location is moved on first start.
+- [x] One SQLite database per agent and reset (`storage.AgentStore`): agent, ships, systems,
+      waypoints, markets, shipyards, price history, transactions, checkpoints, request log. WAL,
+      one writer thread, entities stored as the API's JSON plus indexed columns.
+- [x] Reset detected from `GET /`; older resets archived on open.
+- [ ] Write transactions from buy and sell responses once behaviours make them.
+- [ ] Retire `database/` and the JSON caches under `profile/` together with the parked scripts.
 
 ## 5. TUI polish
 

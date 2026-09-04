@@ -1,5 +1,6 @@
 
 import AppState.BOOT
+import cli.LineMode
 import com.varabyte.kotter.foundation.input.Keys
 import com.varabyte.kotter.foundation.input.onInputEntered
 import com.varabyte.kotter.foundation.input.onKeyPressed
@@ -9,13 +10,16 @@ import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.render.RenderScope
 import data.ensureRuntimeDirectories
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.launch
 import model.GameState
 import model.Profile
+import model.loadProfile
 import model.ship.ShipRole
 import notification.NotificationManager
 import screen.*
 import java.awt.Color
 import kotlin.math.round
+import kotlin.system.exitProcess
 
 private val logger = KotlinLogging.logger {}
 
@@ -59,11 +63,26 @@ val runningRenderContext = RunningRenderContext()
 
 fun isActiveScreen(screen: Screen): Boolean = screen == appState.screen
 fun getActiveAppState(): AppState = appState
-suspend fun main() {
-    ensureRuntimeDirectories()
-    logger.info { "TradeyCLI starting" }
 
-    // The below needs to come from the profile.settings.json file
+/**
+ * With arguments: line mode, one command and out (see [LineMode]). Without: the dashboard.
+ */
+suspend fun main(args: Array<String>) {
+    ensureRuntimeDirectories()
+    if (args.isNotEmpty()) {
+        val code = try {
+            LineMode().run(args.toList())
+        } finally {
+            GameState.shutdown()
+        }
+        exitProcess(code)
+    }
+
+    logger.info { "TradeyCLI starting" }
+    Profile.createProfile(loadProfile())
+    GameState.profData = Profile.profileData
+    val engine = GameState.engine
+
     session {
         with(TextAnimationContainer) {
             createAnimations()
@@ -74,6 +93,11 @@ suspend fun main() {
             }
         }.runUntilKeyPressed(Keys.Escape) {
             val runScope = this
+            // The dashboard is a reader of engine state: any change repaints, any event becomes a notification.
+            engine.scope.launch {
+                launch { engine.state.collect { runScope.rerender() } }
+                launch { engine.events.collect { NotificationManager.onEvent(it) } }
+            }
             onInputEntered {
                 guarded("input") {
                     with(appState.screen) {

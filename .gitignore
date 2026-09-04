@@ -1,4 +1,5 @@
 *.secret
+profile/agents/
 database/
 
 # Standard stuff below

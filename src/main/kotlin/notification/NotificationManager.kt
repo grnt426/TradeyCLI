@@ -1,5 +1,6 @@
 package notification
 
+import engine.Event
 import io.github.oshai.kotlinlogging.KotlinLogging
 import screen.ColorPalette
 import screen.TextAnimationContainer
@@ -48,6 +49,19 @@ object NotificationManager {
                 long
             )
         )
+    }
+
+    /** Engine events the dashboard should show. Quiet ones are left to the log. */
+    fun onEvent(event: Event) {
+        when (event) {
+            is Event.Booted -> createNotification("Welcome, ${event.agent}", "Server reset ${event.resetDate}")
+            is Event.SystemLoaded -> createNotification(
+                "${event.system} loaded", "${event.waypoints} waypoints, ${event.markets} markets, ${event.shipyards} shipyards"
+            )
+            is Event.Warning -> errorNotification(event.message)
+            is Event.Failure -> if (event.cause is Exception) exceptNotification(event.message, "", event.cause) else errorNotification(event.message)
+            is Event.ShipsLoaded, is Event.MarketUpdated -> Unit
+        }
     }
 
     private fun addNotification(notif: Notification) {

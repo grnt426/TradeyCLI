@@ -36,6 +36,15 @@ class ApiStats {
     val retries = AtomicInteger()
 }
 
+/** One completed attempt, for the request log. Status 0 means the request never got a response. */
+data class RequestRecord(
+    val path: String,
+    val priority: Priority,
+    val status: Int,
+    val durationMs: Long,
+    val attempt: Int,
+)
+
 data class RetryPolicy(
     val maxAttempts: Int = 4,
     val baseDelay: Duration = 1.seconds,
@@ -59,6 +68,10 @@ class ApiClient(
 
     val stats = ApiStats()
 
+    /** Called after every attempt, on the calling coroutine. Keep it quick. */
+    @Volatile
+    var listener: ((RequestRecord) -> Unit)? = null
+
     @PublishedApi
     internal val http: HttpClient = HttpClient(engine) {
         expectSuccess = false
@@ -79,6 +92,10 @@ class ApiClient(
         envelope(path, priority) {
             http.get(path) { params.forEach { (k, v) -> parameter(k, v) } }
         }.data
+
+    /** For the few endpoints that answer without the `data` envelope, such as `GET /`. */
+    suspend fun getRoot(path: String, priority: Priority): JsonElement =
+        envelope(path, priority, unwrap = false) { http.get(path) }.data
 
     /** Follows `meta` paging until every item of a list endpoint has been collected. */
     suspend fun getAll(path: String, priority: Priority, limit: Int = 20): List<JsonElement> {
@@ -111,18 +128,25 @@ class ApiClient(
         }.data
 
     @PublishedApi
-    internal suspend fun envelope(path: String, priority: Priority, send: suspend () -> HttpResponse): Envelope {
+    internal suspend fun envelope(
+        path: String,
+        priority: Priority,
+        unwrap: Boolean = true,
+        send: suspend () -> HttpResponse,
+    ): Envelope {
         var attempt = 0
         while (true) {
             attempt++
             pacer.acquire(priority)
             stats.requests.incrementAndGet()
+            val started = System.nanoTime()
             val response = try {
                 send()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 stats.errors.incrementAndGet()
+                record(path, priority, 0, started, attempt)
                 if (attempt >= retry.maxAttempts) throw e
                 val wait = retry.backoff(attempt)
                 logger.warn { "$path attempt $attempt failed (${e.message}); retrying in $wait" }
@@ -132,8 +156,9 @@ class ApiClient(
             }
             val body = response.bodyAsText()
             val status = response.status.value
+            record(path, priority, status, started, attempt)
             when {
-                response.status.isSuccess() -> return parseEnvelope(path, status, body)
+                response.status.isSuccess() -> return parseEnvelope(path, status, body, unwrap)
 
                 status == 429 -> {
                     stats.throttled.incrementAndGet()
@@ -161,9 +186,16 @@ class ApiClient(
         }
     }
 
-    private fun parseEnvelope(path: String, status: Int, body: String): Envelope {
+    private fun record(path: String, priority: Priority, status: Int, startedNanos: Long, attempt: Int) {
+        val l = listener ?: return
+        runCatching { l(RequestRecord(path, priority, status, (System.nanoTime() - startedNanos) / 1_000_000, attempt)) }
+            .onFailure { logger.warn(it) { "request listener failed" } }
+    }
+
+    private fun parseEnvelope(path: String, status: Int, body: String, unwrap: Boolean): Envelope {
         val root = runCatching { ApiJson.parseToJsonElement(body).jsonObject }.getOrNull()
             ?: throw ApiError(status, -1, "response was not a JSON object: ${body.take(200)}", path)
+        if (!unwrap) return Envelope(root, null)
         val data = root["data"] ?: throw ApiError(status, -1, "response had no data element", path)
         val meta = root["meta"]?.let { runCatching { ApiJson.decodeFromJsonElement<Meta>(it) }.getOrNull() }
         return Envelope(data, meta)
