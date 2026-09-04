@@ -16,6 +16,7 @@ import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import model.ApiJson
+import model.BootProgress
 import model.DEFAULT_PROF_DIR
 import model.DEFAULT_PROF_FILE
 import model.GameState
@@ -55,6 +56,7 @@ object BootManager {
         )
 
         logger.info { "Registering agent ${profData.name} with faction ${profData.faction}" }
+        BootProgress.step("Registering ${profData.name} with ${profData.faction}")
         val response = registerAgent(accountToken, profData)
         logger.info { "Registered agent ${response.agent.symbol}, headquarters ${response.agent.headquarters}" }
 
@@ -77,7 +79,7 @@ object BootManager {
      *
      * @throws BootFailure with a message for the user when the token is missing or rejected.
      */
-    fun normalStart(agentTokenPath: String = AGENT_TOKEN_FILE) {
+    suspend fun normalStart(agentTokenPath: String = AGENT_TOKEN_FILE) {
         ensureRuntimeDirectories()
         if (readSecret(agentTokenPath) == null) throw BootFailure(
             "No agent token at $agentTokenPath. Mint one for your agent at https://my.spacetraders.io and paste " +

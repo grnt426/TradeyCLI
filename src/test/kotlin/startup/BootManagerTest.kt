@@ -19,7 +19,7 @@ class BootManagerTest {
     @Test
     fun `start without an agent token names the file and suggests NEW`() {
         val failure = assertFailsWith<BootFailure> {
-            BootManager.normalStart(agentTokenPath = missingSecret)
+            runBlocking { BootManager.normalStart(agentTokenPath = missingSecret) }
         }
         val message = failure.message ?: ""
         assertTrue(message.contains(missingSecret), message)

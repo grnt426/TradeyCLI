@@ -2,12 +2,13 @@ package screen
 
 import AppState
 import AppState.BOOT
+import AppState.LOADING
 import AppState.RUNNING
+import appState
 import com.varabyte.kotter.foundation.input.OnInputEnteredScope
 import com.varabyte.kotter.foundation.input.OnKeyPressedScope
 import com.varabyte.kotter.foundation.input.input
 import com.varabyte.kotter.foundation.render.aside
-import com.varabyte.kotter.foundation.text.red
 import com.varabyte.kotter.foundation.text.text
 import com.varabyte.kotter.foundation.text.textLine
 import com.varabyte.kotter.foundation.text.yellow
@@ -16,7 +17,10 @@ import com.varabyte.kotter.runtime.RunScope
 import getActiveAppState
 import io.github.oshai.kotlinlogging.KotlinLogging
 import isActiveScreen
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+import model.BootProgress
+import model.GameState
 import model.exceptions.BootFailure
 import startup.BootManager
 
@@ -52,18 +56,18 @@ class BootScreen(var userAskedNew: Boolean = false) : Screen() {
                     BOOT
                 } else {
                     self.userAskedNew = false
-                    attempt(runScope, "Registering a new agent") { runBlocking { BootManager.bootstrapNew() } }
+                    launchBoot("Registering a new agent") { BootManager.bootstrapNew() }
                 }
             }
 
             "START" -> {
                 self.userAskedNew = false
-                attempt(runScope, "Loading agent") { BootManager.normalStart() }
+                launchBoot("Loading agent") { BootManager.normalStart() }
             }
 
             "DEBUG" -> {
                 self.userAskedNew = false
-                attempt(runScope, "Debug start") { runBlocking { BootManager.debugStart() } }
+                launchBoot("Debug start") { BootManager.debugStart() }
             }
 
             "" -> BOOT
@@ -81,24 +85,28 @@ class BootScreen(var userAskedNew: Boolean = false) : Screen() {
     }
 
     /**
-     * Runs a boot action. On success the app moves to the running screen; on failure the reason is
-     * logged, printed above the menu, and the menu stays up so the user can fix the cause and retry.
+     * Runs a boot action on the engine scope and switches to the loading screen straight away, so
+     * the terminal keeps rendering while the API calls run. On success the app moves to the
+     * running screen; on failure the loading screen shows the reason and offers the menu again.
      */
-    private fun attempt(runScope: RunScope, what: String, action: () -> Unit): AppState {
+    private fun launchBoot(what: String, action: suspend () -> Unit): AppState {
         logger.info { what }
-        return try {
-            action()
-            RUNNING
-        } catch (e: BootFailure) {
-            logger.error { "$what failed: ${e.message}" }
-            runScope.aside { red { textLine("$what failed: ${e.message}") } }
-            BOOT
-        } catch (e: Exception) {
-            logger.error(e) { "$what failed" }
-            runScope.aside {
-                red { textLine("$what failed: ${e::class.simpleName}: ${e.message}. Details are in log.txt.") }
+        BootProgress.reset(what)
+        GameState.engineScope.launch {
+            try {
+                action()
+                BootProgress.finish()
+                appState = RUNNING
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: BootFailure) {
+                logger.error { "$what failed: ${e.message}" }
+                BootProgress.fail("$what failed: ${e.message}")
+            } catch (e: Exception) {
+                logger.error(e) { "$what failed" }
+                BootProgress.fail("$what failed: ${e::class.simpleName}: ${e.message}. Details are in log.txt.")
             }
-            BOOT
         }
+        return LOADING
     }
 }

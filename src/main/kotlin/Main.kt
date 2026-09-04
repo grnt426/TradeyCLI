@@ -36,6 +36,7 @@ var commandHistoryIndex = 0
 
 enum class AppState(val screen: Screen) {
     BOOT(BootScreen()),
+    LOADING(LoadingScreen()),
     RUNNING(RunningScreen),
     SHUTDOWN(BootScreen())
 }
@@ -46,6 +47,8 @@ enum class QuadSelect {
     NOTF,
     NONE
 }
+/** Read by the render thread, written by input handlers and by the boot coroutine. */
+@Volatile
 var appState = BOOT
 
 val HEADER_COLOR = Color(149, 149, 240)

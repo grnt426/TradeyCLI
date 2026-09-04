@@ -21,7 +21,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import model.GameState.GAME_API
 import model.GameState.shipsToScripts
@@ -98,8 +97,9 @@ object GameState {
      */
     var scriptsEnabled = false
 
-    fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE) {
+    suspend fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE) {
         logger.info { "Booting GameState from existing Agent" }
+        BootProgress.step("Reading profile and connecting")
         profData = ApiJson.decodeFromString<ProfileData>(File(profileDataFile).readText())
         Profile.createProfile(profData)
         val token = readSecret(AGENT_TOKEN_FILE) ?: throw ProfileLoadingFailure(
@@ -108,8 +108,9 @@ object GameState {
         connectApi(token)
         initializeDataManagers()
 
+        BootProgress.step("Loading agent")
         agent = try {
-            runBlocking { api.getMyAgent() }
+            api.getMyAgent()
         } catch (e: ApiError) {
             throw ProfileLoadingFailure(
                 "The API rejected the token in $AGENT_TOKEN_FILE: ${e.apiMessage} (HTTP ${e.status}, code ${e.code}). " +
@@ -183,7 +184,7 @@ object GameState {
         FileWritingQueue.createFileWritingQueue()
     }
 
-    private fun postInitGameLoading() {
+    private suspend fun postInitGameLoading() {
         NotificationManager.notifications.add(
             Notification(
                 "Welcome, Magnate", Instant.now(),
@@ -196,6 +197,7 @@ object GameState {
         loadAllData()
 
         val hq = OrbitalNames.getSectorSystem(agent.headquarters)
+        BootProgress.step("Loading home system $hq")
         refreshSystem(hq)
         if (waypoints.values.none { it.systemSymbol == hq }) {
             engineScope.launch { loadSystemContents(hq) }
@@ -205,10 +207,10 @@ object GameState {
         }
     }
 
-    private fun refreshSystem(systemSymbol: String) {
+    private suspend fun refreshSystem(systemSymbol: String) {
         logger.info { "Ensuring home system $systemSymbol is loaded" }
         val system = try {
-            runBlocking { api.getSystem(systemSymbol) }
+            api.getSystem(systemSymbol)
         } catch (e: ApiError) {
             throw ProfileLoadingFailure("Could not load home system $systemSymbol: ${e.apiMessage} (HTTP ${e.status}, code ${e.code})")
         }
@@ -275,14 +277,15 @@ object GameState {
         writeCache("shipyards", shipyard.symbol, shipyard)
     }
 
-    private fun loadScripts() {
+    private suspend fun loadScripts() {
         fetchAllShips()
         if (scriptsEnabled) resumeSavedScripts() else logger.info { "Scripts are disabled; not resuming saved scripts" }
     }
 
-    private fun fetchAllShips() {
+    private suspend fun fetchAllShips() {
+        BootProgress.step("Loading ships")
         val fleet = try {
-            runBlocking { api.listMyShips() }
+            api.listMyShips()
         } catch (e: ApiError) {
             logger.error { "Could not list ships: ${e.message}" }
             NotificationManager.errorNotification("Could not list ships", e.apiMessage)
