@@ -7,7 +7,7 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
 import model.extension.LastRead
-import model.market.MarketTransaction
+import model.market.ShipyardTransaction
 import model.requestbody.ShipPurchaseRequest
 import model.responsebody.ShipPurchaseResponse
 import model.ship.PurchasableShip
@@ -21,7 +21,7 @@ data class Shipyard(
     val shipTypes: List<ShipTypeContainer>,
     val modificationsFee: Long,
 
-    val transactions: List<MarketTransaction> = mutableListOf(),
+    val transactions: List<ShipyardTransaction> = mutableListOf(),
     val ships: List<PurchasableShip> = mutableListOf(),
 ): LastRead()
 

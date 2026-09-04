@@ -28,6 +28,9 @@ object SpaceTradersClient{
 
     lateinit var client: HttpClient
 
+    /** Per-request budget. Navigation and market calls routinely take a few seconds; 2 s was too short. */
+    const val REQUEST_TIMEOUT_MS = 15_000L
+
     var totalErrors = 0
     var throttled = 0
 
@@ -93,7 +96,7 @@ object SpaceTradersClient{
         runBlocking {
             launch {
                 try {
-                    withTimeout(2_000) {
+                    withTimeout(REQUEST_TIMEOUT_MS) {
                         val response = client.get(request)
                         if (response.status.isSuccess() && response.bodyAsText().isNotEmpty()) {
                             println(response.bodyAsText())
@@ -139,7 +142,7 @@ object SpaceTradersClient{
             runBlocking(apiDispatcher) {
                 launch {
                     try {
-                        withTimeout(2_000) {
+                        withTimeout(REQUEST_TIMEOUT_MS) {
                             val response = if (request.method == HttpMethod.Post) {
                                 client.post(request)
                             }
@@ -213,7 +216,7 @@ object SpaceTradersClient{
             runBlocking(apiDispatcher) {
                 launch {
                     try {
-                        withTimeout(2_000) {
+                        withTimeout(REQUEST_TIMEOUT_MS) {
                             val response = if (request.method == HttpMethod.Post) {
                                 client.post(request)
                             }

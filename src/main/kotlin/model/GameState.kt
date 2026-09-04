@@ -72,6 +72,14 @@ object GameState {
     private var initObjRequestsFilled = 0
     private var awaitingScripts = mutableListOf<ScriptExecutor<*>>()
 
+    /**
+     * Master switch for ship automation. Off pending the scripting overhaul (see
+     * docs/codebase-review-2026-09.md, sections 4.4 and 7). While it is off, START and NEW only
+     * load the agent, fleet and system data so the dashboard can be exercised against the live API;
+     * no script is constructed, resumed or run.
+     */
+    var scriptsEnabled = false
+
     fun initializeGameState(profileDataFile: String = DEFAULT_PROF_FILE) {
         logger.info { "Booting GameState from existing Agent" }
         profData = ApiJson.decodeFromString<ProfileData>(File(profileDataFile).readText())
@@ -108,6 +116,11 @@ object GameState {
             ?: registerResponse.ships.firstOrNull()
             ?: throw ProfileLoadingFailure("Registration returned no ships")
         postInitGameLoading()
+
+        if (!scriptsEnabled) {
+            logger.info { "Scripts are disabled; skipping the startup automation" }
+            return
+        }
 
         timer("initialLoading", true, 0, 100) {
             if (initObjRequestsFilled == initObjRequests) {
@@ -170,6 +183,7 @@ object GameState {
 
     private fun loadScripts() {
         fetchAllShips()
+        if (scriptsEnabled) resumeSavedScripts() else logger.info { "Scripts are disabled; not resuming saved scripts" }
     }
 
     private fun refreshShipyards() = fetchSystemsForWaypointsWithTraits(
@@ -252,7 +266,10 @@ object GameState {
     private fun fetchAllShips() {
         val shipList = listShips()
         ships.putAll(convertToMap(shipList))
+        logger.info { "Loaded ${ships.size} ships" }
+    }
 
+    private fun resumeSavedScripts() {
         transaction {
             SavedScripts.selectAll().where { SavedScripts.entityId like "${agent.symbol}%" }.forEach { s ->
                 val ship = ships[s[SavedScripts.entityId]] ?: return@forEach

@@ -15,7 +15,7 @@ data class Waypoint(
     val orbitals: List<WaypointOrbital> = emptyList(),
     val traits: List<WaypointTrait> = emptyList(),
     val modifiers: List<WaypointModifier> = emptyList(),
-    val isUnderConstruction: Boolean,
+    val isUnderConstruction: Boolean = false,
 
     val chart: Chart? = null,
     val faction: Faction? = null,

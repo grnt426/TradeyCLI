@@ -27,10 +27,12 @@ class BootScreen(var userAskedNew: Boolean = false) : Screen() {
     private val self = this
 
     override fun MainRenderScope.render() {
-        textLine("New - Create a new Agent (needs an account token, see profile/accounttoken.secret)")
-        textLine("Start - Load everything and start all scripts")
-        textLine("Debug - Load data, but don't run scripts")
+        textLine("New - Register a new agent (needs an account token in profile/accounttoken.secret)")
+        textLine("Start - Load agent, fleet and system data from the API")
+        textLine("Debug - Same as Start while automation is disabled")
         textLine("Esc - Quit")
+        textLine()
+        textLine("Ship automation is switched off pending the scripting overhaul.")
         text("> ")
         input()
     }

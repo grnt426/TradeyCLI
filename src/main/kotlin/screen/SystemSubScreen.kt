@@ -91,7 +91,7 @@ class SystemSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(pa
         text(" ")
         rgb(HEADER_COLOR.rgb) {
             underline {
-                val header = "Waypoints in ${wp.first().systemSymbol}"
+                val header = "Waypoints in ${wp.firstOrNull()?.systemSymbol ?: GameState.getHqSystem().symbol}"
                 text(header)
                 repeat(Profile.profileData.termWidth - header.length - 75) { text(" ") }
             }

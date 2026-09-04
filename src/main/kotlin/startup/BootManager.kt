@@ -92,8 +92,9 @@ object BootManager {
         initializeGameState()
     }
 
+    /** Identical to [normalStart] while ship automation is disabled; kept so the menu entry works. */
     suspend fun debugStart() {
-        throw BootFailure("Debug start is not implemented yet.")
+        normalStart()
     }
 
     private suspend fun registerAgent(
