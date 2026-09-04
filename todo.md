@@ -43,11 +43,17 @@ Order matters: each step is the floor the next one stands on. Details and reason
 
 ## 3. Scripting overhaul
 
-- [ ] Ship behaviours as `suspend` functions on the engine loop; `await` replaces every
-      `AWAIT_*` state and callback flag.
-- [ ] Checkpoints (behaviour, entity, phase, parameters) persisted at phase boundaries; a
-      supervisor resumes them after restart.
-- [ ] Re-enable automation one behaviour at a time, starting read-only (price fetching).
+Design: `docs/scripting-rewrite.md`. One language, three layers (verbs, behaviours, plan), one
+simulator. Milestones from the design:
+
+- [ ] Verbs and simulator, with a conformance test both implementations pass.
+- [ ] First behaviour, `mineAndSell`: pure decisions, checkpoints, phase reporting, simulator tests.
+- [ ] Plan file and supervisor; `assign`, `unassign`, `plan` in line mode and the console; resume
+      from checkpoints; `scriptsEnabled` moves to the supervisor.
+- [ ] Live trial: one drone for a day, watched through the request log.
+- [ ] More behaviours: `probeMarkets`, `runContract`, `haul`, then the expansion policy.
+- [ ] Retire the old layer: `script/`, `SpaceTradersClient`, `DbClient`, `FileWritingQueue`,
+      `SavedScripts`, `PriceHistory`, the `GameState` facade, `database/`, and their tests.
 - [ ] Revisit generated API models here, when the domain classes are being reshaped anyway.
 
 ## 4. Storage
