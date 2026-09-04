@@ -4,6 +4,7 @@ import api.ApiClient
 import api.SpaceTradersApi
 import app.App
 import behaviour.Behaviours
+import behaviour.decisions.Intentions
 import behaviour.decisions.Mining
 import engine.AcceleratedClock
 import engine.Engine
@@ -24,7 +25,9 @@ import model.ship.ShipNavStatus
 import model.ship.ShipType
 import model.system.OrbitalNames
 import plan.Assignment
+import plan.Chain
 import plan.FleetGoal
+import plan.Leg
 import plan.Plan
 import plan.RunLock
 import plan.Supervisor
@@ -152,6 +155,7 @@ class LineMode(
             "assign" -> return assign(args)
             "unassign" -> return unassign(args)
             "goal" -> return goal(args)
+            "chain" -> return chain(args)
             "run" -> return runPlan(args)
             "buy" -> return buy(args)
             "extractions" -> extractions()
@@ -439,6 +443,75 @@ class LineMode(
         return 0
     }
 
+    /**
+     * `chain add ID --leg GOOD:FROM>TO ... --ships A,B`, `chain release ID [SHIP]`, `chain auto ID on|off`, `chain` for the ledger.
+     * Enrolling records each ship's free-agent rate as the counterfactual the release policy holds fixed.
+     */
+    private suspend fun chain(args: List<String>): Int {
+        val file = planFile()
+        val plan = Plan.load(file)
+        when (args.firstOrNull()) {
+            null, "ledger" -> {
+                val store = engine.store ?: return 1
+                val now = engine.clock.now()
+                if (plan.chains.isEmpty()) { out.println("(no chains)"); return 0 }
+                plan.chains.forEach { c ->
+                    val ledger = behaviour.decisions.Chains.ledger(c, store.listChainTransactions(c.id), now)
+                    val verdict = behaviour.decisions.Chains.verdict(ledger, now, c.lastRelease)
+                    out.println("chain ${c.id}: ships ${c.ships.joinToString(",")}; enrolled ${time(c.enrolled)}; ${if (c.hold) "held" else "auto"}; reserve ${Intentions.format(c.reserve)}; ${c.note}".trimEnd())
+                    table(
+                        listOf("leg", "bought", "spent", "sold", "earned", "net"),
+                        ledger.legs.map { l -> listOf(l.toString(), l.bought.toString(), l.spent.toString(), l.sold.toString(), l.earned.toString(), l.net.toString()) } +
+                            listOf(listOf("fuel", "", ledger.fuel.toString(), "", "", (-ledger.fuel).toString())),
+                    )
+                    out.println("net ${ledger.net} over ${"%.1f".format(ledger.hoursObserved)} h: ${"%.0f".format(ledger.rawPerHour)}/h raw, ${"%.0f".format(ledger.smoothedPerHour)}/h smoothed; team free-agent baseline ${"%.0f".format(verdict.alternativePerHour)}/h")
+                    out.println("verdict: ${if (verdict.keep) "KEEP" else "RELEASE ${verdict.releaseShip}"}: ${verdict.reason}")
+                    out.println()
+                }
+            }
+            "add" -> {
+                val id = args.getOrNull(1) ?: run { err.println("chain add ID --leg GOOD:FROM>TO [--leg ...] --ships A,B [--note text]"); return 1 }
+                val legs = args.withIndex().filter { it.value == "--leg" }.mapNotNull { (i, _) -> args.getOrNull(i + 1) }.map { spec ->
+                    val good = runCatching { model.market.TradeSymbol.valueOf(spec.substringBefore(':').uppercase()) }.getOrNull() ?: run { err.println("bad leg '$spec'"); return 1 }
+                    val route = spec.substringAfter(':')
+                    Leg(good, route.substringBefore('>').uppercase(), route.substringAfter('>').uppercase())
+                }
+                val ships = option(args, "--ships")?.split(',')?.map { it.trim().uppercase() } ?: emptyList()
+                if (legs.isEmpty() || ships.isEmpty()) { err.println("chain add needs at least one --leg and --ships"); return 1 }
+                val snap = engine.snapshot
+                val now = engine.clock.now()
+                val baselines = ships.associateWith { s -> snap.ships[s]?.let { ship -> behaviour.decisions.Trading.rank(snap, ship, now).firstOrNull()?.creditsPerHour } ?: 0.0 }
+                val chain = Chain(id, legs, ships, baselines, now.toString(), hold = true, note = option(args, "--note") ?: "", reserve = option(args, "--reserve")?.toLongOrNull() ?: 200_000)
+                var next = plan.withChain(chain)
+                ships.forEach { next = next.with(Assignment(it, "feed", mapOf("chain" to id))) }
+                val problems = next.validate(snap)
+                if (problems.isNotEmpty()) { problems.forEach { err.println(it) }; return 1 }
+                Plan.save(file, next)
+                out.println("chain $id: ${legs.joinToString(", ")}; team ${ships.joinToString(",")}; baselines " + baselines.entries.joinToString(", ") { "${it.key} ${"%.0f".format(it.value)}/h" })
+            }
+            "release" -> {
+                val id = args.getOrNull(1) ?: run { err.println("chain release ID [SHIP]"); return 1 }
+                val chain = plan.chain(id) ?: run { err.println("no chain $id"); return 1 }
+                val ship = args.getOrNull(2)?.uppercase()
+                val releasing = if (ship != null) listOf(ship) else chain.ships
+                var next = plan
+                releasing.forEach { s -> next = next.with(Assignment(s, behaviour.Behaviours.defaultFor(engine.snapshot.ships[s] ?: return 1) ?: "trade")) }
+                val remaining = chain.ships - releasing.toSet()
+                next = if (remaining.isEmpty()) next.withoutChain(id) else next.withChain(chain.copy(ships = remaining, lastReleaseAt = engine.clock.now().toString()))
+                Plan.save(file, next)
+                out.println("released ${releasing.joinToString(",")} from $id" + (if (remaining.isEmpty()) "; chain dissolved" else "; ${remaining.size} still working it"))
+            }
+            "auto" -> {
+                val id = args.getOrNull(1) ?: run { err.println("chain auto ID on|off"); return 1 }
+                val chain = plan.chain(id) ?: run { err.println("no chain $id"); return 1 }
+                Plan.save(file, plan.withChain(chain.copy(hold = args.getOrNull(2) != "on")))
+                out.println("chain $id: release policy ${if (args.getOrNull(2) == "on") "automatic" else "advisory (held)"}")
+            }
+            else -> { err.println("chain [ledger] | chain add ID --leg GOOD:FROM>TO --ships A,B | chain release ID [SHIP] | chain auto ID on|off"); return 1 }
+        }
+        return 0
+    }
+
     private fun unassign(args: List<String>): Int {
         val ship = args.firstOrNull()?.uppercase() ?: run { err.println("unassign SHIP"); return 1 }
         Plan.save(planFile(), Plan.load(planFile()).without(ship))
@@ -661,6 +734,9 @@ class LineMode(
               unassign SHIP              remove an assignment
               goal fleet TYPE N [--reserve C]   buy up to N of TYPE when a trader docks at a yard and C credits stay in the bank
               goal clear TYPE            drop that fleet goal
+              chain                      the chains' ledgers and the release policy's verdicts
+              chain add ID --leg GOOD:FROM>TO ... --ships A,B [--reserve C]   enrol a team on a chain (records their free-agent rates)
+              chain release ID [SHIP]    put a ship (or the team) back on its default behaviour
               run [--for 2h]             run the plan, printing phases, then summarise
               buy TYPE SHIPYARD          buy a ship (a ship of yours must be at the shipyard)
               sim [--hours 24] [--buy TYPE,..] [--seed FILE] [--plan FILE] [--random N] [--trace]
@@ -679,7 +755,7 @@ class LineMode(
     companion object {
         val COMMANDS = listOf(
             "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "extractions",
-            "plan", "assign", "unassign", "goal", "run", "buy", "sim", "repl",
+            "plan", "assign", "unassign", "goal", "chain", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 

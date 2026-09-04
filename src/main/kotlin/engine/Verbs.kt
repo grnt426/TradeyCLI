@@ -75,6 +75,9 @@ interface Verbs {
     /** Charts the waypoint the ship is at; returns the reward. */
     suspend fun chart(ship: String): Long
 
+    /** Tags [ship]'s transactions with a chain id from now on; null clears it. */
+    suspend fun setChain(ship: String, chain: String?)
+
     fun contracts(): List<Contract>
     suspend fun negotiateContract(ship: String): Contract
     suspend fun acceptContract(id: String): Contract

@@ -33,7 +33,7 @@ interface VerbSink {
     suspend fun shipyardChanged(shipyard: Shipyard)
     suspend fun waypointChanged(waypoint: Waypoint)
     suspend fun surveysAdded(surveys: List<Survey>)
-    suspend fun transaction(transaction: MarketTransaction)
+    suspend fun transaction(transaction: MarketTransaction, chain: String? = null)
     suspend fun extraction(record: ExtractionRecord)
     suspend fun statusChanged(ship: String, status: ShipStatus?, params: String)
     suspend fun contractChanged(contract: Contract, cost: Long = 0, accepted: Boolean = false, fulfilled: Boolean = false)
@@ -110,7 +110,7 @@ class ShipVerbs(
         if (!here.hasMarket) throw VerbFailure.NotAtMarket(ship, here.symbol)
         if (!current.isDocked) current = dock(ship)
         val response = call { api.refuel(ship, null) }
-        sink.transaction(response.transaction)
+        sink.transaction(response.transaction, world.chainOf[ship])
         agentChanged(response.agent)
         current = update(current.copy(fuel = response.fuel, cargo = response.cargo ?: current.cargo))
         sink.event(Event.Refueled(ship, here.symbol, response.transaction.units, response.transaction.totalPrice.toLong()))
@@ -186,7 +186,7 @@ class ShipVerbs(
                 throw e
             }
             transactions += response.transaction
-            sink.transaction(response.transaction)
+            sink.transaction(response.transaction, world.chainOf[ship])
             agentChanged(response.agent)
             current = update(current.copy(cargo = response.cargo))
             remaining -= response.transaction.units
@@ -221,7 +221,7 @@ class ShipVerbs(
                 }
             }
             transactions += response.transaction
-            sink.transaction(response.transaction)
+            sink.transaction(response.transaction, world.chainOf[ship])
             agentChanged(response.agent)
             current = update(current.copy(cargo = response.cargo))
             remaining -= response.transaction.units
@@ -297,6 +297,10 @@ class ShipVerbs(
         agentChanged(response.agent)
         sink.event(Event.Charted(ship, current.nav.waypointSymbol, response.transaction.totalPrice))
         return response.transaction.totalPrice
+    }
+
+    override suspend fun setChain(ship: String, chain: String?) {
+        if (chain == null) world.chainOf.remove(ship) else world.chainOf[ship] = chain
     }
 
     override fun contracts(): List<Contract> = world.contracts.values.sortedBy { it.id }

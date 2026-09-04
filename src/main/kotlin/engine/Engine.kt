@@ -344,8 +344,8 @@ class Engine(
 
         override suspend fun surveysAdded(surveys: List<Survey>) = publish()
 
-        override suspend fun transaction(transaction: MarketTransaction) {
-            store?.putTransaction(transaction)
+        override suspend fun transaction(transaction: MarketTransaction, chain: String?) {
+            store?.putTransaction(transaction, chain)
             world.recentTransactions = world.recentTransactions + transaction
         }
 

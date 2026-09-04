@@ -171,8 +171,9 @@ class AgentStore private constructor(
             }
     }
 
-    suspend fun putTransaction(t: MarketTransaction) = tx {
+    suspend fun putTransaction(t: MarketTransaction, chain: String? = null) = tx {
         TransactionTable.insert {
+            it[TransactionTable.chain] = chain
             it[shipSymbol] = t.shipSymbol
             it[waypointSymbol] = t.waypointSymbol
             it[tradeSymbol] = t.tradeSymbol.name
@@ -188,6 +189,22 @@ class AgentStore private constructor(
         val query = TransactionTable.selectAll()
         if (since != null) query.where { TransactionTable.timestamp greaterEq since.toString() }
         query.orderBy(TransactionTable.id, SortOrder.ASC).map { row ->
+            MarketTransaction(
+                shipSymbol = row[TransactionTable.shipSymbol],
+                waypointSymbol = row[TransactionTable.waypointSymbol],
+                tradeSymbol = TradeSymbol.valueOf(row[TransactionTable.tradeSymbol]),
+                type = enumValueOf(row[TransactionTable.type]),
+                units = row[TransactionTable.units],
+                pricePerUnit = row[TransactionTable.pricePerUnit],
+                totalPrice = row[TransactionTable.totalPrice],
+                timestamp = row[TransactionTable.timestamp],
+            )
+        }
+    }
+
+    /** The transactions tagged with [chainId], oldest first. */
+    suspend fun listChainTransactions(chainId: String): List<MarketTransaction> = tx {
+        TransactionTable.selectAll().where { TransactionTable.chain eq chainId }.orderBy(TransactionTable.id, SortOrder.ASC).map { row ->
             MarketTransaction(
                 shipSymbol = row[TransactionTable.shipSymbol],
                 waypointSymbol = row[TransactionTable.waypointSymbol],

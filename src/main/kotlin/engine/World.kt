@@ -42,6 +42,9 @@ class World {
     /** Contracts by id, as last seen from the server. */
     val contracts = ConcurrentHashMap<String, Contract>()
 
+    /** Which chain each ship is working, for tagging its transactions. */
+    val chainOf = ConcurrentHashMap<String, String>()
+
     /** Recent extractions, oldest first: the yield history the mining ranking reads. */
     @Volatile
     var extractions: List<ExtractionRecord> = emptyList()

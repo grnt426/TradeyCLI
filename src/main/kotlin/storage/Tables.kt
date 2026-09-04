@@ -57,6 +57,8 @@ object TransactionTable : Table("transactions") {
     val pricePerUnit = integer("price_per_unit")
     val totalPrice = integer("total_price")
     val timestamp = varchar("timestamp", 40)
+    /** The chain the ship was working, if any. */
+    val chain = varchar("chain", 64).nullable().index()
     override val primaryKey = PrimaryKey(id)
 }
 

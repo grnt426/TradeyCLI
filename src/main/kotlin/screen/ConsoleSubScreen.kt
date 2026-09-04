@@ -437,6 +437,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 plan?.assignments?.sortedBy { it.ship }?.forEach { a -> textLine("${a.ship} ${a.describe()}".take(columnWidth * 2 - 1)) }
                 plan?.goals?.fleet?.forEach { g -> textLine("fleet ${g.count}x${g.type.name.removePrefix("SHIP_")} keep ${CreditsTrend.compact(g.reserve)}".take(columnWidth * 2 - 1)) }
                 plan?.goals?.credits?.let { textLine("credits goal ${Intentions.format(it)}") }
+                plan?.chains?.forEach { c -> textLine("chain ${c.id}: ${c.ships.size} ships, ${c.legs.size} legs".take(columnWidth * 2 - 1)) }
             }
         }
         text("> ")

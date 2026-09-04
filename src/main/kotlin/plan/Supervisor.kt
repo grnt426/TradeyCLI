@@ -70,6 +70,7 @@ class Supervisor(
         }
         this.plan = plan
         shared.goals = plan.goals
+        shared.plan = plan
         return emptyList()
     }
 

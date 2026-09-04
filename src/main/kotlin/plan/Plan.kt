@@ -16,7 +16,12 @@ import java.io.File
 data class Plan(
     val assignments: List<Assignment> = emptyList(),
     val goals: Goals = Goals(),
+    /** Teams of worker bees feeding a production chain; see `behaviour.decisions.Chains`. */
+    val chains: List<Chain> = emptyList(),
 ) {
+    fun withChain(chain: Chain): Plan = copy(chains = chains.filterNot { it.id == chain.id } + chain)
+    fun withoutChain(id: String): Plan = copy(chains = chains.filterNot { it.id == id })
+    fun chain(id: String): Chain? = chains.firstOrNull { it.id == id }
     fun with(assignment: Assignment): Plan = copy(assignments = assignments.filterNot { it.ship == assignment.ship } + assignment)
     fun without(ship: String): Plan = copy(assignments = assignments.filterNot { it.ship == ship })
     fun assignmentFor(ship: String): Assignment? = assignments.firstOrNull { it.ship == ship }
@@ -32,7 +37,7 @@ data class Plan(
         buildList {
             unknown.forEach { add("${a.ship}: ${a.behaviour} has no parameter '$it'") }
             missing.forEach { add("${a.ship}: ${a.behaviour} needs --$it") }
-            if (isEmpty()) addAll(spec.validate(snapshot, ship, a.params).map { "${a.ship}: $it" })
+            if (isEmpty()) addAll(spec.validate(snapshot.copy(plan = this@Plan), ship, a.params).map { "${a.ship}: $it" })
         }
     }
 
@@ -64,6 +69,34 @@ data class Goals(
     /** Ships to buy as money allows. A trader docked at a shipyard that lists the type buys one when the bank stays above the reserve. */
     val fleet: List<FleetGoal> = emptyList(),
 )
+
+/** A leg of a chain: haul [good] from [from] and sell it at [to]. */
+@Serializable
+data class Leg(val good: model.market.TradeSymbol, val from: String, val to: String) {
+    override fun toString(): String = "$good $from>$to"
+}
+
+/**
+ * A production chain worked by a team. Legs are run whether or not they pay; the ledger judges the
+ * whole. [baselines] are each ship's free-agent credits per hour when it was enrolled, the fixed
+ * counterfactual the release policy compares against. [hold] makes the policy advisory only.
+ */
+@Serializable
+data class Chain(
+    val id: String,
+    val legs: List<Leg>,
+    val ships: List<String> = emptyList(),
+    val baselines: Map<String, Double> = emptyMap(),
+    val enrolledAt: String,
+    val hold: Boolean = true,
+    val lastReleaseAt: String? = null,
+    val note: String = "",
+    /** Bees never spend the bank below this: a chain that loses money must not bankrupt the agent. */
+    val reserve: Long = 200_000,
+) {
+    val enrolled: java.time.Instant get() = java.time.Instant.parse(enrolledAt)
+    val lastRelease: java.time.Instant? get() = lastReleaseAt?.let { java.time.Instant.parse(it) }
+}
 
 @Serializable
 data class FleetGoal(

@@ -9,6 +9,8 @@ import model.ship.FlightMode
 import model.ship.Ship
 import model.system.Waypoint
 import java.util.concurrent.ConcurrentHashMap
+import plan.Goals
+import plan.Plan
 
 private val logger = KotlinLogging.logger {}
 
@@ -63,7 +65,13 @@ class BehaviourScope(
         if (s.nav.waypointSymbol == waypoint) return s
         if (!s.usesFuel) return navigateTo(ship, waypoint, mode)
         val needed = Travel.fuelCost(distanceTo(waypoint), mode)
-        if (s.fuel.current < needed && here.hasMarket) refuel(ship)
+        if (s.fuel.current < needed && here.hasMarket) {
+            try {
+                refuel(ship)
+            } catch (e: VerbFailure) {
+                logger.warn { "$ship could not top up at ${here.symbol}: ${e.message}; drifting" }
+            }
+        }
         return if (me.fuel.current >= needed) navigateTo(ship, waypoint, mode) else navigateTo(ship, waypoint, FlightMode.DRIFT)
     }
 
@@ -140,7 +148,11 @@ class SharedState {
     val claims = ConcurrentHashMap<String, String>()
 
     @Volatile
-    var goals: plan.Goals = plan.Goals()
+    var goals: Goals = Goals()
+
+    /** The plan the supervisor is running, for behaviours that read more than their own parameters. */
+    @Volatile
+    var plan: Plan = Plan()
 
     /** Set by the supervisor: gives a newly bought ship an assignment. */
     @Volatile

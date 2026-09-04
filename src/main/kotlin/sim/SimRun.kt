@@ -41,7 +41,8 @@ class TraceSink : VerbSink {
     override suspend fun shipyardChanged(shipyard: Shipyard) {}
     override suspend fun waypointChanged(waypoint: Waypoint) {}
     override suspend fun surveysAdded(surveys: List<Survey>) {}
-    override suspend fun transaction(transaction: MarketTransaction) { transactions += transaction }
+    override suspend fun transaction(transaction: MarketTransaction, chain: String?) { transactions += transaction; chain?.let { tagged += transaction to it } }
+    val tagged = mutableListOf<Pair<MarketTransaction, String>>()
     override suspend fun extraction(record: ExtractionRecord) { extractions += record }
     override suspend fun statusChanged(ship: String, status: ShipStatus?, params: String) {
         if (status != null) phases += ship to status
