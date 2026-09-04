@@ -47,6 +47,16 @@ class CreditsTrendTest {
         assertEquals(graph.max, graph.columns.last().value)
         assertEquals(graph.eighths(graph.max, 6), 48)
         assertEquals(graph.eighths(graph.min, 6), 0)
+        // Bars stand on the bottom row: the max fills every row, the min fills none, a middle value fills the lower rows only.
+        assertTrue((0 until 6).all { graph.glyphIndex(graph.max, it, 6) == 8 })
+        assertTrue((0 until 6).all { graph.glyphIndex(graph.min, it, 6) == 0 })
+        val mid = (graph.min + graph.max) / 2
+        assertEquals(0, graph.glyphIndex(mid, 0, 6), "top row empty for a middle value")
+        assertEquals(8, graph.glyphIndex(mid, 5, 6), "bottom row full for a middle value")
+        assertEquals(52, graph.axis().length)
+        assertEquals('|', graph.axis()[36], "the projection starts after 36 history columns")
+        assertTrue(graph.axisLabels().startsWith("-54m") && graph.axisLabels().endsWith("+24m") && graph.axisLabels().contains("now"), graph.axisLabels())
+        assertEquals(graph.columns.last().value, graph.projectedEnd.toLong())
     }
 
     @Test

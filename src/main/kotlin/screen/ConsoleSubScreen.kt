@@ -586,34 +586,21 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
             textLine("No credits history yet; it fills as the bot trades.")
             return
         }
+        // Rows top to bottom; each row is a band of values, so a bar is full below its top and partial at it.
         for (row in 0 until rows) {
-            val fromTop = rows - row // 1 at the top row
-            val label = when (row) {
-                0 -> CreditsTrend.compact(graph.max)
-                rows - 1 -> CreditsTrend.compact(graph.min)
-                else -> ""
-            }
-            text(label.padStart(labelWidth - 1) + " ")
+            text(graph.label(row, rows).padStart(labelWidth - 1) + " ")
             graph.columns.forEach { column ->
                 val value = column.value
-                val glyph = if (value == null) " " else {
-                    val eighths = graph.eighths(value, rows)
-                    val rowsBelow = (rows - fromTop) * 8
-                    when {
-                        eighths >= rowsBelow + 8 -> "█"
-                        eighths <= rowsBelow -> " "
-                        else -> BLOCKS[eighths - rowsBelow]
-                    }
-                }
+                val glyph = if (value == null) " " else BLOCKS[graph.glyphIndex(value, row, rows)]
                 if (column.projected) yellow { text(glyph) } else green { text(glyph) }
             }
             textLine()
         }
+        textLine(" ".repeat(labelWidth) + graph.axis())
+        textLine(" ".repeat(labelWidth) + graph.axisLabels())
         val trend = graph.trend
         val now = snap.agent?.credits ?: 0
         val ahead = graph.projectionSpan.toMinutes()
-        val minutesBack = graph.historySpan.toMinutes()
-        textLine(" ".repeat(labelWidth) + "last ${minutesBack}m".padEnd(columns - projection) + "next ${ahead}m")
         textLine("now ${Intentions.format(now)}   ${if (trend.perHour >= 0) "+" else ""}${Intentions.format(trend.perHour.toLong())}/h   in ${ahead}m: ~${Intentions.format(graph.projectedEnd.toLong())}".take(width - 1))
     }
 

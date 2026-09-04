@@ -338,20 +338,17 @@ class LineMode(
         out.println()
         val rows = 6
         for (row in 0 until rows) {
-            val fromTop = rows - row
-            val label = when (row) { 0 -> behaviour.decisions.CreditsTrend.compact(graph.max); rows - 1 -> behaviour.decisions.CreditsTrend.compact(graph.min); else -> "" }
-            val line = StringBuilder(label.padStart(7) + " ")
+            val line = StringBuilder(graph.label(row, rows).padStart(7) + " ")
             graph.columns.forEach { c ->
                 val v = c.value
-                line.append(if (v == null) " " else {
-                    val e = graph.eighths(v, rows); val below = (rows - fromTop) * 8
-                    // ASCII only: Windows consoles without UTF-8 turn block characters into question marks
-                    when { e >= below + 8 -> if (c.projected) "+" else "#"; e <= below -> " "; else -> if (c.projected) "." else "=" }
-                })
+                // ASCII only: Windows consoles without UTF-8 turn block characters into question marks
+                line.append(if (v == null) " " else when (graph.glyphIndex(v, row, rows)) { 0 -> " "; 8 -> if (c.projected) "+" else "#"; else -> if (c.projected) "." else "=" })
             }
             out.println(line)
         }
-        out.println("        last ${graph.historySpan.toMinutes()}m of history (#), then ${graph.projectionSpan.toMinutes()}m projected (+); now ${snap.agent?.credits}, ${trend.perHour.toLong()}/h, projected ${graph.projectedEnd.toLong()}")
+        out.println(" ".repeat(8) + graph.axis())
+        out.println(" ".repeat(8) + graph.axisLabels())
+        out.println("history (#) then projection (+); now ${snap.agent?.credits}, ${trend.perHour.toLong()}/h, in ${graph.projectionSpan.toMinutes()}m about ${graph.projectedEnd.toLong()}")
     }
 
     private suspend fun extractions() {

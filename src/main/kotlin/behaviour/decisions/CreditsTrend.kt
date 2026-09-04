@@ -30,7 +30,54 @@ data class CreditsGraph(
 
     val historySpan: Duration get() = bucket.multipliedBy(columns.count { !it.projected }.toLong())
     val projectionSpan: Duration get() = bucket.multipliedBy(columns.count { it.projected }.toLong())
-    val projectedEnd: Double get() = trend.at(now, now.plus(projectionSpan))
+    val projectedEnd: Double get() = columns.lastOrNull { it.projected }?.value?.toDouble() ?: trend.nowValue
+
+    /** The value band a row covers, in eighths from the bottom: row 0 is the top. */
+    fun bandFloor(row: Int, rows: Int): Int = (rows - 1 - row) * 8
+
+    /** What a column shows on [row]: 8 for full, 0 for empty, else the partial block at the top of the bar. */
+    fun glyphIndex(value: Long, row: Int, rows: Int): Int {
+        val eighths = eighths(value, rows)
+        val floor = bandFloor(row, rows)
+        return when {
+            eighths >= floor + 8 -> 8
+            eighths <= floor -> 0
+            else -> eighths - floor
+        }
+    }
+
+    /** Y-axis label for [row], or blank: the max at the top, the min at the bottom, the middle in between. */
+    fun label(row: Int, rows: Int): String = when (row) {
+        0 -> CreditsTrend.compact(max)
+        rows - 1 -> CreditsTrend.compact(min)
+        rows / 2 -> CreditsTrend.compact((min + max) / 2)
+        else -> ""
+    }
+
+    /** The time axis under the bars: a tick every [every] columns, a bar where the projection starts. */
+    fun axis(every: Int = 6): String {
+        val boundary = columns.indexOfFirst { it.projected }
+        return columns.indices.joinToString("") { i ->
+            when {
+                i == boundary -> "|"
+                i % every == 0 -> "+"
+                else -> "-"
+            }
+        }
+    }
+
+    /** Labels under the axis: how far back the left edge is, "now" at the boundary, how far ahead the right edge is. */
+    fun axisLabels(): String {
+        val history = columns.count { !it.projected }
+        val left = "-${historySpan.toMinutes()}m"
+        val right = "+${projectionSpan.toMinutes()}m"
+        val sb = StringBuilder(" ".repeat(columns.size))
+        sb.replace(0, left.length, left)
+        val nowAt = (history - 1).coerceAtLeast(0)
+        sb.replace(nowAt, minOf(nowAt + 3, sb.length), "now")
+        sb.replace(sb.length - right.length, sb.length, right)
+        return sb.toString()
+    }
 }
 
 object CreditsTrend {
@@ -74,9 +121,12 @@ object CreditsTrend {
             sorted.lastOrNull { !it.at.isBefore(end.minus(bucket)) && it.at.isBefore(end) }?.let { carried = it.credits }
             columns += GraphColumn(end, carried, projected = false)
         }
+        // The projection continues from the last real value at the trend's slope, so it joins the history without a step.
+        val latest = sorted.lastOrNull()?.credits?.toDouble() ?: 0.0
         for (i in 1..projectionColumns) {
             val at = now.plus(bucket.multipliedBy(i.toLong()))
-            columns += GraphColumn(at, trend.at(now, at).toLong().coerceAtLeast(0), projected = true)
+            val hours = (at.toEpochMilli() - now.toEpochMilli()) / 3_600_000.0
+            columns += GraphColumn(at, (latest + trend.perHour * hours).toLong().coerceAtLeast(0), projected = true)
         }
         val values = columns.mapNotNull { it.value }
         val min = values.minOrNull() ?: 0
