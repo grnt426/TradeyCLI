@@ -93,8 +93,14 @@ object GameState {
         SpaceTradersClient.beginPollingRequests()
         agent = getAgentData() ?: throw ProfileLoadingFailure(
             "The API did not return the agent for the token in $AGENT_TOKEN_FILE. " +
-                    "If the server has reset since it was issued, type NEW. Details are in log.txt."
+                    "If the server has reset since it was issued, mint a new token or type NEW. Details are in log.txt."
         )
+        // The token decides which agent this is; the profile name follows it.
+        if (!profData.name.equals(agent.symbol, ignoreCase = true)) {
+            logger.info { "Profile name '${profData.name}' does not match the token's agent '${agent.symbol}'; updating the profile" }
+            profData.name = agent.symbol
+            saveProfile(profileDataFile, profData)
+        }
         postInitGameLoading()
         loadScripts()
     }

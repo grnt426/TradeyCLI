@@ -86,8 +86,8 @@ object BootManager {
     fun normalStart(agentTokenPath: String = AGENT_TOKEN_FILE) {
         ensureRuntimeDirectories()
         if (readSecret(agentTokenPath) == null) throw BootFailure(
-            "No agent token at $agentTokenPath. Type NEW to register an agent for this reset, " +
-                    "or paste an existing agent token into that file."
+            "No agent token at $agentTokenPath. Mint one for your agent at https://my.spacetraders.io and paste " +
+                    "it into that file, or type NEW to register a new agent with an account token."
         )
         initializeGameState()
     }
@@ -108,7 +108,11 @@ object BootManager {
         val body = response.bodyAsText()
         if (!response.status.isSuccess()) {
             logger.error { "Registration failed: ${response.status} - $body" }
-            throw BootFailure("Registration rejected (HTTP ${response.status.value}): ${describeApiError(body)}")
+            val hint = if (body.contains("agent-token")) {
+                " That is an agent token. Agent tokens belong in $AGENT_TOKEN_FILE; paste it there and use START. " +
+                        "Only an account token from https://my.spacetraders.io can register agents."
+            } else ""
+            throw BootFailure("Registration rejected (HTTP ${response.status.value}): ${describeApiError(body)}.$hint")
         }
 
         val data = envelopeField(body, "data")

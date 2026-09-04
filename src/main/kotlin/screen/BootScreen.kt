@@ -27,8 +27,8 @@ class BootScreen(var userAskedNew: Boolean = false) : Screen() {
     private val self = this
 
     override fun MainRenderScope.render() {
+        textLine("Start - Load the agent whose token is in profile/authtoken.secret")
         textLine("New - Register a new agent (needs an account token in profile/accounttoken.secret)")
-        textLine("Start - Load agent, fleet and system data from the API")
         textLine("Debug - Same as Start while automation is disabled")
         textLine("Esc - Quit")
         textLine()
