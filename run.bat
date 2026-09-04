@@ -5,4 +5,4 @@ IF ERRORLEVEL 1 (
     EXIT /B 1
 )
 cls
-CALL .uild\install\TradeyCLIin\TradeyCLI.bat
+CALL .\build\install\TradeyCLI\bin\TradeyCLI.bat
