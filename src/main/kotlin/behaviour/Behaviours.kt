@@ -16,7 +16,7 @@ class ParamSpec(val name: String, val description: String, val required: Boolean
 
 /** Every behaviour the plan may name. */
 object Behaviours {
-    val all: Map<String, BehaviourSpec> = listOf(probeMarketsSpec, mineAndSellSpec, tradeSpec, expandSpec, runContractSpec, feedSpec, supplyGateSpec, chartSystemSpec).associateBy { it.name }
+    val all: Map<String, BehaviourSpec> = listOf(probeMarketsSpec, mineAndSellSpec, tradeSpec, expandSpec, runContractSpec, feedSpec, supplyGateSpec, chartSystemSpec, exploreSpec).associateBy { it.name }
 
     fun get(name: String): BehaviourSpec? = all[name]
 

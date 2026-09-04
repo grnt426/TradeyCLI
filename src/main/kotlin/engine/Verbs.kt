@@ -80,6 +80,9 @@ interface Verbs {
     /** Tags [ship]'s transactions with a chain id from now on; null clears it. */
     suspend fun setChain(ship: String, chain: String?)
 
+    /** Fetches a system and its waypoints into the world; for a system no ship of ours has seen. */
+    suspend fun loadSystem(symbol: String): List<Waypoint>
+
     /** A gate's connections; one request. */
     suspend fun jumpGate(waypoint: String): JumpGate
 

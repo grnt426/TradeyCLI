@@ -355,6 +355,13 @@ class Engine(
             world.extractions = (world.extractions + record).takeLast(2000)
         }
 
+        override suspend fun systemLoaded(system: System, waypoints: List<Waypoint>) {
+            store?.putSystem(system)
+            store?.putWaypoints(waypoints)
+            publish()
+            emit(Event.SystemLoaded(system.symbol, waypoints.size, 0, 0))
+        }
+
         override suspend fun supplied(record: SupplyRecord) {
             store?.putSupply(record)
         }

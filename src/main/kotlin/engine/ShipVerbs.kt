@@ -41,6 +41,7 @@ interface VerbSink {
     suspend fun statusChanged(ship: String, status: ShipStatus?, params: String)
     suspend fun contractChanged(contract: Contract, cost: Long = 0, accepted: Boolean = false, fulfilled: Boolean = false)
     suspend fun supplied(record: SupplyRecord)
+    suspend fun systemLoaded(system: model.system.System, waypoints: List<Waypoint>)
     fun event(event: Event)
 }
 
@@ -305,6 +306,15 @@ class ShipVerbs(
 
     override suspend fun setChain(ship: String, chain: String?) {
         if (chain == null) world.chainOf.remove(ship) else world.chainOf[ship] = chain
+    }
+
+    override suspend fun loadSystem(symbol: String): List<Waypoint> {
+        val system = call { api.getSystem(symbol) }
+        world.systems[system.symbol] = system
+        val waypoints = call { api.listSystemWaypoints(symbol) }
+        waypoints.forEach { world.waypoints[it.symbol] = it }
+        sink.systemLoaded(system, waypoints)
+        return waypoints
     }
 
     override suspend fun jumpGate(waypoint: String): JumpGate =
