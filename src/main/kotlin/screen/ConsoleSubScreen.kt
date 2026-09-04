@@ -326,12 +326,16 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                         pressureWindow.forEach { w ->
                             if (h < 4) {
                                 val pressure = SpaceTradersClient.getJobPressure(w)
+                                // Every row must emit exactly one character per column, or the
+                                // rows drift out of alignment with each other.
                                 when (pressure) {
                                     SpaceTradersClient.JobPressure.LOW -> {
                                         if (h == 2) {
                                             green {
                                                 text(blocks[w])
                                             }
+                                        } else {
+                                            text(" ")
                                         }
                                     }
 
@@ -341,6 +345,8 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                                                 text(blocks[w - 8])
                                             } else if (h > 1) {
                                                 text(FULL_BLOCK)
+                                            } else {
+                                                text(" ")
                                             }
                                         }
                                     }
