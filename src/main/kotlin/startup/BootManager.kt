@@ -54,7 +54,8 @@ object BootManager {
                 Layout.saveAgentToken(agent.symbol, token)
                 if (fromLegacy && legacyFile.delete()) logger.info { "Moved ${legacyFile.path} into ${Layout.agentDir(agent.symbol).path}" }
             }
-            if (!settings.name.equals(agent.symbol, ignoreCase = true)) {
+            // Only a boot that did not name its agent may change the profile's default; `--agent X` is a one-off.
+            if (agentSymbol == null && !settings.name.equals(agent.symbol, ignoreCase = true)) {
                 logger.info { "Active agent is now ${agent.symbol} (profile said '${settings.name}')" }
                 settings.name = agent.symbol
                 saveProfile(DEFAULT_PROF_FILE, settings)

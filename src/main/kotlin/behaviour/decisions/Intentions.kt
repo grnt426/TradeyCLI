@@ -34,6 +34,10 @@ object Intentions {
             else -> Intent("Run process ${runner.pid} is gone (last heartbeat ${ago(runner.heartbeat, now)}); nothing is driving the plan", Intent.Tone.WARN)
         }
 
+        // With a live driver a long silence is a long flight, not a dead run; without one, ten minutes is suspicious.
+        val driverLive = runner != null && runner.isLive(now, processAlive)
+        val stale = if (driverLive) Duration.ofHours(1) else STALE
+
         // What the ships are doing
         if (plan == null || plan.assignments.isEmpty()) {
             lines += Intent("No plan: nothing is assigned. `assign SHIP trade` in line mode, then `run`.", Intent.Tone.WARN)
@@ -44,7 +48,7 @@ object Intentions {
                     status == null -> Intent("${a.ship} ${a.describe()}: assigned, not running yet", Intent.Tone.WARN)
                     status.phase == "failed" -> Intent("${a.ship} ${status.behaviour}: FAILED ${status.detail}".take(120), Intent.Tone.WARN)
                     status.phase == "done" -> Intent("${a.ship} ${status.behaviour}: finished (${status.detail})", Intent.Tone.NEUTRAL)
-                    Duration.between(status.since, now) > STALE -> Intent("${a.ship} ${status.behaviour}: ${status.phase} ${status.detail} (last seen ${ago(status.since, now)}; is `run` still going?)".take(140), Intent.Tone.WARN)
+                    Duration.between(status.since, now) > stale -> Intent("${a.ship} ${status.behaviour}: ${status.phase} ${status.detail} (last seen ${ago(status.since, now)}${if (driverLive) "" else "; is `run` still going?"})".take(140), Intent.Tone.WARN)
                     else -> Intent("${a.ship} ${status.behaviour}: ${status.phase} ${status.detail}".take(120), Intent.Tone.GOOD)
                 }
             }
