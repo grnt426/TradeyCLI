@@ -249,8 +249,11 @@ The strategy the decisions encode, in order:
    where it is cheap, sell it where it is an import, sized by `sizeLoad` to what still pays once
    each batch bought raises the price and each batch sold lowers it (both accelerate), from
    where the ship is now. `trade` re-checks the margin on arrival and sets a dead pair aside.
-5. After a sale at a shipyard, a trader buys the next ship the fleet goal asks for if the bank
-   stays above the reserve; the supervisor puts it to work.
+5. `expand` parks the probe (free to fly, survey done) at the yard that sells what the fleet goal
+   wants and buys the moment the bank clears price plus reserve; a trader docked at a yard does
+   the same after a sale. The supervisor gives a bought ship its default behaviour.
+6. Traders claim the good at both ends of their route for the load, so several traders take
+   distinct routes (the nth best each) rather than crowding one and pushing its prices over.
 
 Resume after a restart is by re-running the behaviour from the top: every phase is idempotent
 (navigating to where the ship is costs nothing, selling nothing sells nothing), so the checkpoint

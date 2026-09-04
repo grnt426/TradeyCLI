@@ -149,6 +149,20 @@ class SharedState {
     /** Whether any behaviour is buying a ship right now, so two traders at two yards do not both spend the reserve. */
     val buying = java.util.concurrent.atomic.AtomicBoolean(false)
 
+    /** Goods being bought or sold at a market by a trader: "GOOD@WAYPOINT" to ship, so two traders never work the same good at the same market. */
+    val routes = ConcurrentHashMap<String, String>()
+
+    fun claimRoute(ship: String, vararg keys: String) {
+        releaseRoutes(ship)
+        keys.forEach { routes[it] = ship }
+    }
+
+    fun releaseRoutes(ship: String) {
+        routes.entries.removeIf { it.value == ship }
+    }
+
+    fun routeTakenByOther(key: String, ship: String): Boolean = routes[key]?.let { it != ship } ?: false
+
     /** Claims [waypoint] for [ship] unless another ship holds it. */
     fun claim(ship: String, waypoint: String): Boolean {
         claims.entries.removeIf { it.value == ship }
@@ -157,6 +171,7 @@ class SharedState {
 
     fun release(ship: String) {
         claims.entries.removeIf { it.value == ship }
+        releaseRoutes(ship)
     }
 
     fun claimedByOther(waypoint: String, ship: String): Boolean = claims[waypoint]?.let { it != ship } ?: false

@@ -90,4 +90,23 @@ class TradingTest {
         assertTrue(report.trace.phaseNames(shuttle).contains("sell"), "the shuttle traded: ${report.trace.phaseNames(shuttle).distinct()}")
         assertTrue(report.earned > 0)
     }
+
+    @Test
+    fun `the probe on expand buys two shuttles at the yard, the supervisor puts them to work, and traders take distinct routes`() {
+        val seed = pricedSeed()
+        val plan = Plan(listOf(Assignment(Fixtures.COMMAND_SHIP, "trade"), Assignment(Fixtures.PROBE, "expand")))
+            .withGoal(plan.FleetGoal(model.ship.ShipType.SHIP_LIGHT_SHUTTLE, 2, reserve = 150_000))
+        val report = SimRun(seed, plan, hours = 8).run()
+        assertTrue(report.failures.isEmpty(), report.failures.toString())
+        val bought = report.trace.events.filterIsInstance<Event.ShipPurchased>()
+        assertEquals(2, bought.size, bought.toString())
+        bought.forEach { assertTrue(report.trace.phaseNames(it.ship).contains("sell"), "${it.ship} traded: ${report.trace.phaseNames(it.ship).distinct()}") }
+        val idle = report.trace.phases.last { it.first == Fixtures.PROBE }.second
+        assertEquals("idle", idle.phase, "the probe stays parked once the goal is met: ${idle.detail}")
+        // No two traders sold the same good at the same market inside the same minute.
+        val sales = report.trace.transactions.filter { it.type == TransactionType.SELL }
+        val clashes = sales.groupBy { "${it.tradeSymbol}@${it.waypointSymbol}@${it.timestamp.take(16)}" }.filterValues { g -> g.map { it.shipSymbol }.toSet().size > 1 }
+        assertTrue(clashes.isEmpty(), "shared routes: ${clashes.keys}")
+        assertTrue(report.earned > 0)
+    }
 }

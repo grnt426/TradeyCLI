@@ -40,10 +40,13 @@ suspend fun BehaviourScope.trade() {
         clock.sleep(1.seconds)
         val now = clock.now()
         setAside.entries.removeIf { it.value.isBefore(now) }
+        shared.releaseRoutes(ship)
         val plan = phase("plan") {
             Trading.rank(snapshot(), me, now, assumptions)
                 .filter { onlyGood == null || it.good.name == onlyGood }
                 .filter { "${it.good}:${it.source.symbol}:${it.destination.symbol}" !in setAside }
+                // Another trader working this good at either end would eat our margin: take the next best route.
+                .filter { !shared.routeTakenByOther("${it.good}@${it.source.symbol}", ship) && !shared.routeTakenByOther("${it.good}@${it.destination.symbol}", ship) }
                 .firstOrNull()
         }
         if (plan == null) {
@@ -53,6 +56,7 @@ suspend fun BehaviourScope.trade() {
             continue
         }
         status("plan", plan.summary())
+        shared.claimRoute(ship, "${plan.good}@${plan.source.symbol}", "${plan.good}@${plan.destination.symbol}")
         val key = "${plan.good}:${plan.source.symbol}:${plan.destination.symbol}"
 
         phase("travel to source", plan.source.symbol) {

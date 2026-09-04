@@ -63,7 +63,8 @@ TradeyCLI behaviours                                   # what exists and what it
 TradeyCLI assign TRIPLEHAT-2 probeMarkets              # read every market's prices, then stop
 TradeyCLI assign TRIPLEHAT-1 trade                     # haul goods between markets, best route every load
 TradeyCLI assign TRIPLEHAT-1 mineAndSell --asteroid X1-TH77-B9 --market X1-TH77-B7 --surveys no
-TradeyCLI goal fleet LIGHT_SHUTTLE 2 --reserve 150000  # traders buy shuttles at a yard while the bank stays above the reserve
+TradeyCLI goal fleet LIGHT_SHUTTLE 2 --reserve 150000  # buy shuttles while the bank stays above the reserve
+TradeyCLI assign TRIPLEHAT-2 expand                    # the probe parks at the yard and buys them the moment the bank allows
 TradeyCLI plan                                         # the plan and its goals, with anything wrong with it
 TradeyCLI unassign TRIPLEHAT-1
 TradeyCLI run --for 2h                                 # run the plan, printing every phase, then summarise
