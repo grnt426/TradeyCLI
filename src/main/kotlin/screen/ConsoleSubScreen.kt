@@ -14,6 +14,7 @@ import com.varabyte.kotter.foundation.text.*
 import com.varabyte.kotter.runtime.MainRenderScope
 import com.varabyte.kotter.runtime.RunScope
 import com.varabyte.kotter.runtime.render.OffscreenRenderScope
+import com.varabyte.kotter.runtime.render.RenderScope
 import com.varabyte.kotterx.grid.Cols
 import com.varabyte.kotterx.grid.GridCharacters
 import com.varabyte.kotterx.grid.grid
@@ -434,7 +435,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 val plan = snap.plan
                 if (plan == null || plan.assignments.isEmpty()) textLine("(empty)")
                 plan?.assignments?.sortedBy { it.ship }?.forEach { a -> textLine("${a.ship} ${a.describe()}".take(columnWidth * 2 - 1)) }
-                plan?.goals?.fleet?.forEach { g -> textLine("fleet: ${g.count} x ${g.type.name.removePrefix("SHIP_")}, reserve ${Intentions.format(g.reserve)}".take(columnWidth * 2 - 1)) }
+                plan?.goals?.fleet?.forEach { g -> textLine("fleet ${g.count}x${g.type.name.removePrefix("SHIP_")} keep ${CreditsTrend.compact(g.reserve)}".take(columnWidth * 2 - 1)) }
                 plan?.goals?.credits?.let { textLine("credits goal ${Intentions.format(it)}") }
             }
         }
@@ -573,7 +574,9 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
      * The bank over the last hour as bars, then the trend's projection in yellow. Every row is
      * exactly [width] characters so the grid stays aligned.
      */
-    private fun MainRenderScope.creditsGraph(snap: engine.Snapshot, width: Int) {
+    // RenderScope, not MainRenderScope: a grid cell renders into an offscreen scope, and an
+    // extension on the main scope would paint at the top of the screen instead of in the cell.
+    private fun RenderScope.creditsGraph(snap: engine.Snapshot, width: Int) {
         val labelWidth = 8
         val columns = (width - labelWidth - 1).coerceAtLeast(20)
         val projection = columns / 3
