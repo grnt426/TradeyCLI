@@ -83,7 +83,14 @@ class SimUniverse(
     var agent: Agent = seed.agent
         private set
     val shipyards: Map<String, Shipyard> = seed.shipyards.associateBy { it.symbol }
-    val markets: Map<String, SimMarket> = seed.markets.associate { it.symbol to SimMarket.from(it, rules, clock.now()) }
+    /**
+     * Exchange-equivalent base prices per good from every market in the seed that showed prices,
+     * so an unvisited market is priced like its neighbours rather than from a flat guess.
+     */
+    private val observedBases: Map<TradeSymbol, Double> = seed.markets.flatMap { m -> m.tradeGoods.map { g -> g.symbol to g.sellPrice / DefaultPrices.typeFactor(g.type) } }
+        .groupBy({ it.first }, { it.second }).mapValues { (_, v) -> v.average() }
+
+    val markets: Map<String, SimMarket> = seed.markets.associate { it.symbol to SimMarket.from(it, rules, clock.now(), observedBases) }
 
     private val surveys = mutableMapOf<String, SimSurvey>()
     private val asteroids = mutableMapOf<String, AsteroidState>()
@@ -206,6 +213,26 @@ class SimUniverse(
         val transaction = MarketTransaction(symbol, market.symbol, good, TransactionType.SELL, units, price, total, now.toString())
         transactions += transaction
         val updated = put(ship.copy(cargo = ship.cargo.adjusted(good, -units)))
+        BuySellCargoResponse(agent, updated.cargo, transaction)
+    }
+
+    fun purchase(symbol: String, good: TradeSymbol, units: Int): BuySellCargoResponse = counted {
+        val ship = settle(symbol)
+        if (!ship.isDocked) throw error(400, ApiErrorCodes.SHIP_NOT_DOCKED, "$symbol must be docked")
+        val market = markets[ship.nav.waypointSymbol] ?: throw error(400, ApiErrorCodes.MARKET_NOT_SOLD, "no market here")
+        val line = market.goods[good] ?: throw error(400, 4601, "${market.symbol} does not sell $good")
+        if (units <= 0) throw error(400, 4219, "units must be positive")
+        if (units > line.tradeVolume) throw error(400, ApiErrorCodes.MARKET_UNIT_LIMIT, "trade volume is ${line.tradeVolume}")
+        if (units > ship.cargoSpaceLeft) throw error(400, 4217, "$symbol has room for ${ship.cargoSpaceLeft}")
+        val now = clock.now()
+        val price = line.purchasePrice(now)
+        val total = price * units
+        if (total > agent.credits) throw error(400, 4600, "insufficient credits: need $total")
+        line.bought(units, now)
+        agent = agent.copy(credits = agent.credits - total)
+        val transaction = MarketTransaction(symbol, market.symbol, good, TransactionType.PURCHASE, units, price, total, now.toString())
+        transactions += transaction
+        val updated = put(ship.copy(cargo = ship.cargo.adjusted(good, units)))
         BuySellCargoResponse(agent, updated.cargo, transaction)
     }
 
@@ -438,15 +465,18 @@ class SimMarket private constructor(
     ).also { it.lastRead = now }
 
     companion object {
-        fun from(market: Market, rules: SimRules, now: Instant): SimMarket {
+        fun from(market: Market, rules: SimRules, now: Instant, observedBases: Map<TradeSymbol, Double> = emptyMap()): SimMarket {
             val goods = mutableMapOf<TradeSymbol, SimGood>()
             fun add(symbol: TradeSymbol, type: TradeGoodType) {
                 val seen = market.good(symbol)
+                val base = observedBases[symbol]
+                val sell = seen?.sellPrice?.toDouble() ?: base?.let { it * DefaultPrices.typeFactor(type) } ?: DefaultPrices.sell(symbol, type).toDouble()
+                val purchase = seen?.purchasePrice?.toDouble() ?: (sell * DefaultPrices.purchaseFactor(type))
                 goods[symbol] = SimGood(
                     symbol, type,
                     tradeVolume = seen?.tradeVolume ?: (if (symbol == TradeSymbol.FUEL) DefaultPrices.volume(symbol) else rules.defaultTradeVolume.coerceAtLeast(1)),
-                    baseSell = (seen?.sellPrice ?: DefaultPrices.sell(symbol, type)).toDouble(),
-                    basePurchase = (seen?.purchasePrice ?: DefaultPrices.purchase(symbol, type)).toDouble(),
+                    baseSell = sell.coerceAtLeast(1.0),
+                    basePurchase = purchase.coerceAtLeast(2.0),
                     rules = rules, updatedAt = now,
                 )
             }
@@ -467,23 +497,45 @@ class SimGood(
     private val rules: SimRules,
     private var updatedAt: Instant,
 ) {
-    /** 1.0 is the seeded price; selling pushes it down, time pulls it back. */
+    /** 1.0 is the seeded price; selling pushes it down, buying up, time pulls it back. */
     private var pressure = 1.0
 
+    /** Volumes we have recently sold and bought here; each one makes the next hit harder. Decays with recovery. */
+    private var recentSold = 0.0
+    private var recentBought = 0.0
+
+    /** Drifts back toward 1.0 from either side as time passes; the recent-volume counters fade with it. */
     private fun recover(now: Instant) {
         val hours = (now.toEpochMilli() - updatedAt.toEpochMilli()) / 3_600_000.0
         if (hours > 0) {
-            pressure = (pressure + hours * rules.priceRecoveryPerHour).coerceAtMost(1.0)
+            val step = hours * rules.priceRecoveryPerHour
+            pressure = if (pressure < 1.0) (pressure + step).coerceAtMost(1.0) else (pressure - step).coerceAtLeast(1.0)
+            val fade = Math.pow(0.5, hours) // half of the memory gone per hour
+            recentSold *= fade
+            recentBought *= fade
             updatedAt = now
         }
+    }
+
+    /** Buying from a market pushes its price up, harder with every volume. */
+    fun bought(units: Int, now: Instant) {
+        recover(now)
+        val volumes = units.toDouble() / tradeVolume
+        val rise = rules.buyImpactPerVolume * Math.pow(rules.buyImpactGrowth, recentBought) * volumes
+        pressure = (pressure * (1 + rise)).coerceAtMost(rules.priceCeiling)
+        recentBought += volumes
     }
 
     fun sellPrice(now: Instant): Int { recover(now); return (baseSell * pressure).roundToInt().coerceAtLeast(1) }
     fun purchasePrice(now: Instant): Int { recover(now); return (basePurchase * pressure).roundToInt().coerceAtLeast(2) }
 
+    /** Selling to a market pushes its price down, harder with every volume. */
     fun sold(units: Int, now: Instant) {
         recover(now)
-        pressure = (pressure - rules.priceImpactPerVolume * units / tradeVolume).coerceAtLeast(rules.priceFloor)
+        val volumes = units.toDouble() / tradeVolume
+        val drop = rules.sellImpactPerVolume * Math.pow(rules.sellImpactGrowth, recentSold) * volumes
+        pressure = (pressure * (1 - drop).coerceAtLeast(0.05)).coerceAtLeast(rules.priceFloor)
+        recentSold += volumes
     }
 
     fun asTradeGood(now: Instant): MarketTradeGood {

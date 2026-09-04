@@ -58,8 +58,11 @@ simulator. Milestones from the design:
 - [ ] Live trial: `run --for 1d` with the probe surveying and the frigate mining, then compare the
       `extractions` and `transactions` tables against `sim.SimRules` and correct the guesses.
 - [ ] Refuel stops on the way *out* as well as back, and a hauler that meets miners at the rock.
-- [ ] More behaviours: `runContract`, `haul`, then the expansion policy (buy a drone when the sim
-      says it pays back inside the reset).
+- [x] `trade` (buy exports, sell to importers, best route each load) and the expansion policy
+      (`goal fleet`); `trades` in line mode.
+- [ ] More behaviours: `runContract`; a hauler that meets miners at the rock.
+- [ ] Calibrate recovery: one observation says an import price knocked down by a load recovers in
+      about a quarter of an hour and an export price much more slowly; the sim uses one rate.
 - [x] Retire the old layer: `script/`, `SpaceTradersClient`, `DbClient`, `FileWritingQueue`,
       `SavedScripts`, `PriceHistory`, the `GameState` facade, `database/`, and their tests.
 - [ ] Revisit generated API models here, when the domain classes are being reshaped anyway.

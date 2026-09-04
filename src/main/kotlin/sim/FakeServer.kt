@@ -84,6 +84,7 @@ class FakeServer(val universe: SimUniverse) {
             action == "survey" -> data(universe.survey(symbol), HttpStatusCode.Created)
             action == "refuel" -> data(universe.refuel(symbol, body?.get("units")?.takeUnless { it is JsonNull }?.jsonPrimitive?.content?.toIntOrNull()))
             action == "sell" -> data(universe.sell(symbol, enumValueOf<TradeSymbol>(body!!.str("symbol")), body.str("units").toInt()), HttpStatusCode.Created)
+            action == "purchase" -> data(universe.purchase(symbol, enumValueOf<TradeSymbol>(body!!.str("symbol")), body.str("units").toInt()), HttpStatusCode.Created)
             action == "jettison" -> raw("""{"data":{"cargo":${ApiJson.encodeToString(universe.jettison(symbol, enumValueOf<TradeSymbol>(body!!.str("symbol")), body.str("units").toInt()))}}}""")
             else -> respond("""{"error":{"code":404,"message":"no ship route $action"}}""", HttpStatusCode.NotFound, jsonHeaders)
         }

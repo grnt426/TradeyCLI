@@ -42,10 +42,26 @@ data class SimRules(
     val foreignExtractionsPerHourNearHq: Double = 30.0,
     val crowdedRadius: Double = 60.0,
 
-    /** Selling one trade volume moves the price by this fraction; the price recovers this much per hour. Guesses. */
+    /**
+     * Price impact, observed live on 2026-09-04 (SHIP_PARTS, trade volume 6): selling one volume
+     * dropped the import price 2.1% and each further volume about 30% more (2.7, 3.4, 4.4, 5.6,
+     * 7.3%); buying one volume raised the export price 0.56% and each further one about 22% more.
+     * [priceRecoveryPerHour] is still a guess; the return visit will show it.
+     */
+    val sellImpactPerVolume: Double = 0.021,
+    val sellImpactGrowth: Double = 1.3,
+    val buyImpactPerVolume: Double = 0.0056,
+    val buyImpactGrowth: Double = 1.22,
+    /**
+     * Recovery, one observation on 2026-09-04: an import price knocked down 75% by a full load had
+     * recovered a quarter of the way three minutes later, so roughly the whole way in a quarter
+     * hour. The export side had not moved back at all after four minutes. Modelled as one rate.
+     */
+    val priceRecoveryPerHour: Double = 3.0,
+    /** Kept for the old linear model; the ranking uses its own [behaviour.decisions.TradingAssumptions]. */
     val priceImpactPerVolume: Double = 0.03,
-    val priceRecoveryPerHour: Double = 0.06,
     val priceFloor: Double = 0.15,
+    val priceCeiling: Double = 3.0,
     /** Trade volume for goods at markets whose prices were never seen. */
     val defaultTradeVolume: Int = 20,
 

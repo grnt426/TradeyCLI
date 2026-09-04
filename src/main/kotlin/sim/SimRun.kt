@@ -21,6 +21,7 @@ import model.market.TransactionType
 import model.ship.Ship
 import model.ship.ShipType
 import model.system.Waypoint
+import plan.FleetGoal
 import plan.Plan
 import plan.Supervisor
 import storage.ExtractionRecord
@@ -61,6 +62,7 @@ data class SimReport(
     val unitsExtracted: Int,
     val unitsSold: Int,
     val fuelSpent: Long,
+    val goodsBought: Long,
     val salesByGood: Map<String, Pair<Int, Long>>,
     val asteroids: Map<String, String>,
     val failures: List<String>,
@@ -85,7 +87,7 @@ class SimRun(
     private val rules: SimRules = SimRules(),
     private val randomSeed: Long = 1,
     private val start: Instant = Instant.parse("2026-09-04T12:00:00Z"),
-    /** Ships to buy before the clock starts, at the first shipyard one of ours is docked at. They join the default plan. */
+    /** Ships to buy as soon as a trader docks at a yard that sells them; they get the default behaviour. */
     private val purchases: List<ShipType> = emptyList(),
 ) {
     fun run(): SimReport {
@@ -93,18 +95,13 @@ class SimRun(
         val scope = CoroutineScope(StandardTestDispatcher(scheduler) + SupervisorJob())
         val clock = VirtualClock(scheduler, start)
         val universe = SimUniverse(seed, clock, rules, randomSeed)
-        purchases.forEach { type ->
-            val yard = universe.shipyards.keys.firstOrNull { wp -> universe.shipyard(wp).ships.any { it.type == type } }
-                ?: throw IllegalArgumentException("no shipyard with one of our ships present sells $type")
-            universe.purchaseShip(type, yard)
-        }
-        val world = worldFrom(universe)
+        val world = worldFrom(universe, seed)
         val trace = TraceSink()
         val verbs = ShipVerbs(SimApi(universe), world, clock, trace)
         val supervisor = Supervisor(scope, verbs, clock, trace::event)
-        val effectivePlan = if (purchases.isEmpty()) plan else {
-            val bought = universe.listShips().filter { s -> plan.assignments.none { it.ship == s.symbol } && seed.ships.none { it.symbol == s.symbol } }
-            defaultPlan(bought).assignments.fold(plan) { p, a -> p.with(a) }
+        // Purchases become fleet goals with no reserve: a trader buys them the first time it docks at a yard that lists them.
+        val effectivePlan = purchases.groupBy { it }.entries.fold(plan) { p, (type, list) ->
+            p.withGoal(FleetGoal(type, list.size + seed.ships.count { behaviour.BehaviourScope.shipTypeOf(it) == type }, reserve = 0))
         }
         val problems = supervisor.apply(effectivePlan)
         require(problems.isEmpty()) { "plan is not valid: ${problems.joinToString("; ")}" }
@@ -121,7 +118,8 @@ class SimRun(
         scope.cancel()
 
         val sales = universe.transactions.filter { it.type == TransactionType.SELL }
-        val fuel = universe.transactions.filter { it.type == TransactionType.PURCHASE }.sumOf { it.totalPrice.toLong() }
+        val fuel = universe.transactions.filter { it.type == TransactionType.PURCHASE && it.tradeSymbol == model.market.TradeSymbol.FUEL }.sumOf { it.totalPrice.toLong() }
+        val goodsBought = universe.transactions.filter { it.type == TransactionType.PURCHASE && it.tradeSymbol != model.market.TradeSymbol.FUEL }.sumOf { it.totalPrice.toLong() }
         return SimReport(
             hours = hours,
             startingCredits = seed.agent.credits,
@@ -132,6 +130,7 @@ class SimRun(
             unitsExtracted = universe.extractions.sumOf { it.third },
             unitsSold = sales.sumOf { it.units },
             fuelSpent = fuel,
+            goodsBought = goodsBought,
             salesByGood = sales.groupBy { it.tradeSymbol.name }.mapValues { (_, t) -> t.sumOf { it.units } to t.sumOf { it.totalPrice.toLong() } },
             asteroids = universe.asteroidReport(),
             failures = trace.events.filterIsInstance<Event.BehaviourFailed>().map { "${it.ship}: ${it.reason}" },
@@ -170,26 +169,24 @@ class SimRun(
     companion object {
         const val STALL_SECONDS = 20
 
-        /** A world seeded the way a boot would seed it: everything known, prices only where a ship stands. */
-        fun worldFrom(universe: SimUniverse): World = World().apply {
+        /**
+         * A world seeded the way a boot would seed it: everything known, and the prices the store
+         * remembers from earlier visits (the [seed]'s), plus live ones where a ship stands.
+         */
+        fun worldFrom(universe: SimUniverse, seed: SimSeed? = null): World = World().apply {
             agent = universe.agent()
             serverStatus = universe.status()
             systems[universe.system.symbol] = universe.system
             universe.listWaypoints(universe.system.symbol).forEach { waypoints[it.symbol] = it }
-            universe.markets.keys.forEach { markets[it] = universe.market(it) }
+            seed?.markets?.forEach { markets[it.symbol] = it }
+            universe.markets.keys.forEach { symbol -> universe.market(symbol).let { if (it.hasPrices || markets[symbol] == null) markets[symbol] = it } }
             universe.shipyards.keys.forEach { shipyards[it] = universe.shipyard(it) }
             universe.listShips().forEach { ships[it.symbol] = it }
         }
 
-        /** The plan that needs no telling: miners mine and sell, probes read prices. */
+        /** The plan that needs no telling: every ship gets its default behaviour. */
         fun defaultPlan(ships: Collection<Ship>): Plan = Plan(
-            assignments = ships.sortedBy { it.symbol }.mapNotNull { ship ->
-                when {
-                    ship.canMine -> plan.Assignment(ship.symbol, "mineAndSell")
-                    !ship.usesFuel -> plan.Assignment(ship.symbol, "probeMarkets")
-                    else -> null
-                }
-            },
+            assignments = ships.sortedBy { it.symbol }.mapNotNull { ship -> behaviour.Behaviours.defaultFor(ship)?.let { plan.Assignment(ship.symbol, it) } },
         )
     }
 }

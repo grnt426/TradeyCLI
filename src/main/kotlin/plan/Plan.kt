@@ -20,6 +20,8 @@ data class Plan(
     fun with(assignment: Assignment): Plan = copy(assignments = assignments.filterNot { it.ship == assignment.ship } + assignment)
     fun without(ship: String): Plan = copy(assignments = assignments.filterNot { it.ship == ship })
     fun assignmentFor(ship: String): Assignment? = assignments.firstOrNull { it.ship == ship }
+    fun withGoal(goal: FleetGoal): Plan = copy(goals = goals.copy(fleet = goals.fleet.filterNot { it.type == goal.type } + goal))
+    fun withoutGoal(type: model.ship.ShipType): Plan = copy(goals = goals.copy(fleet = goals.fleet.filterNot { it.type == type }))
 
     /** Problems that would stop the plan from running, one line each. Empty means it is fine. */
     fun validate(snapshot: Snapshot): List<String> = assignments.flatMap { a ->
@@ -57,6 +59,17 @@ data class Assignment(
 
 @Serializable
 data class Goals(
-    /** Stop expanding once this many credits are banked. Informational until the expansion policy exists. */
+    /** Informational: the credits target for the reset. */
     val credits: Long? = null,
+    /** Ships to buy as money allows. A trader docked at a shipyard that lists the type buys one when the bank stays above the reserve. */
+    val fleet: List<FleetGoal> = emptyList(),
+)
+
+@Serializable
+data class FleetGoal(
+    val type: model.ship.ShipType,
+    /** How many of this type the fleet should end up with, counting the ones it has. */
+    val count: Int,
+    /** Credits that must remain after the purchase. */
+    val reserve: Long = 100_000,
 )

@@ -52,6 +52,9 @@ interface Verbs {
     /** Sells [units] of [good] here, split into the market's trade volume. Docks first. */
     suspend fun sell(ship: String, good: TradeSymbol, units: Int): Sale
 
+    /** Buys [units] of [good] here, split into the market's trade volume. Docks first. */
+    suspend fun purchase(ship: String, good: TradeSymbol, units: Int): Sale
+
     suspend fun jettison(ship: String, good: TradeSymbol, units: Int): Ship
 
     /** Re-reads a market's prices; only meaningful with a ship at the waypoint. */

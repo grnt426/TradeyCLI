@@ -34,6 +34,7 @@ TradeyCLI markets              # imports, exports, and when prices were last rea
 TradeyCLI market X1-AB12-C3
 TradeyCLI shipyards
 TradeyCLI asteroids            # every asteroid ranked by credits per hour for the mining ship
+TradeyCLI trades               # buy-here-sell-there routes ranked by credits per hour
 TradeyCLI extractions          # everything mined this reset
 TradeyCLI --agent OTHERGUY --refresh ships
 TradeyCLI repl                 # reads commands from stdin until EOF
@@ -50,9 +51,10 @@ ship runs which is the *plan*, `profile/agents/<SYMBOL>/plan.json`, edited from 
 ```
 TradeyCLI behaviours                                   # what exists and what it takes
 TradeyCLI assign TRIPLEHAT-2 probeMarkets              # read every market's prices, then stop
-TradeyCLI assign TRIPLEHAT-1 mineAndSell               # best rock and market by the ranking, every cycle
+TradeyCLI assign TRIPLEHAT-1 trade                     # haul goods between markets, best route every load
 TradeyCLI assign TRIPLEHAT-1 mineAndSell --asteroid X1-TH77-B9 --market X1-TH77-B7 --surveys no
-TradeyCLI plan                                         # the plan, with anything wrong with it
+TradeyCLI goal fleet LIGHT_SHUTTLE 2 --reserve 150000  # traders buy shuttles at a yard while the bank stays above the reserve
+TradeyCLI plan                                         # the plan and its goals, with anything wrong with it
 TradeyCLI unassign TRIPLEHAT-1
 TradeyCLI run --for 2h                                 # run the plan, printing every phase, then summarise
 TradeyCLI buy MINING_DRONE X1-TH77-H51                 # a ship of yours must be at the shipyard
@@ -128,8 +130,10 @@ server and the real client, so the two cannot drift apart.
 ## Where things stand
 
 The dashboard renders and talks to the API; line mode runs behaviours and the simulator. The
-strategy so far is survey (probe reads prices), rank (asteroid against market by credits per hour,
-discounting rocks that are unstable, fragile or next to headquarters) and mine-and-sell.
+strategy is survey (the probe reads every market's prices), then trade (buy exports, sell to
+importers, best route by credits per hour every load, loads sized to the observed price impact),
+expanding the fleet from the profits; mining is ranked too but pays an order of magnitude less
+in this reset.
 `todo.md` has the plan; `docs/scripting-rewrite.md` the design;
 `docs/codebase-review-2026-09.md` the reasons.
 

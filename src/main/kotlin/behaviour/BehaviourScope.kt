@@ -79,11 +79,75 @@ class BehaviourScope(
     }
 
     private fun paramsJson(): String = params.entries.joinToString(",", "{", "}") { (k, v) -> "\"$k\":\"$v\"" }
+
+    /**
+     * The expansion policy: if the ship is at a shipyard that lists a type the plan still wants,
+     * and the bank stays above the goal's reserve, buy one and hand it to the supervisor.
+     * Returns the new ship, or null when nothing was bought.
+     */
+    suspend fun maybeExpand(): Ship? {
+        val goals = shared.goals.fleet
+        if (goals.isEmpty() || !here.hasShipyard) return null
+        if (!shared.buying.compareAndSet(false, true)) return null
+        try {
+            val yard = refreshShipyard(here.symbol)
+            val fleet = snapshot().ships.values
+            for (goal in goals) {
+                val owned = fleet.count { shipTypeOf(it) == goal.type }
+                if (owned >= goal.count) continue
+                val price = yard.priceOf(goal.type) ?: continue
+                if (agent().credits - price < goal.reserve) {
+                    status(detail = "would buy ${goal.type} at $price but the reserve is ${goal.reserve}")
+                    continue
+                }
+                if (!me.isDocked) dock(ship)
+                val bought = purchaseShip(goal.type, here.symbol)
+                status(detail = "bought ${bought.symbol} (${goal.type}) for $price; ${owned + 1}/${goal.count}")
+                shared.onShipPurchased(bought)
+                return bought
+            }
+            return null
+        } finally {
+            shared.buying.set(false)
+        }
+    }
+
+    companion object {
+        /** The shipyard type a ship was bought as, read back from its frame and fittings. */
+        fun shipTypeOf(ship: Ship): model.ship.ShipType? = when (ship.frame.symbol) {
+            "FRAME_PROBE" -> model.ship.ShipType.SHIP_PROBE
+            "FRAME_DRONE" -> when {
+                ship.canMine -> model.ship.ShipType.SHIP_MINING_DRONE
+                ship.canSurvey -> model.ship.ShipType.SHIP_SURVEYOR
+                ship.canSiphon -> model.ship.ShipType.SHIP_SIPHON_DRONE
+                else -> null
+            }
+            "FRAME_SHUTTLE" -> model.ship.ShipType.SHIP_LIGHT_SHUTTLE
+            "FRAME_LIGHT_FREIGHTER" -> model.ship.ShipType.SHIP_LIGHT_HAULER
+            "FRAME_HEAVY_FREIGHTER" -> model.ship.ShipType.SHIP_HEAVY_FREIGHTER
+            "FRAME_MINER" -> model.ship.ShipType.SHIP_ORE_HOUND
+            "FRAME_FRIGATE" -> model.ship.ShipType.SHIP_COMMAND_FRIGATE
+            "FRAME_EXPLORER" -> model.ship.ShipType.SHIP_EXPLORER
+            "FRAME_INTERCEPTOR" -> model.ship.ShipType.SHIP_INTERCEPTOR
+            "FRAME_BULK_FREIGHTER" -> model.ship.ShipType.SHIP_BULK_FREIGHTER
+            else -> null
+        }
+    }
 }
 
-/** State several behaviours coordinate through: which waypoint each ship is heading for or working. */
+/** State several behaviours coordinate through: claims on waypoints, the plan's goals, and what to do with a ship just bought. */
 class SharedState {
     val claims = ConcurrentHashMap<String, String>()
+
+    @Volatile
+    var goals: plan.Goals = plan.Goals()
+
+    /** Set by the supervisor: gives a newly bought ship an assignment. */
+    @Volatile
+    var onShipPurchased: (Ship) -> Unit = {}
+
+    /** Whether any behaviour is buying a ship right now, so two traders at two yards do not both spend the reserve. */
+    val buying = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /** Claims [waypoint] for [ship] unless another ship holds it. */
     fun claim(ship: String, waypoint: String): Boolean {

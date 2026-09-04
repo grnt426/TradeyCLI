@@ -43,6 +43,7 @@ interface GameApi {
     suspend fun survey(ship: String): SurveyResponse
     suspend fun refuel(ship: String, units: Int? = null): RefuelResponse
     suspend fun sell(ship: String, symbol: TradeSymbol, units: Int): BuySellCargoResponse
+    suspend fun purchaseCargo(ship: String, symbol: TradeSymbol, units: Int): BuySellCargoResponse
     suspend fun jettison(ship: String, symbol: TradeSymbol, units: Int): Cargo
     suspend fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse
 }

@@ -195,6 +195,41 @@ class ShipVerbs(
         return sale
     }
 
+    override suspend fun purchase(ship: String, good: TradeSymbol, units: Int): Sale {
+        var current = settled(ship)
+        val here = waypoint(current.nav.waypointSymbol)
+        if (!here.hasMarket) throw VerbFailure.NotAtMarket(ship, here.symbol)
+        val market = world.markets[here.symbol]
+        if (market != null && !market.trades(good)) throw VerbFailure.MarketRefuses(here.symbol, good)
+        if (units <= 0) return Sale(good, 0, 0, emptyList())
+        if (!current.isDocked) current = dock(ship)
+        val volume = market?.good(good)?.tradeVolume?.takeIf { it > 0 } ?: units
+        var remaining = minOf(units, current.cargoSpaceLeft)
+        val transactions = mutableListOf<MarketTransaction>()
+        while (remaining > 0) {
+            val batch = minOf(remaining, volume)
+            val response = try {
+                call { api.purchaseCargo(ship, good, batch) }
+            } catch (e: VerbFailure.Api) {
+                throw when (e.error.code) {
+                    4600 -> VerbFailure.NotEnoughCredits(0, agent().credits)
+                    4601, ApiErrorCodes.MARKET_NOT_SOLD -> VerbFailure.MarketRefuses(here.symbol, good)
+                    4217, ApiErrorCodes.CARGO_FULL -> VerbFailure.CargoFull(ship)
+                    else -> e
+                }
+            }
+            transactions += response.transaction
+            sink.transaction(response.transaction)
+            agentChanged(response.agent)
+            current = update(current.copy(cargo = response.cargo))
+            remaining -= response.transaction.units
+            if (response.transaction.units <= 0) break
+        }
+        val bought = Sale(good, transactions.sumOf { it.units }, transactions.sumOf { it.totalPrice.toLong() }, transactions)
+        sink.event(Event.Bought(ship, here.symbol, good.name, bought.units, bought.credits))
+        return bought
+    }
+
     override suspend fun jettison(ship: String, good: TradeSymbol, units: Int): Ship {
         val current = settled(ship)
         val have = current.unitsOf(good)

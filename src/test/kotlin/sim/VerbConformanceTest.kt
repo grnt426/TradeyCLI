@@ -214,4 +214,20 @@ class VerbConformanceTest {
         assertEquals(15, drone.cargo.capacity)
         assertEquals(Fixtures.DRONE_SHIPYARD, drone.nav.waypointSymbol)
     }
+
+    @Test
+    fun `purchase pays the market's price in volume batches and puts the goods in the hold`() = bothWays { rig ->
+        val ship = Fixtures.COMMAND_SHIP
+        rig.verbs.navigateTo(ship, Fixtures.ORE_MARKET)
+        val market = rig.verbs.refreshMarket(Fixtures.ORE_MARKET)
+        val iron = market.good(TradeSymbol.IRON)!!
+        val credits = rig.verbs.agent().credits
+        val bought = rig.verbs.purchase(ship, TradeSymbol.IRON, 40)
+        assertEquals(40, bought.units)
+        assertEquals((40 + iron.tradeVolume - 1) / iron.tradeVolume, bought.transactions.size)
+        assertEquals(40, rig.verbs.ship(ship).cargo.unitsOf(TradeSymbol.IRON))
+        assertEquals(credits - bought.credits, rig.verbs.agent().credits)
+        assertTrue(bought.credits >= 40L * iron.purchasePrice, "prices only rise as we buy")
+        assertFailsWith<VerbFailure.MarketRefuses> { rig.verbs.purchase(ship, TradeSymbol.GOLD_ORE, 1) }
+    }
 }

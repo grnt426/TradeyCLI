@@ -107,7 +107,7 @@ class SpaceTradersApi(val client: ApiClient) : GameApi {
     override suspend fun sell(ship: String, symbol: TradeSymbol, units: Int): BuySellCargoResponse =
         client.post("my/ships/$ship/sell", SellCargoRequest(symbol, units), Priority.ACTION).decode()
 
-    suspend fun purchaseCargo(ship: String, symbol: TradeSymbol, units: Int): BuySellCargoResponse =
+    override suspend fun purchaseCargo(ship: String, symbol: TradeSymbol, units: Int): BuySellCargoResponse =
         client.post("my/ships/$ship/purchase", SellCargoRequest(symbol, units), Priority.ACTION).decode()
 
     override suspend fun jettison(ship: String, symbol: TradeSymbol, units: Int): Cargo =

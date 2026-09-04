@@ -24,6 +24,7 @@ import model.ship.ShipNavStatus
 import model.ship.ShipType
 import model.system.OrbitalNames
 import plan.Assignment
+import plan.FleetGoal
 import plan.Plan
 import plan.Supervisor
 import sim.FakeServer
@@ -142,9 +143,11 @@ class LineMode(
             }
             "shipyards" -> shipyards(args.firstOrNull())
             "asteroids" -> asteroids(args)
+            "trades" -> trades(args)
             "plan" -> plan()
             "assign" -> return assign(args)
             "unassign" -> return unassign(args)
+            "goal" -> return goal(args)
             "run" -> return runPlan(args)
             "buy" -> return buy(args)
             "extractions" -> extractions()
@@ -307,6 +310,22 @@ class LineMode(
         )
     }
 
+    /** The trade ranking: what to buy where and sell where, from where the ship is. */
+    private suspend fun trades(args: List<String>) {
+        val shipArg = option(args, "--ship")?.uppercase()
+        val snap = engine.snapshot
+        val ship = (shipArg?.let { snap.ships[it] } ?: snap.ships.values.filter { it.cargo.capacity > 0 }.maxByOrNull { it.cargo.capacity })
+            ?: return err.println("No ship with a cargo hold; name one with --ship")
+        val plans = behaviour.decisions.Trading.rank(snap, ship, engine.clock.now())
+        err.println("Ranked for ${ship.symbol} (cargo ${ship.cargo.capacity}, speed ${ship.engine.speed}, ${snap.agent?.credits} credits) from ${ship.nav.waypointSymbol}; prices as last read, impact of our own trades discounted.")
+        table(
+            listOf("good", "buy at", "price", "sell at", "price", "units", "profit", "cr/h", "cycle", "legs"),
+            plans.take(args.indexOf("--all").let { if (it >= 0) plans.size else 25 }).map { p ->
+                listOf(p.good.name, p.source.symbol, p.buyPrice.toString(), p.destination.symbol, p.sellPrice.toString(), p.units.toString(), p.profit.toString(), p.creditsPerHour.toInt().toString(), "${p.cycleSeconds / 60}m", "${p.legToSource.toInt()}+${p.legToDestination.toInt()}")
+            },
+        )
+    }
+
     private suspend fun extractions() {
         val store = engine.store ?: return err.println("No store open")
         val list = store.listExtractions()
@@ -330,6 +349,7 @@ class LineMode(
             },
         )
         plan.goals.credits?.let { out.println("goal: $it credits") }
+        plan.goals.fleet.forEach { out.println("fleet goal: ${it.count} x ${it.type}, keeping ${it.reserve} credits") }
     }
 
     private fun assign(args: List<String>): Int {
@@ -350,6 +370,27 @@ class LineMode(
         return 0
     }
 
+    /** `goal fleet TYPE COUNT [--reserve N]` adds a fleet goal; `goal clear TYPE` removes one. */
+    private fun goal(args: List<String>): Int {
+        val file = planFile()
+        when (args.firstOrNull()) {
+            "fleet" -> {
+                val type = args.getOrNull(1)?.let { shipType(it) } ?: run { err.println("goal fleet TYPE COUNT [--reserve CREDITS]"); return 1 }
+                val count = args.getOrNull(2)?.toIntOrNull() ?: run { err.println("goal fleet TYPE COUNT [--reserve CREDITS]"); return 1 }
+                val reserve = option(args, "--reserve")?.toLongOrNull() ?: 100_000
+                Plan.save(file, Plan.load(file).withGoal(FleetGoal(type, count, reserve)))
+                out.println("fleet goal: $count x $type, keeping $reserve credits")
+            }
+            "clear" -> {
+                val type = args.getOrNull(1)?.let { shipType(it) } ?: run { err.println("goal clear TYPE"); return 1 }
+                Plan.save(file, Plan.load(file).withoutGoal(type))
+                out.println("fleet goal for $type removed")
+            }
+            else -> { err.println("goal fleet TYPE COUNT [--reserve CREDITS] | goal clear TYPE"); return 1 }
+        }
+        return 0
+    }
+
     private fun unassign(args: List<String>): Int {
         val ship = args.firstOrNull()?.uppercase() ?: run { err.println("unassign SHIP"); return 1 }
         Plan.save(planFile(), Plan.load(planFile()).without(ship))
@@ -366,7 +407,7 @@ class LineMode(
             err.println("No plan.json; using the default: " + plan.assignments.joinToString(", ") { "${it.ship} ${it.behaviour}" })
         }
         engine.awaitSystem(engine.snapshot.hqSystem ?: return 1)
-        val supervisor = Supervisor(engine.scope, engine.verbs(), engine.clock, engine::emit)
+        val supervisor = Supervisor(engine.scope, engine.verbs(), engine.clock, engine::emit, savePlan = { Plan.save(planFile(), it) })
         val problems = supervisor.apply(plan)
         if (problems.isNotEmpty()) { problems.forEach { err.println(it) }; return 1 }
         val startCredits = engine.snapshot.agent?.credits ?: 0
@@ -379,6 +420,7 @@ class LineMode(
                     is Event.PhaseChanged -> err.println("${time(engine.clock.now())} ${e.ship} ${e.behaviour}: ${e.phase} ${e.detail}".trimEnd())
                     is Event.Extracted -> { extracted += e.units; err.println("${time(engine.clock.now())} ${e.ship} extracted ${e.units} ${e.good} at ${e.waypoint} (${e.cargo})") }
                     is Event.Sold -> { sold += e.credits; err.println("${time(engine.clock.now())} ${e.ship} sold ${e.units} ${e.good} at ${e.waypoint} for ${e.credits}") }
+                    is Event.Bought -> err.println("${time(engine.clock.now())} ${e.ship} bought ${e.units} ${e.good} at ${e.waypoint} for ${e.credits}")
                     is Event.Refueled -> err.println("${time(engine.clock.now())} ${e.ship} refueled at ${e.waypoint}: ${e.units} units for ${e.credits}")
                     is Event.Surveyed -> err.println("${time(engine.clock.now())} ${e.ship} surveyed ${e.waypoint}: ${e.surveys} surveys")
                     is Event.BehaviourFailed -> err.println("${time(engine.clock.now())} ${e.ship} ${e.behaviour} FAILED: ${e.reason}; restart in ${e.restartIn}")
@@ -463,6 +505,7 @@ class LineMode(
                 listOf("extractions", "${r.extractions} (${r.unitsExtracted} units)"),
                 listOf("units sold", r.unitsSold.toString()),
                 listOf("fuel spent", r.fuelSpent.toString()),
+                listOf("goods bought", r.goodsBought.toString()),
                 listOf("API calls", "${r.calls} (%.0f/hour, budget 7200/hour)".format(r.callsPerHour)),
                 listOf("failures", r.failures.size.toString()),
             ),
@@ -531,10 +574,13 @@ class LineMode(
               market WAYPOINT            prices at one market (needs a ship there for prices)
               shipyards [SYSTEM]         shipyards of a system and what they sell
               asteroids [SYSTEM] [--ship S]   asteroids ranked by credits per hour for a mining ship
+              trades [--ship S] [--all]  buy-here-sell-there routes ranked by credits per hour
               extractions                every extraction made this reset
               plan                       the plan: which ship runs which behaviour
               assign SHIP BEHAVIOUR [--param value ...]   add or replace an assignment (see 'behaviours')
               unassign SHIP              remove an assignment
+              goal fleet TYPE N [--reserve C]   buy up to N of TYPE when a trader docks at a yard and C credits stay in the bank
+              goal clear TYPE            drop that fleet goal
               run [--for 2h]             run the plan, printing phases, then summarise
               buy TYPE SHIPYARD          buy a ship (a ship of yours must be at the shipyard)
               sim [--hours 24] [--buy TYPE,..] [--seed FILE] [--plan FILE] [--random N] [--trace]
@@ -552,8 +598,8 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "extractions",
-            "plan", "assign", "unassign", "run", "buy", "sim", "repl",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "extractions",
+            "plan", "assign", "unassign", "goal", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
 

@@ -31,11 +31,24 @@ class Supervisor(
     private val clock: GameClock,
     private val emit: (Event) -> Unit,
     private val shared: SharedState = SharedState(),
+    /** Called with the plan whenever the supervisor changes it itself (a bought ship gets an assignment). */
+    private val savePlan: (Plan) -> Unit = {},
 ) {
     private val running = ConcurrentHashMap<String, Running>()
 
     var plan: Plan = Plan()
         private set
+
+    init {
+        shared.onShipPurchased = { ship ->
+            val behaviour = Behaviours.defaultFor(ship)
+            if (behaviour != null) {
+                val next = plan.with(Assignment(ship.symbol, behaviour))
+                val problems = apply(next)
+                if (problems.isEmpty()) savePlan(next) else logger.warn { "could not assign $behaviour to ${ship.symbol}: $problems" }
+            }
+        }
+    }
 
     /** Ships whose behaviour has run to completion since the last change to their assignment. */
     val finished: Set<String> get() = running.filterValues { it.finished }.keys
@@ -56,6 +69,7 @@ class Supervisor(
             }
         }
         this.plan = plan
+        shared.goals = plan.goals
         return emptyList()
     }
 

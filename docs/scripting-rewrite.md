@@ -225,6 +225,13 @@ with their pure decisions (`behaviour/decisions/`), phase reporting and checkpoi
 (6). Not yet: a live trial longer than a smoke test (4), `runContract`, `haul` and the expansion
 policy (5), and the console command line in the dashboard.
 
+Later the same day, once the probe had read the markets: `trade` (`behaviour/Trade.kt`,
+`decisions/Trading.kt`) and the expansion policy (`BehaviourScope.maybeExpand`, driven by the
+plan's `goals.fleet`; the supervisor assigns a bought ship its default behaviour and saves the
+plan). The first live load of ship parts from D41 to the shipyard at H51 cleared 162,576 credits
+in two minutes; the best mining pair pays about 18,000 an hour. Price impact was measured from
+that load and is in `SimRules` and `TradingAssumptions`.
+
 The strategy the decisions encode, in order:
 
 1. `probeMarkets` sends a ship (the probe, which flies free) around every market whose prices
@@ -238,6 +245,12 @@ The strategy the decisions encode, in order:
    next to headquarters that everybody strips. STRIPPED rocks are out.
 3. `mineAndSell` re-runs the ranking every cycle, so it follows prices as they are read and walks
    away from a rock the moment an extraction reports CRITICAL_LIMIT or the server refuses it.
+4. `Trading.rank` scores every pair of markets with fresh prices: buy an export or exchange good
+   where it is cheap, sell it where it is an import, sized by `sizeLoad` to what still pays once
+   each batch bought raises the price and each batch sold lowers it (both accelerate), from
+   where the ship is now. `trade` re-checks the margin on arrival and sets a dead pair aside.
+5. After a sale at a shipyard, a trader buys the next ship the fleet goal asks for if the bank
+   stays above the reserve; the supervisor puts it to work.
 
 Resume after a restart is by re-running the behaviour from the top: every phase is idempotent
 (navigating to where the ship is costs nothing, selling nothing sells nothing), so the checkpoint

@@ -97,6 +97,7 @@ sealed interface Event {
     data class BehaviourFailed(val ship: String, val behaviour: String, val reason: String, val restartIn: String?) : Event
     data class Extracted(val ship: String, val waypoint: String, val good: String, val units: Int, val cargo: String) : Event
     data class Sold(val ship: String, val waypoint: String, val good: String, val units: Int, val credits: Long) : Event
+    data class Bought(val ship: String, val waypoint: String, val good: String, val units: Int, val credits: Long) : Event
     data class Refueled(val ship: String, val waypoint: String, val units: Int, val credits: Long) : Event
     data class Surveyed(val ship: String, val waypoint: String, val surveys: Int) : Event
     data class ShipPurchased(val ship: String, val type: String, val credits: Long) : Event

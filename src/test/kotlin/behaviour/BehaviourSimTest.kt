@@ -54,10 +54,11 @@ class BehaviourSimTest {
     }
 
     @Test
-    fun `a miner and a probe run side by side`() {
-        val plan = SimRun.defaultPlan(Fixtures.seed().ships)
+    fun `a trader and a probe run side by side`() {
+        val seed = sim.SimSeed.load(java.io.File("src/test/resources/x1-th77-priced-seed.json"))
+        val plan = SimRun.defaultPlan(seed.ships)
         assertEquals(2, plan.assignments.size)
-        val report = SimRun(Fixtures.seed(), plan, hours = 3).run()
+        val report = SimRun(seed, plan, hours = 3).run()
         assertTrue(report.failures.isEmpty(), report.failures.toString())
         assertTrue(report.earned > 0)
         assertTrue(report.trace.events.any { it is Event.MarketUpdated })

@@ -39,30 +39,59 @@ object DefaultPrices {
         TradeSymbol.SILVER to 190,
         TradeSymbol.GOLD to 240,
         TradeSymbol.PLATINUM to 300,
+        // Manufactured goods, from the export prices read live on 2026-09-04 (export sells at about 0.55 of base).
+        TradeSymbol.FABRICS to 1280,
+        TradeSymbol.FOOD to 1140,
+        TradeSymbol.CLOTHING to 2590,
+        TradeSymbol.MEDICINE to 2660,
+        TradeSymbol.EQUIPMENT to 1690,
+        TradeSymbol.ELECTRONICS to 1500,
+        TradeSymbol.MACHINERY to 1600,
+        TradeSymbol.MICROPROCESSORS to 1820,
+        TradeSymbol.ADVANCED_CIRCUITRY to 3570,
+        TradeSymbol.SHIP_PARTS to 2600,
+        TradeSymbol.SHIP_PLATING to 2500,
+        TradeSymbol.JEWELRY to 1860,
+        TradeSymbol.AMMUNITION to 960,
+        TradeSymbol.FIREARMS to 1990,
+        TradeSymbol.ASSAULT_RIFLES to 2320,
+        TradeSymbol.LAB_INSTRUMENTS to 3090,
+        TradeSymbol.BIOCOMPOSITES to 3390,
+        TradeSymbol.FAB_MATS to 1150,
+        TradeSymbol.PLASTICS to 110,
+        TradeSymbol.FERTILIZERS to 120,
+        TradeSymbol.POLYNUCLEOTIDES to 150,
+        TradeSymbol.EXPLOSIVES to 100,
+        TradeSymbol.DRUGS to 3100,
+        TradeSymbol.ROBOTIC_DRONES to 12600,
+        TradeSymbol.LASER_RIFLES to 21000,
     )
 
     const val FALLBACK_SELL = 100
 
-    /** What a market pays per unit: imports pay well, exports pay poorly. */
+    /** What a market pays relative to an exchange: imports pay well, exports pay poorly. */
+    fun typeFactor(type: TradeGoodType): Double = when (type) {
+        TradeGoodType.IMPORT -> 1.6
+        TradeGoodType.EXCHANGE -> 1.0
+        TradeGoodType.EXPORT -> 0.55
+    }
+
+    /** What a market charges over what it pays: the spread, by market type (from the live readings). */
+    fun purchaseFactor(type: TradeGoodType): Double = when (type) {
+        TradeGoodType.IMPORT -> 2.0
+        TradeGoodType.EXCHANGE -> 1.06
+        TradeGoodType.EXPORT -> 2.0
+    }
+
+    /** What a market pays per unit. */
     fun sell(good: TradeSymbol, type: TradeGoodType): Int {
         val base = exchangeSell[good] ?: FALLBACK_SELL
-        val factor = when (type) {
-            TradeGoodType.IMPORT -> 1.6
-            TradeGoodType.EXCHANGE -> 1.0
-            TradeGoodType.EXPORT -> 0.55
-        }
-        return (base * factor).roundToInt().coerceAtLeast(1)
+        return (base * typeFactor(type)).roundToInt().coerceAtLeast(1)
     }
 
     /** What a market charges per unit; always above what it pays. */
-    fun purchase(good: TradeSymbol, type: TradeGoodType): Int {
-        val factor = when (type) {
-            TradeGoodType.IMPORT -> 2.0
-            TradeGoodType.EXCHANGE -> 1.06
-            TradeGoodType.EXPORT -> 1.4
-        }
-        return (sell(good, type) * factor).roundToInt().coerceAtLeast(2)
-    }
+    fun purchase(good: TradeSymbol, type: TradeGoodType): Int =
+        (sell(good, type) * purchaseFactor(type)).roundToInt().coerceAtLeast(2)
 
     /** Units per transaction before the price moves. */
     fun volume(good: TradeSymbol): Int = when (good) {
