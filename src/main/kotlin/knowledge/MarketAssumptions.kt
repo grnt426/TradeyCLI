@@ -63,8 +63,14 @@ data class MarketAssumptions(
     val takeVolumesPerHour: Map<SupplyLevel, Double> = mapOf(SCARCE to 0.0, LIMITED to 1.0, MODERATE to 2.5, HIGH to 4.0, ABUNDANT to 6.0),
     /** A haul is not worth the round trip below this share of the hold (or one trade volume, whichever is more): wait or do something else instead. */
     val minHaulShare: Double = 0.25,
-    /** A RESTRICTED producer is not replacing what we take: its rate counts this much. */
-    val restrictedTakeFactor: Double = 0.5,
+    /**
+     * Production strength scales the rate. F47 at STRONG regained a whole supply level about six
+     * minutes after a 43-unit take (readings of 2026-09-05 10:01 -> 10:07), several times the WEAK
+     * rate measured the night before; RESTRICTED is not replacing what we take at all.
+     */
+    val activityRateFactor: Map<ActivityLevel, Double> = mapOf(RESTRICTED to 0.5, WEAK to 1.0, GROWING to 1.5, STRONG to 3.0),
+    /** A producer reading older than this is re-read before a hauler decides on it; parked haulers sat four hours on a stale LIMITED. */
+    val producerReadStaleMinutes: Long = 10,
     /** How many hours of the rate a producer may bank while nobody buys, so a ship arriving after a lull can fill up. */
     val takeBucketHours: Double = 1.5,
     /** A nursing leg may sell an input for less than it cost, down to this share of the buy price, because the goal is the producer's price, not the leg's. */

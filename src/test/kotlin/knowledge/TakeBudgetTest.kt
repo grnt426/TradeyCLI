@@ -15,11 +15,11 @@ class TakeBudgetTest {
     private val t0 = Instant.parse("2026-09-05T12:00:00Z")
     private fun f47(supply: SupplyLevel, activity: ActivityLevel = ActivityLevel.STRONG) =
         MarketTradeGood(TradeSymbol.FAB_MATS, TradeGoodType.EXPORT, 43, supply, 1700, 800, activity)
+    private val rules = MarketAssumptions(activityRateFactor = mapOf(ActivityLevel.RESTRICTED to 0.5, ActivityLevel.WEAK to 1.0, ActivityLevel.GROWING to 1.0, ActivityLevel.STRONG to 1.0))
 
     @Test
     fun `three haulers share one producer's hourly rate instead of each taking a load`() {
         val budget = TakeBudget()
-        val rules = MarketAssumptions()
         val moderate = f47(SupplyLevel.MODERATE)
         assertEquals(107, budget.perHour(moderate, rules).toInt(), "2.5 volumes of 43 an hour at MODERATE")
         val first = budget.take("X1-TH77-F47", moderate, 80, rules, t0)
@@ -34,8 +34,8 @@ class TakeBudgetTest {
     @Test
     fun `the rate follows the stock level and a lull banks at most a bucket and a half`() {
         val budget = TakeBudget()
-        val rules = MarketAssumptions()
         assertEquals(43, budget.perHour(f47(SupplyLevel.LIMITED), rules).toInt(), "LIMITED still trickles: no dead stop")
+        assertEquals(43 * 3, budget.perHour(f47(SupplyLevel.LIMITED), MarketAssumptions()).toInt(), "a STRONG producer replaces stock three times as fast")
         assertEquals(0, budget.perHour(f47(SupplyLevel.SCARCE), rules).toInt())
         assertEquals(86, budget.perHour(f47(SupplyLevel.HIGH, ActivityLevel.RESTRICTED), rules).toInt(), "RESTRICTED halves the rate")
         budget.take("M", f47(SupplyLevel.HIGH), 0, rules, t0)
@@ -48,7 +48,6 @@ class TakeBudgetTest {
     @Test
     fun `a refund returns what was granted but not bought`() {
         val budget = TakeBudget()
-        val rules = MarketAssumptions()
         val listing = f47(SupplyLevel.HIGH)
         val granted = budget.take("M", listing, 100, rules, t0)
         assertEquals(100, granted)

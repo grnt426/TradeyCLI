@@ -22,7 +22,7 @@ class TakeBudget {
 
     fun perHour(listing: MarketTradeGood, rules: MarketAssumptions): Double =
         listing.tradeVolume * (rules.takeVolumesPerHour[listing.supply] ?: 0.0) *
-            (if (listing.type == TradeGoodType.EXPORT && listing.activity == ActivityLevel.RESTRICTED) rules.restrictedTakeFactor else 1.0)
+            (if (listing.type == TradeGoodType.EXPORT) listing.activity?.let { rules.activityRateFactor[it] } ?: 1.0 else 1.0)
 
     private fun bucket(market: String, listing: MarketTradeGood, rules: MarketAssumptions, now: Instant): Bucket {
         val rate = perHour(listing, rules)

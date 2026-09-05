@@ -70,8 +70,9 @@ suspend fun BehaviourScope.supplyGate() {
                 if (shared.plan.phase == plan.Phase.ESCAPE) shared.advancePhase(plan.Phase.BOOM)
                 return
             }
-            // A hold inherited from an earlier job (a killed trade run's clothing) is sold before anything else.
-            val materials = construction.materials.map { it.tradeSymbol }.toSet()
+            // A hold inherited from an earlier job (a killed trade run's clothing), or a material the site
+            // has since finished with, is sold before anything else.
+            val materials = construction.outstanding.map { it.tradeSymbol }.toSet()
             if (me.cargo.inventory.any { it.symbol !in materials }) phase("sell leftovers") { sellLeftovers(keep = materials) }
             // Carry what is in the hold first. Otherwise take the material whose producer can spare the most
             // now, by the share still missing: three haulers on one short producer is what the rate budget prevents.
@@ -102,6 +103,20 @@ suspend fun BehaviourScope.supplyGate() {
                 if (picks.isEmpty()) throw BehaviourFailure("nothing in ${me.nav.systemSymbol} sells what ${site} needs")
                 val pick = picks.firstOrNull { it.units > 0 && it.worthwhile }
                 if (pick == null) {
+                    // A stale reading is not a reason to park: go and read the producer before deciding it has nothing.
+                    val stale = picks.firstOrNull { p ->
+                        val read = snapshot().markets[p.market]?.lastRead
+                        read == null || java.time.Duration.between(read, clock.now()).toMinutes() >= rules.producerReadStaleMinutes
+                    }
+                    if (stale != null) {
+                        phase("read producer", "${stale.material} at ${stale.market}") {
+                            travelVia(stale.market)
+                            dock(ship)
+                            val live = refreshMarket(stale.market).good(stale.material)
+                            status(detail = "${stale.material} at ${stale.market} reads ${live?.let { MarketHealth.describe(it) } ?: "unlisted"}")
+                        }
+                        continue
+                    }
                     // Every producer is short or its rate is spent: bring the shortest one what it lacks, two levels deep.
                     val leg = picks.firstNotNullOfOrNull { p -> snapshot().markets[p.market]?.let { producer -> nurseLeg(producer, p.material, spendable, rules)?.let { producer to it } } }
                     if (leg != null) { nurse(leg.first, leg.second); continue }
