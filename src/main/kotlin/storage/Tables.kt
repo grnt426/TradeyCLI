@@ -103,6 +103,22 @@ object SupplyTable : Table("construction_supplies") {
     override val primaryKey = PrimaryKey(id)
 }
 
+/**
+ * Credits that moved without a market transaction: ship purchases, chart rewards, contract
+ * payments. With the tagged transactions this is the whole ledger: where money went and came from.
+ */
+object LedgerTable : Table("ledger") {
+    val id = long("id").autoIncrement()
+    val at = long("at").index()
+    val shipSymbol = varchar("ship_symbol", 64)
+    /** ships, chart, contract */
+    val kind = varchar("kind", 32).index()
+    /** Signed: income positive, spending negative. */
+    val credits = long("credits")
+    val note = varchar("note", 200)
+    override val primaryKey = PrimaryKey(id)
+}
+
 /** The bank after every change we caused: the credits graph and its trend. */
 object CreditsTable : Table("credits_history") {
     val id = long("id").autoIncrement()
@@ -138,5 +154,5 @@ object RequestLogTable : Table("request_log") {
 
 val ALL_TABLES = listOf(
     MetaTable, AgentTable, ShipTable, SystemTable, WaypointTable, MarketTable, ShipyardTable,
-    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable,
+    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable, LedgerTable,
 )

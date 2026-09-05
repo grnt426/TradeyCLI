@@ -332,10 +332,18 @@ class ShipVerbs(
         return current
     }
 
-    override suspend fun construction(waypoint: String): Construction =
-        call { api.getConstruction(OrbitalNames.getSectorSystem(waypoint), waypoint) }
+    override suspend fun construction(waypoint: String): Construction {
+        val site = call { api.getConstruction(OrbitalNames.getSectorSystem(waypoint), waypoint) }
+        // The summary shows the home gate's progress; the last read of its bill lives on the world.
+        if (OrbitalNames.getSectorSystem(waypoint) == world.hqSystemSymbol()) world.constructionBill = site.materials
+        return site
+    }
 
     override suspend fun supplyConstruction(waypoint: String, ship: String, good: TradeSymbol, units: Int): Construction {
+        return supplyConstructionRun(waypoint, ship, good, units).also { if (OrbitalNames.getSectorSystem(waypoint) == world.hqSystemSymbol()) world.constructionBill = it.materials }
+    }
+
+    private suspend fun supplyConstructionRun(waypoint: String, ship: String, good: TradeSymbol, units: Int): Construction {
         var current = settled(ship)
         if (current.nav.waypointSymbol != waypoint) throw VerbFailure.NotAtMarket(ship, waypoint)
         if (!current.isDocked) current = dock(ship)

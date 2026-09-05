@@ -49,6 +49,7 @@ class Supervisor(
             change(plan.withPhase(phase), "move to phase $phase")
             emit(Event.PhaseAdvanced(phase.name, knowledge.Strategy.describe(phase)))
         }
+        shared.onPlanEdited = { edit, why -> change(edit(plan), why) }
     }
 
     /** Applies a plan the supervisor wrote itself and saves it when it is valid. */
@@ -95,6 +96,8 @@ class Supervisor(
                 val behaviourScope = BehaviourScope(assignment.ship, assignment.behaviour, assignment.params, verbs, shared)
                 emit(Event.BehaviourStarted(assignment.ship, assignment.behaviour))
                 try {
+                    // Every transaction carries the behaviour that made it unless the behaviour tags more precisely.
+                    runCatching { verbs.setChain(assignment.ship, assignment.behaviour) }
                     spec.run(behaviourScope)
                     entry.finished = true
                     shared.release(assignment.ship)
@@ -124,7 +127,7 @@ class Supervisor(
         val entry = running.remove(ship) ?: return
         entry.job?.cancel()
         shared.release(ship)
-        scope.launch { runCatching { verbs.setStatus(ship, null) } }
+        scope.launch { runCatching { verbs.setStatus(ship, null) }; runCatching { verbs.setChain(ship, null) } }
     }
 
     private fun backoff(attempt: Int): Duration = (10.seconds * (1 shl (attempt - 1).coerceIn(0, 5))).coerceAtMost(5.minutes)

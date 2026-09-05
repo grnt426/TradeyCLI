@@ -17,6 +17,14 @@ changing a phase's behaviour means editing one object.
 | Fresh agent's goals | 2 shuttles (120k), 2 mining drones (150k), 1 hauler (250k) | 2 haulers (300k), 2 probes (100k) | none |
 | Leaves when | the gate completes (`supplyGate` advances the plan to BOOM itself) | by hand: `phase late` | - |
 
+**The gate rush.** ESCAPE is rushed, but not at the cost of market health or of the capital the
+boom needs. The gate hauler re-reads the bill every load and prices what is left at the cheapest
+listing in the system. Once the bank covers `RUSH_COMFORT` (1.5) times that, plus the
+`POST_GATE_RESERVE` (500k) the boom starts with, it raises the plan's hauler goal to
+`RUSH_HAULERS` (3) with that reserve; the probe at the yard buys them and each goes to the gate
+in nursing mode. When the site completes, every hauler finishes and becomes a boom trader. The
+constants live in `knowledge/Strategy.kt`; the summary screen says when the rush is on.
+
 In ESCAPE the point is never to tip a market into SCARCE or RESTRICTED. In LATE the point is the
 opposite: loosen the weights on purpose and record where each market tips, so the limits become
 numbers. Every market reading already lands in `market_prices` with supply and activity, so the

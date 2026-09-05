@@ -54,6 +54,17 @@ suspend fun BehaviourScope.supplyGate() {
         while (true) {
             clock.sleep(1.seconds)
             val construction = phase("check site") { construction(site) }
+            shared.constructionBill = construction.materials
+            if (shared.plan.phase == plan.Phase.ESCAPE && !construction.isComplete) {
+                val remaining = knowledge.Strategy.remainingCost(construction.materials, snapshot())
+                val haulers = shared.plan.goals.fleet.firstOrNull { it.type == model.ship.ShipType.SHIP_LIGHT_HAULER }?.count ?: 0
+                if (remaining != null && haulers < knowledge.Strategy.RUSH_HAULERS && knowledge.Strategy.gateRush(agent().credits, remaining)) {
+                    status(detail = "finishing costs about ${Intentions.format(remaining)} against ${Intentions.format(agent().credits)}: rushing with ${knowledge.Strategy.RUSH_HAULERS} haulers")
+                    shared.editPlan("gate rush: ${knowledge.Strategy.RUSH_HAULERS} haulers") { p ->
+                        p.withGoal(plan.FleetGoal(model.ship.ShipType.SHIP_LIGHT_HAULER, knowledge.Strategy.RUSH_HAULERS, reserve = knowledge.Strategy.POST_GATE_RESERVE))
+                    }
+                }
+            }
             if (construction.isComplete) {
                 status("done", "$site is complete")
                 if (shared.plan.phase == plan.Phase.ESCAPE) shared.advancePhase(plan.Phase.BOOM)
@@ -151,6 +162,12 @@ fun BehaviourScope.nurseLeg(producer: Market, material: TradeSymbol, spendable: 
 /** Buy the input, haul it to the producer, sell it there, and note how the producer looks after. */
 private suspend fun BehaviourScope.nurse(producer: Market, material: TradeSymbol, leg: NurseLeg) {
     val good = leg.input.symbol
+    val site = shared.plan.assignmentFor(ship)?.params?.get("site")?.uppercase() ?: producer.symbol
+    setChain(ship, "nurse:$site")
+    try { nurseRun(producer, material, leg, good) } finally { setChain(ship, "gate:$site") }
+}
+
+private suspend fun BehaviourScope.nurseRun(producer: Market, material: TradeSymbol, leg: NurseLeg, good: TradeSymbol) {
     phase("nurse: buy", "${leg.units} $good at ${leg.source.symbol} for ${producer.symbol}") {
         travelVia(leg.source.symbol)
         dock(ship)

@@ -53,6 +53,12 @@ data class ContractRecord(val contract: Contract, val cost: Long, val acceptedAt
 
 data class SupplyRecord(val ship: String, val site: String, val good: TradeSymbol, val units: Int, val at: Instant)
 
+/** A market transaction with the tag the ship carried when it made it: a behaviour name, a chain id, `gate:SITE` or `nurse:SITE`. */
+data class TaggedTransaction(val transaction: MarketTransaction, val tag: String?)
+
+/** Credits that moved outside a market: `ships` (negative), `chart`, `contract` (positive). */
+data class LedgerEntry(val at: Instant, val ship: String, val kind: String, val credits: Long, val note: String = "")
+
 data class Checkpoint(val id: String, val behaviour: String, val entity: String?, val phase: String, val params: String, val updatedAt: Instant, val detail: String = "")
 
 data class ExtractionRecord(
@@ -201,6 +207,45 @@ class AgentStore private constructor(
                 totalPrice = row[TransactionTable.totalPrice],
                 timestamp = row[TransactionTable.timestamp],
             )
+        }
+    }
+
+    /** Every transaction with its tag, oldest first; the summary's raw material. */
+    suspend fun listTaggedTransactions(since: Instant? = null): List<TaggedTransaction> = tx {
+        val query = TransactionTable.selectAll()
+        if (since != null) query.where { TransactionTable.timestamp greaterEq since.toString() }
+        query.orderBy(TransactionTable.id, SortOrder.ASC).map { row ->
+            TaggedTransaction(
+                MarketTransaction(
+                    shipSymbol = row[TransactionTable.shipSymbol],
+                    waypointSymbol = row[TransactionTable.waypointSymbol],
+                    tradeSymbol = TradeSymbol.valueOf(row[TransactionTable.tradeSymbol]),
+                    type = enumValueOf(row[TransactionTable.type]),
+                    units = row[TransactionTable.units],
+                    pricePerUnit = row[TransactionTable.pricePerUnit],
+                    totalPrice = row[TransactionTable.totalPrice],
+                    timestamp = row[TransactionTable.timestamp],
+                ),
+                row[TransactionTable.chain],
+            )
+        }
+    }
+
+    suspend fun putLedger(entry: LedgerEntry) = tx {
+        LedgerTable.insert {
+            it[at] = entry.at.toEpochMilli()
+            it[shipSymbol] = entry.ship
+            it[kind] = entry.kind
+            it[credits] = entry.credits
+            it[note] = entry.note.take(200)
+        }
+    }
+
+    suspend fun listLedger(since: Instant? = null): List<LedgerEntry> = tx {
+        val query = LedgerTable.selectAll()
+        if (since != null) query.where { LedgerTable.at greaterEq since.toEpochMilli() }
+        query.orderBy(LedgerTable.id, SortOrder.ASC).map { row ->
+            LedgerEntry(Instant.ofEpochMilli(row[LedgerTable.at]), row[LedgerTable.shipSymbol], row[LedgerTable.kind], row[LedgerTable.credits], row[LedgerTable.note])
         }
     }
 

@@ -159,6 +159,7 @@ class LineMode(
             "goal" -> return goal(args)
             "chain" -> return chain(args)
             "phase" -> return phase(args)
+            "summary" -> summary()
             "race" -> race(args)
             "gate" -> gate(args)
             "jumpgate" -> jumpgate(args)
@@ -468,8 +469,10 @@ class LineMode(
         val construction = engine.verbs().construction(site)
         val supplies = store.listSupplies(site)
         val purchases = store.listChainTransactions("gate:$site").filter { it.type == model.market.TransactionType.PURCHASE && it.tradeSymbol != model.market.TradeSymbol.FUEL }
-        val fuel = store.listChainTransactions("gate:$site").filter { it.tradeSymbol == model.market.TradeSymbol.FUEL }.sumOf { it.totalPrice.toLong() }
-        out.println("$site: ${if (construction.isComplete) "COMPLETE" else "under construction"}; fuel spent on the haul ${Intentions.format(fuel)}")
+        val fuel = (store.listChainTransactions("gate:$site") + store.listChainTransactions("nurse:$site")).filter { it.tradeSymbol == model.market.TradeSymbol.FUEL }.sumOf { it.totalPrice.toLong() }
+        val nursing = store.listChainTransactions("nurse:$site").filter { it.tradeSymbol != model.market.TradeSymbol.FUEL }
+        val nursed = nursing.filter { it.type == model.market.TransactionType.PURCHASE }.sumOf { it.totalPrice.toLong() } - nursing.filter { it.type == model.market.TransactionType.SELL }.sumOf { it.totalPrice.toLong() }
+        out.println("$site: ${if (construction.isComplete) "COMPLETE" else "under construction"}; fuel spent on the haul ${Intentions.format(fuel)}; nursing the producers cost ${Intentions.format(nursed)} net")
         table(
             listOf("material", "required", "fulfilled", "we delivered", "we bought", "spent", "avg", "cheapest now", "to finish at that price"),
             construction.materials.map { m ->
@@ -556,6 +559,34 @@ class LineMode(
         Plan.save(planFile(), plan)
         out.println("$ship: $behaviour ${params.entries.joinToString(" ") { (k, v) -> "--$k $v" }}".trimEnd())
         return 0
+    }
+
+    /** The dashboard's summary screen as text: phase progress, fleet, spending, revenue, market health. */
+    private suspend fun summary() {
+        val snap = engine.snapshot
+        val now = engine.clock.now()
+        val trend = behaviour.decisions.CreditsTrend.trend(snap.creditsHistory, now)
+        val progress = behaviour.decisions.Summary.progress(snap, now, trend)
+        out.println(progress.headline)
+        progress.lines.forEach { out.println("  [${it.tone.name.lowercase()}] ${it.text}") }
+        out.println()
+        table(
+            listOf("ship", "type", "behaviour", "phase", "where", "cargo", "detail"),
+            behaviour.decisions.Summary.fleet(snap, now).map { listOf(it.ship, it.type, it.behaviour, it.phase, it.where, it.cargo, it.detail.take(70)) },
+        )
+        out.println()
+        val spending = behaviour.decisions.Summary.spending(snap)
+        val revenue = behaviour.decisions.Summary.revenue(snap)
+        table(listOf("spent on", "credits", "share"), spending.map { listOf(it.category, Intentions.format(it.credits), "${(it.share * 100).toInt()}%") })
+        out.println()
+        table(listOf("earned from", "credits", "share"), revenue.map { listOf(it.category, Intentions.format(it.credits), "${(it.share * 100).toInt()}%") })
+        out.println()
+        table(
+            listOf("system", "markets", "listings", "health", "restricted exports", "scarce", "buried imports", "oldest read"),
+            behaviour.decisions.Summary.marketHealth(snap, now).map { h ->
+                listOf(h.system, h.markets.toString(), h.listings.toString(), "${(h.score * 100).toInt()}%", h.restrictedExports.toString(), h.scarce.toString(), h.saturatedImports.toString(), h.oldestReadHours?.let { "%.1f h".format(it) } ?: "-")
+            },
+        )
     }
 
     /** `phase` shows the plan's phase; `phase escape|boom|late` sets it (the running supervisor picks it up on restart). */
@@ -919,6 +950,7 @@ class LineMode(
               trades [--ship S] [--all]  buy-here-sell-there routes ranked by credits per hour
               intentions                 what the bot is doing and saving for, and the credits trend
               contracts                  every contract seen with its payment, our cost and the dates
+              summary                    the dashboard's summary as text: phase progress, fleet, spending, revenue, market health
               phase [escape|boom|late]   show or set the plan's phase (docs/phases.md): which weights and default jobs apply
               race [AGENT ...]           every agent's bank over time, fleet, gate progress and phase, side by side
               gate [SITE]                the construction bill, what we delivered and spent, and the cost to finish
@@ -952,7 +984,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "catalog", "race", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "catalog", "race", "summary", "extractions",
             "plan", "assign", "unassign", "goal", "chain", "phase", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")

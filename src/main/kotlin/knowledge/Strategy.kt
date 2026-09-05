@@ -33,6 +33,31 @@ import plan.Phase
  */
 object Strategy {
 
+    /** Haulers on the gate once finishing is comfortable; the rest of the escape fleet stays on health and income. */
+    const val RUSH_HAULERS = 3
+    /** The bank must cover this many times the remaining bill at today's prices, plus [POST_GATE_RESERVE], before the rush starts: prices climb as we buy. */
+    const val RUSH_COMFORT = 1.5
+    /** Credits kept back through the rush so the boom starts with working capital and a hull or two. */
+    const val POST_GATE_RESERVE = 500_000L
+
+    fun comfortableBank(remainingCost: Long): Long = (remainingCost * RUSH_COMFORT).toLong() + POST_GATE_RESERVE
+
+    /** Whether the gate is close enough to finish that more haulers should be bought for it, without touching the post-gate reserve. */
+    fun gateRush(bank: Long, remainingCost: Long): Boolean = remainingCost > 0 && bank >= comfortableBank(remainingCost)
+
+    /** What the site still needs at the cheapest price each material shows in the home system, or null when a material has no price. */
+    fun remainingCost(bill: List<model.ConstructionMaterial>, snapshot: Snapshot): Long? {
+        val home = snapshot.hqSystem ?: return null
+        var total = 0L
+        for (m in bill) {
+            val left = m.required - m.fulfilled
+            if (left <= 0) continue
+            val cheapest = snapshot.marketsIn(home).mapNotNull { it.good(m.tradeSymbol)?.purchasePrice }.minOrNull() ?: return null
+            total += left * cheapest
+        }
+        return total
+    }
+
     fun market(phase: Phase): MarketAssumptions = when (phase) {
         Phase.ESCAPE -> MarketAssumptions()
         Phase.BOOM -> MarketAssumptions(
@@ -95,6 +120,8 @@ object Strategy {
 
     /** What a ship does once its behaviour has run to completion; null leaves it finished. */
     fun afterFinished(phase: Phase, ship: Ship, behaviour: String, snapshot: Snapshot): Assignment? = when {
+        // The gate is done: its haulers become the boom's traders.
+        behaviour == "supplyGate" && ship.cargo.capacity > 0 -> Assignment(ship.symbol, "trade")
         // The probe has read every market: park it at a yard and let it buy the fleet the goals ask for.
         !ship.usesFuel && behaviour == "probeMarkets" && (snapshot.plan?.goals?.fleet?.isNotEmpty() == true) -> Assignment(ship.symbol, "expand")
         // An explorer that ran out of map goes back to watching prices where it stands.

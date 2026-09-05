@@ -57,6 +57,14 @@ data class MarketAssumptions(
     val nurseMinSellRatio: Double = 0.5,
     /** Trade volumes of an input to deliver per nursing visit; the docs say consumption grows as we supply, so a few volumes is enough to move it. */
     val nurseVolumesPerVisit: Double = 2.0,
+    /**
+     * The summary's health score of a listing, 0 to 1. An export is healthy when stocked and
+     * producing; an import when stocked to MODERATE (SCARCE means starved, ABUNDANT means buried)
+     * and being consumed. Half the score is supply, half activity.
+     */
+    val exportSupplyScore: Map<SupplyLevel, Double> = mapOf(SCARCE to 0.0, LIMITED to 0.25, MODERATE to 0.5, HIGH to 0.75, ABUNDANT to 1.0),
+    val importSupplyScore: Map<SupplyLevel, Double> = mapOf(SCARCE to 0.2, LIMITED to 0.6, MODERATE to 1.0, HIGH to 0.7, ABUNDANT to 0.2),
+    val activityScore: Map<ActivityLevel, Double> = mapOf(RESTRICTED to 0.0, WEAK to 0.4, GROWING to 0.8, STRONG to 1.0),
     /** Hours for a drained import's sell price to rebuild; observed at X1-TH77: 40-80% spreads were back after about six idle hours. */
     val importRecoveryHours: Double = 6.0,
 )
@@ -99,6 +107,17 @@ object MarketHealth {
             .sortedBy { it.supply.ordinal }
 
     fun describe(good: MarketTradeGood): String = "${good.supply}/${good.activity ?: "-"}"
+
+    /** How healthy one listing looks, 0 to 1 (see [MarketAssumptions.exportSupplyScore]). */
+    fun score(good: MarketTradeGood, a: MarketAssumptions = MarketAssumptions()): Double {
+        val supply = when (good.type) {
+            EXPORT -> a.exportSupplyScore[good.supply] ?: 0.5
+            IMPORT -> a.importSupplyScore[good.supply] ?: 0.5
+            EXCHANGE -> a.importSupplyScore[good.supply] ?: 0.5
+        }
+        val activity = good.activity?.let { a.activityScore[it] } ?: return supply
+        return (supply + activity) / 2
+    }
 
     /** One line on why a producer is or is not worth buying from now. */
     fun explain(good: MarketTradeGood, a: MarketAssumptions = MarketAssumptions()): String {

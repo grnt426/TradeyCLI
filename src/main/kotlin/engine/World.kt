@@ -60,6 +60,16 @@ class World {
     @Volatile
     var recentTransactions: List<MarketTransaction> = emptyList()
 
+    /** Every transaction of the reset with its tag, and every credit move outside a market: the summary's ledger. */
+    @Volatile
+    var taggedTransactions: List<storage.TaggedTransaction> = emptyList()
+    @Volatile
+    var ledger: List<storage.LedgerEntry> = emptyList()
+
+    /** The home construction site's bill as last read, for the summary's progress. */
+    @Volatile
+    var constructionBill: List<model.ConstructionMaterial>? = null
+
     /** The plan as last read from its file. */
     @Volatile
     var plan: Plan? = null
@@ -85,6 +95,9 @@ class World {
         shipStatus = HashMap(shipStatus),
         creditsHistory = creditsHistory,
         recentTransactions = recentTransactions,
+        taggedTransactions = taggedTransactions,
+        ledger = ledger,
+        constructionBill = constructionBill,
         plan = plan,
         runner = runner,
         contracts = contracts.values.sortedBy { it.id },
@@ -108,6 +121,9 @@ data class Snapshot(
     val shipStatus: Map<String, ShipStatus> = emptyMap(),
     val creditsHistory: List<CreditPoint> = emptyList(),
     val recentTransactions: List<MarketTransaction> = emptyList(),
+    val taggedTransactions: List<storage.TaggedTransaction> = emptyList(),
+    val ledger: List<storage.LedgerEntry> = emptyList(),
+    val constructionBill: List<model.ConstructionMaterial>? = null,
     val plan: Plan? = null,
     val runner: RunLease? = null,
     val contracts: List<Contract> = emptyList(),

@@ -26,6 +26,7 @@ import app.App
 import behaviour.decisions.CreditsTrend
 import behaviour.decisions.Intent
 import behaviour.decisions.Intentions
+import behaviour.decisions.Summary
 import model.market.Market
 import model.ship.ShipNavStatus
 import model.ship.components.Inventory
@@ -50,394 +51,122 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
         private val BLOCKS = listOf(" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█")
     }
 
-    private var zoom = SystemSubScreen.Point(1.0, 1.0)
-    private var translate = SystemSubScreen.Point(0.0, 0.0)
-    private var selectIndex = 0
-    private var objectsOnScreen = 0
-
-    // fonts are taller than wide, so an aspect ratio is needed of 3:5
-    private val aspectRatio = SystemSubScreen.Point(3.0, 5.0)
-
     override fun MainRenderScope.render() {
-        logger.info { "Rendering" }
         val snap = App.engine.state.value
+        val now = Instant.now()
         val selectedQuad = runningRenderContext.selectedQuad
-        val currentView = runningRenderContext.selectedView
-        val selectedShip = runningRenderContext.selectedShip
-        var selectedWaypoint: Waypoint? = null
-        var selectedMarket: Market? = null
-
         val columnWidth = App.profData.termWidth / COLUMNS
+        val trend = CreditsTrend.trend(snap.creditsHistory, now)
+        val progress = Summary.progress(snap, now, trend)
+
+        // Every panel prints a bounded number of lines, each cut to its cell's width, so the
+        // screen never grows however long the run gets.
+        fun RenderScope.line(text: String, width: Int, tone: Intent.Tone = Intent.Tone.NEUTRAL) {
+            val shown = text.take(width - 1)
+            when (tone) {
+                Intent.Tone.GOOD -> green { textLine(shown) }
+                Intent.Tone.WARN -> yellow { textLine(shown) }
+                Intent.Tone.NEUTRAL -> textLine(shown)
+            }
+        }
+        fun RenderScope.wrapped(text: String, width: Int, tone: Intent.Tone, maxLines: Int) {
+            wrap(text, width - 1).take(maxLines).forEachIndexed { i, l -> line(if (i == 0) l else "  $l", width, tone) }
+        }
+
         grid(Cols.uniform(COLUMNS, columnWidth), characters = GridCharacters.Curved) {
-            val visibleWaypoints = mutableListOf<Waypoint>()
-            selectIndex = min(selectIndex, objectsOnScreen)
-            cell(colSpan = 3, rowSpan = 4) {
-                rgb(HEADER_COLOR.rgb) { makeHeader("System View", 3) }
-                objectsOnScreen = 0
-                val wp = snap.waypoints.values
-
-                // a good starting zoom is 10
-                val zoom = (SystemSubScreen.Point(3.0, 3.0) + this@ConsoleSubScreen.zoom) * aspectRatio
-
-                // initialize empty grid
-                val rows = 30
-                val cols = 60
-                val centerVector = SystemSubScreen.Point(cols / 2.0, rows / 2.0) + translate
-                val EMPTY_RENDER = { text(" ") }
-                val map = MutableList(rows) { // number of rows
-                    MutableList(cols) { // number of columns
-                        EMPTY_RENDER
-                    }
-                }
-
-                // put a star in the center
-                map[centerVector.y.toInt()][centerVector.x.toInt()] = { red { text("S") } }
-                wp.forEach { w ->
-                    val pos = (SystemSubScreen.Point(w.x.toDouble(), w.y.toDouble()) / zoom) + centerVector
-                    val y = pos.y.roundToInt()
-                    val x = pos.x.roundToInt()
-
-                    // cull out of bounds objects
-                    if (x in 0..<cols && y in 0..<rows) {
-                        objectsOnScreen++
-                        val selected = visibleWaypoints.size == selectIndex
-                        if (selected) {
-                            selectedWaypoint = w
-                            selectedMarket = snap.markets[w.symbol]
-                        }
-                        visibleWaypoints.add(w)
-                        map[y][x] = {
-                            val entry = {
-                                rgb(w.type.color.rgb) {
-                                    text(w.type.name[0].toString())
-                                }
-                            }
-                            if (selected) {
-                                white(layer = ColorLayer.BG) {
-                                    entry()
-                                }
-                            } else {
-                                entry()
-                            }
-                        }
-                    }
-                }
-                applyEffects(map)
-            }
-
-            cell(colSpan = 2, rowSpan = 4) {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Waypoints In ${snap.hqSystem ?: "?"}", 2) }
-                visibleWaypoints.take(30).forEachIndexed { i, w ->
-                    val entry = {
-                        text("${w.symbol} ")
-                        rgb(w.type.color.rgb) { text(w.type.name) }
-                        text("@${w.x},${w.y}")
-                    }
-                    if (i == selectIndex) {
-                        underline {
-                            entry()
-                        }
-                    } else {
-                        entry()
-                    }
-                    textLine()
-                }
-            }
-
-            cell(colSpan = 2) {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Waypoint View", 2) }
-                if (selectedWaypoint != null) {
-                    // initialize empty grid
-                    val rows = 12
-                    val cols = 40
-                    val centerVector = SystemSubScreen.Point(cols / 2.0, rows / 2.0)
-                    val EMPTY_RENDER = { text(" ") }
-                    val map = MutableList(rows) { // number of rows
-                        MutableList(cols) { // number of columns
-                            EMPTY_RENDER
-                        }
-                    }
-
-                    // We need a fixed seed so everything doesn't change each time
-                    // use the waypoints symbol so each planet is uniquely generated
-                    var random = Random(selectedWaypoint!!.symbol.hashCode())
-
-                    // draw stars
-                    for (i in 0..<rows) {
-                        for (j in 0..<cols) {
-                            if (random.nextInt(39) == 0) {
-                                map[i][j] = {
-                                    scopedState {
-                                        if (Random.nextInt(64) == 0) rgb(Color.gray.rgb)
-                                        bold { text(".") }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // draw planet
-
-                    // 0.75 and 0.25 gives better looking circles than 0.0 or 0.5
-                    random = Random(selectedWaypoint!!.symbol.hashCode())
-                    val radius = 4.75
-                    val top = ceil(centerVector.y - radius)
-                    val bot = floor(centerVector.y + radius)
-                    var y = top
-                    while (y <= bot) {
-                        val dy = y - centerVector.y
-                        val dx = sqrt(radius * radius - dy * dy)
-
-                        // we apply a "fattening" along the x-axis to compensate for font-height/width ratio
-                        val left = ceil(centerVector.x * 1.667 - dx * 1.667) - centerVector.x / 1.5
-                        val right = floor(centerVector.x * 1.667 + dx * 1.667) - centerVector.x / 1.5
-                        var x = left
-                        while (x <= right) {
-                            map[y.toInt()][x.toInt()] = {
-                                rgb(Color(30, 50, 190).rgb) {
-                                    if (random.nextInt(4) < 3) text("█") else text("▓")
-                                }
-                            }
-                            x++
-                        }
-                        y++
-                    }
-
-                    // draw atmosphere
-
-
-                    map.forEach { row ->
-                        row.forEach { c ->
-                            c()
-                        }
-                        textLine()
-                    }
-                }
-            }
-            cell {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Waypoint ${selectedWaypoint?.symbol}") }
-                if (selectedWaypoint != null) {
-                    textLine("Orbitals: ${selectedWaypoint!!.orbitals.size}")
-                    if (selectedWaypoint!!.orbits != null) textLine("Orbits ${selectedWaypoint!!.orbits}")
-                    textLine("Traits: ${selectedWaypoint!!.traits.map { t -> t.symbol }.joinToString(", ")}")
-                    textLine("Modifiers: ${selectedWaypoint!!.modifiers.joinToString(", ") { it.symbol }}")
-                }
-            }
-
-            // ROW 2
-            cell {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Imports") }
-                if (selectedWaypoint != null && selectedMarket != null) {
-                    textLine(selectedMarket!!.imports.map { i -> i.symbol }.joinToString(", "))
-                }
-            }
-            cell {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Exports") }
-                if (selectedWaypoint != null && selectedMarket != null) {
-                    textLine(selectedMarket!!.exports.map { i -> i.symbol }.joinToString(", "))
-                }
-            }
-
-            cell {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Exchange") }
-                if (selectedWaypoint != null && selectedMarket != null) {
-                    textLine(selectedMarket!!.exchange.map { i -> i.symbol }.joinToString(", "))
-                }
-            }
-
-            // row 3
+            // ROW 1: who and where we stand, the bank, the markets
             cell(colSpan = 3) {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Prices", 3) }
-                if (selectedWaypoint != null && selectedMarket != null) {
-                    selectedMarket!!.tradeGoods.forEach { t ->
-                        textLine("${t.symbol} ASK:${t.sellPrice} BUY:${t.purchasePrice} VOL: ${t.tradeVolume} SUP: ${t.supply} ACT: ${t.activity}")
-                    }
+                val w = columnWidth * 3
+                val phase = snap.plan?.phase ?: plan.Phase.ESCAPE
+                rgb(HEADER_COLOR.rgb) { makeHeader("${snap.agent?.symbol ?: "?"}  ${phase.name}", 3) }
+                wrapped(progress.headline, w, Intent.Tone.GOOD, 2)
+                progress.lines.take(4).forEach { wrapped(it.text, w, it.tone, 2) }
+                val runner = snap.runner
+                val driver = when {
+                    runner == null -> Intent("nobody is running the plan; start `TradeyCLI run`", Intent.Tone.WARN)
+                    runner.isLive(now, Intentions.processAlive) -> Intent("driven by process ${runner.pid}, heartbeat ${java.time.Duration.between(runner.heartbeat, now).seconds}s ago", Intent.Tone.GOOD)
+                    else -> Intent("run process ${runner.pid} is gone; nothing is driving the plan", Intent.Tone.WARN)
                 }
+                line(driver.text, w, driver.tone)
             }
-
-            // row 4: the bank over the last hour and where it is heading
             cell(colSpan = 3) {
                 rgb(HEADER_COLOR.rgb) { makeHeader("Credits", 3) }
                 creditsGraph(snap, columnWidth * 3)
             }
-
-            // below system view, row 5
             cell(colSpan = 2) {
-                val headerColor = if (selectedQuad != QuadSelect.MAIN) HEADER_COLOR else SELECTED_HEADER_COLOR
-                when (currentView) {
-                    Window.MAIN -> {
-                        rgb(headerColor.rgb) {
-                            makeHeader("Fleet Status: ${snap.hqSystem ?: "?"}", 2)
-                        }
-
-                        snap.ships.values.sortedBy { it.symbol }.forEach { s ->
-                            text("${s.registration.name.substringAfterLast("-")} [")
-                            applyShipRoleColor(s.registration.role)
-                            val status = snap.shipStatus[s.symbol]?.let { "${it.behaviour}: ${it.phase}" } ?: "idle"
-                            text("] $status")
-                            if (s.cooldown.remainingSeconds > 0)
-                                textLine(" (${s.cooldown.remainingSeconds})")
-                            else if (s.nav.status == ShipNavStatus.IN_TRANSIT) {
-                                val arrival = s.nav.route.arrival
-                                val secondsRemaining = arrival.epochSecond.minus(Instant.now().epochSecond).toDouble()
-                                textLine(" (${reduceToSiNotation(secondsRemaining, "s")})")
-                                textLine(" Destination @ ${s.nav.route.destination.symbol}")
-                            } else
-                                textLine()
-                            if (s.cargo.inventory.isNotEmpty()) {
-                                text(" * ")
-                                textLine(s.cargo.inventory.chunked(2).joinToString("\n * ", transform = { chunk ->
-                                    chunk.joinToString(", ", transform = { c: Inventory ->
-                                        "${c.units} ${c.name}"
-                                    })
-                                }))
-                            }
-                        }
-                    }
-
-                    Window.CONTRACT -> {
-                    }
-
-                    Window.SHIP -> TODO()
-                    Window.WAYPOINTS -> {
-
-
-                    }
-
-                    Window.WAYPOINTS_INFO -> TODO()
+                val w = columnWidth * 2
+                rgb(HEADER_COLOR.rgb) { makeHeader("Market health", 2) }
+                val health = Summary.marketHealth(snap, now)
+                if (health.isEmpty()) line("no prices read yet", w)
+                health.take(6).forEach { h ->
+                    val tone = when { h.score >= 0.6 -> Intent.Tone.GOOD; h.score >= 0.4 -> Intent.Tone.NEUTRAL; else -> Intent.Tone.WARN }
+                    line("${h.system} ${(h.score * 100).toInt()}% of ${h.markets} mkts", w, tone)
+                    line("  ${h.restrictedExports} restricted, ${h.scarce} scarce, ${h.saturatedImports} buried" + (h.oldestReadHours?.let { if (it >= 3) ", oldest %.0fh".format(it) else "" } ?: ""), w)
                 }
             }
 
-            cell {
-                val headerColor = if (selectedQuad != QuadSelect.SUMM) HEADER_COLOR else SELECTED_HEADER_COLOR
-                rgb(headerColor.rgb) {
-                    makeHeader("Agent")
-                }
-                textLine("${snap.agent?.symbol ?: "?"}: $${snap.agent?.credits ?: 0}")
-                textLine("${snap.ships.size} 🚀 ${snap.shipStatus.size} 📰")
-            }
-
-            cell {
-                val blocks = arrayOf(" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█")
-                val FULL_BLOCK = blocks[8]
-                rgb(HEADER_COLOR.rgb) {
-                    makeHeader("Job Pressure")
-                }
-                val pressureWindow = App.engine.pacer.queueHistory
-                (0..4).forEach { h ->
-                    if (h != 3) {
-                        pressureWindow.forEach { w ->
-                            if (h < 4) {
-                                val pressure = pressureOf(w)
-                                // Every row must emit exactly one character per column, or the
-                                // rows drift out of alignment with each other.
-                                when (pressure) {
-                                    JobPressure.LOW -> {
-                                        if (h == 2) {
-                                            green {
-                                                text(blocks[w])
-                                            }
-                                        } else {
-                                            text(" ")
-                                        }
-                                    }
-
-                                    JobPressure.OK -> {
-                                        yellow {
-                                            if (h == 1) {
-                                                text(blocks[w - 8])
-                                            } else if (h > 1) {
-                                                text(FULL_BLOCK)
-                                            } else {
-                                                text(" ")
-                                            }
-                                        }
-                                    }
-
-                                    JobPressure.HIGH -> {
-                                        red {
-                                            if (h > 0) {
-                                                text(FULL_BLOCK)
-                                            } else {
-                                                text(blocks[min(w - 16, 8)])
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                text(if (w > 9) "C" else w.toString())
-                            }
-                        }
-                    } else {
-                        repeat(pressureWindow.size) { text("=") }
-                    }
-                    textLine()
-                }
-            }
-
+            // ROW 2: the fleet and the money
             cell(colSpan = 4) {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Intentions", 4) }
-                val trend = CreditsTrend.trend(snap.creditsHistory, Instant.now())
-                Intentions.describe(snap, Instant.now(), trend).forEach { intent ->
-                    wrap(intent.text, columnWidth * 4 - 1).forEachIndexed { i, line ->
-                        val shown = if (i == 0) line else "  $line"
-                        when (intent.tone) {
-                            Intent.Tone.GOOD -> green { textLine(shown) }
-                            Intent.Tone.WARN -> yellow { textLine(shown) }
-                            Intent.Tone.NEUTRAL -> textLine(shown)
-                        }
-                    }
+                val w = columnWidth * 4
+                val headerColor = if (selectedQuad != QuadSelect.MAIN) HEADER_COLOR else SELECTED_HEADER_COLOR
+                rgb(headerColor.rgb) { makeHeader("Fleet (${snap.ships.size})", 4) }
+                Summary.fleet(snap, now).take(14).forEach { r ->
+                    val cargo = if (r.cargo.isBlank()) "" else " [${r.cargo}]"
+                    line("${r.ship.padStart(2)} ${r.type.take(9).padEnd(9)} ${r.behaviour}: ${r.phase} ${r.detail}".take(w - cargo.length - r.where.length - 3).padEnd(w - cargo.length - r.where.length - 3) + " ${r.where}$cargo", w, r.tone)
                 }
             }
-
-            // ROW 3
-
             cell(colSpan = 2) {
-
-                val headerColor = if (selectedQuad != QuadSelect.COMM) HEADER_COLOR else SELECTED_HEADER_COLOR
-                rgb(headerColor.rgb) {
-                    makeHeader("Command", 2)
-                }
-                val ship = snap.ships.values.sortedBy { it.symbol }.getOrNull(selectedShip - 1)
-                    ?: return@cell textLine("No ship #$selectedShip loaded")
-                text("${ship.registration.name}#")
-                applyShipRoleColor(ship.registration.role, false)
-                textLine(" ${ship.nav.status}@${ship.nav.waypointSymbol}")
-                text(" C: ${ship.cargo.units}/${ship.cargo.capacity} F: ${ship.fuel.current}/${ship.fuel.capacity} ")
-                textLine(snap.shipStatus[ship.symbol]?.let { "${it.phase} ${it.detail}" } ?: "idle")
-                ship.cooldown.expiresAt(Instant.now())?.let { until ->
-                    textLine("Cool: ${reduceToSiNotation((until.epochSecond - Instant.now().epochSecond).toDouble(), "s")}")
-                }
+                val w = columnWidth * 2
+                rgb(HEADER_COLOR.rgb) { makeHeader("Spent on", 2) }
+                val spending = Summary.spending(snap)
+                if (spending.isEmpty()) line("nothing yet", w)
+                spending.take(7).forEach { f -> line("${f.category.padEnd(14)} ${CreditsTrend.compact(f.credits).padStart(7)} ${(f.share * 100).toInt().toString().padStart(3)}%", w) }
+            }
+            cell(colSpan = 2) {
+                val w = columnWidth * 2
+                rgb(HEADER_COLOR.rgb) { makeHeader("Earned from", 2) }
+                val revenue = Summary.revenue(snap)
+                if (revenue.isEmpty()) line("nothing yet", w)
+                revenue.take(7).forEach { f -> line("${f.category.padEnd(14)} ${CreditsTrend.compact(f.credits).padStart(7)} ${(f.share * 100).toInt().toString().padStart(3)}%", w) }
             }
 
+            // ROW 3: what the bot says about itself, notices, the API
+            cell(colSpan = 4) {
+                val w = columnWidth * 4
+                rgb(HEADER_COLOR.rgb) { makeHeader("Plan", 4) }
+                val ships = snap.plan?.assignments?.map { it.ship }?.toSet() ?: emptySet()
+                Intentions.describe(snap, now, trend)
+                    .filter { intent -> ships.none { intent.text.startsWith(it) } && !intent.text.startsWith("Plan driven") && !intent.text.startsWith("Run process") && !intent.text.startsWith("Nobody") }
+                    .take(6)
+                    .forEach { wrapped(it.text, w, it.tone, 2) }
+                snap.plan?.chains?.take(2)?.forEach { c -> line("chain ${c.id}: ${c.ships.size} ships, ${c.legs.size} legs" + (if (c.hold) ", held" else ""), w) }
+            }
             cell(colSpan = 2) {
-
+                val w = columnWidth * 2
                 val headerColor = if (selectedQuad != QuadSelect.NOTF) HEADER_COLOR else SELECTED_HEADER_COLOR
-                rgb(headerColor.rgb) {
-                    makeHeader("Notifications", 2)
-                }
-                NotificationManager.notifications.forEach { n ->
-                    rgb(n.animColor.rgb) {
-                        text(n.textAnim)
-                    }
-                    textLine(n.toast)
+                rgb(headerColor.rgb) { makeHeader("Notifications", 2) }
+                NotificationManager.notifications.takeLast(5).forEach { n ->
+                    rgb(n.animColor.rgb) { text(n.textAnim) }
+                    textLine(n.toast.take(w - 3))
                 }
             }
-
             cell(colSpan = 2) {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Console Stats", 2) }
+                val w = columnWidth * 2
+                rgb(HEADER_COLOR.rgb) { makeHeader("API", 2) }
                 val stats = App.engine.apiClient?.stats
-                textLine("Requests ${stats?.requests?.get() ?: 0} | Errors ${stats?.errors?.get() ?: 0} | Throttled ${stats?.throttled?.get() ?: 0} | Behaviours ${snap.shipStatus.size}")
-            }
-
-            cell(colSpan = 2) {
-                rgb(HEADER_COLOR.rgb) { makeHeader("Plan", 2) }
-                val plan = snap.plan
-                if (plan == null || plan.assignments.isEmpty()) textLine("(empty)")
-                plan?.assignments?.sortedBy { it.ship }?.forEach { a -> textLine("${a.ship} ${a.describe()}".take(columnWidth * 2 - 1)) }
-                plan?.goals?.fleet?.forEach { g -> textLine("fleet ${g.count}x${g.type.name.removePrefix("SHIP_")} keep ${CreditsTrend.compact(g.reserve)}".take(columnWidth * 2 - 1)) }
-                plan?.goals?.credits?.let { textLine("credits goal ${Intentions.format(it)}") }
-                plan?.chains?.forEach { c -> textLine("chain ${c.id}: ${c.ships.size} ships, ${c.legs.size} legs".take(columnWidth * 2 - 1)) }
+                line("requests ${stats?.requests?.get() ?: 0}  errors ${stats?.errors?.get() ?: 0}  throttled ${stats?.throttled?.get() ?: 0}", w)
+                val pressure = App.engine.pacer.queueHistory.takeLast(w - 8)
+                text("queue  ")
+                pressure.forEach { q ->
+                    val glyph = BLOCKS[min(q, 8)]
+                    when (pressureOf(q)) {
+                        JobPressure.LOW -> green { text(glyph) }
+                        JobPressure.OK -> yellow { text(glyph) }
+                        JobPressure.HIGH -> red { text(glyph) }
+                    }
+                }
+                textLine()
+                line("`summary`, `race`, `gate` in line mode print these as tables", w)
             }
         }
         text("> ")
@@ -603,31 +332,5 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
         val now = snap.agent?.credits ?: 0
         val ahead = graph.projectionSpan.toMinutes()
         textLine("now ${Intentions.format(now)}   ${if (trend.perHour >= 0) "+" else ""}${Intentions.format(trend.perHour.toLong())}/h   in ${ahead}m: ~${Intentions.format(graph.projectedEnd.toLong())}".take(width - 1))
-    }
-
-    private fun OffscreenRenderScope.applyEffects(
-        map: MutableList<MutableList<() -> Unit>>,
-    ) {
-        map.forEach { row ->
-            row.forEach { c ->
-                c()
-            }
-            textLine()
-        }
-    }
-
-    data class Point(var x: Double, var y: Double) {
-        operator fun plus(point: Point): Point = Point(this.x + point.x, this.y + point.y)
-        operator fun minus(point: Point): Point = Point(this.x - point.x, this.y - point.y)
-        operator fun times(point: Point): Point = Point(this.x * point.x, this.y * point.y)
-        operator fun div(point: Point): Point = Point(this.x / point.x, this.y / point.y)
-        override operator fun equals(other: Any?): Boolean {
-            if (other is Point) return this.x == other.x && this.y == other.y
-            return false
-        }
-
-        override fun hashCode(): Int {
-            return ((31 * x) + (y * 17)).roundToInt()
-        }
     }
 }

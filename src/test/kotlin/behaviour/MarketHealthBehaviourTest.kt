@@ -71,7 +71,7 @@ class MarketHealthBehaviourTest {
         assertTrue(fed.isNotEmpty(), "inputs were delivered to F47: ${report.trace.phaseNames(Fixtures.COMMAND_SHIP).distinct()}")
         assertTrue(fed.all { it.good in setOf("IRON", "QUARTZ_SAND") }, fed.map { it.good }.distinct().toString())
         assertTrue(report.trace.tagged.none { it.first.tradeSymbol == TradeSymbol.FAB_MATS && it.first.type == TransactionType.PURCHASE }, "no FAB_MATS bought while the producer is short")
-        assertTrue(report.trace.tagged.any { it.second == "gate:X1-TH77-I54" && it.first.tradeSymbol == TradeSymbol.IRON }, "nursing is on the gate's ledger")
+        assertTrue(report.trace.tagged.any { it.second == "nurse:X1-TH77-I54" && it.first.tradeSymbol == TradeSymbol.IRON }, "nursing is tagged for the site so the summary files it under market health")
 
         val blind = Plan(listOf(Assignment(Fixtures.COMMAND_SHIP, "supplyGate", mapOf("site" to "X1-TH77-I54", "reserve" to "50000", "only" to "FAB_MATS", "nurse" to "off"))))
         val blindReport = SimRun(seed, blind, hours = 3).run()

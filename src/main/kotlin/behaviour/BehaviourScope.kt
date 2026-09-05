@@ -191,6 +191,16 @@ class SharedState {
 
     fun advancePhase(to: plan.Phase) { if (plan.phase != to) onPhaseChanged(to) }
 
+    /** Set by the supervisor: applies and saves a plan a behaviour rewrote (a fleet goal raised for the gate rush). */
+    @Volatile
+    var onPlanEdited: (edit: (Plan) -> Plan, why: String) -> Unit = { _, _ -> }
+
+    fun editPlan(why: String, edit: (Plan) -> Plan) = onPlanEdited(edit, why)
+
+    /** The construction site's bill as the gate hauler last read it, for the summary. */
+    @Volatile
+    var constructionBill: List<model.ConstructionMaterial>? = null
+
     /** Whether any behaviour is buying a ship right now, so two traders at two yards do not both spend the reserve. */
     val buying = java.util.concurrent.atomic.AtomicBoolean(false)
 

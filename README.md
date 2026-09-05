@@ -27,9 +27,13 @@ is off.
 `TradeyCLI run` in a terminal does the work; the dashboard (no arguments) watches it. They share
 the agent's SQLite store: the run writes every phase, sale, purchase and the bank after each
 change, and the dashboard re-reads them every five seconds without spending a request. The
-console screen shows the bank over the last hour with the trend projected ahead in yellow, an
-"Intentions" panel (what each ship is doing, how the trading is going, what the fleet goal is
-saving for and how far off it is) and the plan. `intentions` in line mode prints the same.
+console screen is a summary: the phase and how far it has got (in ESCAPE, the gate's bill, what
+finishing costs against the bank, and whether the rush is on), the bank over the last hour with
+the trend projected ahead in yellow, market health per system, the fleet one line per ship, where
+credits went by purpose (gate, market health, trading, mining, contracts, exploring, ships) with
+each purpose's fuel charged to it, where they came from by source (arbitrage, mining, contracts,
+charting, market health), and the plan's notes. Every panel prints a bounded number of lines.
+`summary` in line mode prints the same as tables; `intentions` the older per-ship view.
 
 ## Line mode
 

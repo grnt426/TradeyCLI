@@ -236,6 +236,7 @@ class Engine(
                 if (agent != null) world.agent = agent
                 store.listShips().forEach { world.ships[it.symbol] = it }
                 loadActivity(store, world.agent?.symbol ?: continue)
+                refreshConstructionBill()
                 publish()
             } catch (e: CancellationException) {
                 throw e
@@ -243,6 +244,18 @@ class Engine(
                 logger.warn(e) { "following the store failed" }
             }
         }
+    }
+
+    private var billReadAt: java.time.Instant? = null
+
+    /** The dashboard drives no ships, so it reads the home site's bill itself, every five minutes, for the progress panel. */
+    private suspend fun refreshConstructionBill() {
+        val hq = world.hqSystemSymbol() ?: return
+        val site = world.waypoints.values.firstOrNull { it.systemSymbol == hq && it.isUnderConstruction } ?: return
+        val now = clock.now()
+        if (billReadAt?.let { java.time.Duration.between(it, now).toMinutes() < 5 } == true) return
+        billReadAt = now
+        runCatching { verbs().construction(site.symbol) }.onFailure { logger.warn(it) { "could not read ${site.symbol}" } }
     }
 
     /** Phases, credits history, recent transactions and the plan, from the store and the plan file. */
@@ -253,6 +266,8 @@ class Engine(
         }
         world.creditsHistory = store.listCredits(since)
         world.recentTransactions = store.listTransactions(since)
+        world.taggedTransactions = store.listTaggedTransactions()
+        world.ledger = store.listLedger()
         world.extractions = store.listExtractions().takeLast(2000)
         world.plan = runCatching { Plan.load(Layout.planFile(agentSymbol)) }.getOrNull()
         world.runner = RunLock.read(Layout.runLockFile(agentSymbol))
@@ -347,7 +362,15 @@ class Engine(
 
         override suspend fun transaction(transaction: MarketTransaction, chain: String?) {
             store?.putTransaction(transaction, chain)
-            world.recentTransactions = world.recentTransactions + transaction
+            val cutoff = clock.now().minus(java.time.Duration.ofHours(2))
+            world.recentTransactions = (world.recentTransactions + transaction).filter { java.time.Instant.parse(it.timestamp).isAfter(cutoff) }
+            world.taggedTransactions = world.taggedTransactions + storage.TaggedTransaction(transaction, chain)
+        }
+
+        private suspend fun ledger(ship: String, kind: String, credits: Long, note: String) {
+            val entry = storage.LedgerEntry(clock.now(), ship, kind, credits, note)
+            store?.putLedger(entry)
+            world.ledger = world.ledger + entry
         }
 
         override suspend fun extraction(record: ExtractionRecord) {
@@ -369,6 +392,8 @@ class Engine(
         override suspend fun contractChanged(contract: Contract, cost: Long, accepted: Boolean, fulfilled: Boolean) {
             val now = clock.now()
             store?.putContract(contract, cost, acceptedAt = if (accepted) now else null, fulfilledAt = if (fulfilled) now else null, now = now)
+            if (accepted) ledger("", "contract", contract.terms.payment.onAccepted, "accepted ${contract.id.takeLast(6)}")
+            if (fulfilled) ledger("", "contract", contract.terms.payment.onFulfilled, "fulfilled ${contract.id.takeLast(6)}")
             publish()
         }
 
@@ -381,6 +406,13 @@ class Engine(
             publish()
         }
 
-        override fun event(event: Event) = emit(event)
+        override fun event(event: Event) {
+            when (event) {
+                is Event.ShipPurchased -> scope.launch { ledger(event.ship, "ships", -event.credits, event.type) }
+                is Event.Charted -> scope.launch { ledger(event.ship, "chart", event.credits, event.waypoint) }
+                else -> {}
+            }
+            emit(event)
+        }
     }
 }
