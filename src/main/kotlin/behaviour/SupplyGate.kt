@@ -73,56 +73,69 @@ suspend fun BehaviourScope.supplyGate() {
             // A hold inherited from an earlier job (a killed trade run's clothing) is sold before anything else.
             val materials = construction.materials.map { it.tradeSymbol }.toSet()
             if (me.cargo.inventory.any { it.symbol !in materials }) phase("sell leftovers") { sellLeftovers(keep = materials) }
-            // Carry what is in the hold first, then the material with the largest share still missing.
+            // Carry what is in the hold first. Otherwise take the material whose producer can spare the most
+            // now, by the share still missing: three haulers on one short producer is what the rate budget prevents.
             val carried = me.cargo.inventory.firstOrNull { line -> construction.remaining(line.symbol) > 0 }
-            val material = carried?.symbol ?: construction.outstanding
-                .filter { only == null || it.tradeSymbol == only }
-                .maxByOrNull { (it.required - it.fulfilled).toDouble() / it.required }?.tradeSymbol
-                ?: run { status("done", "nothing left that this ship may supply"); return }
+            var material = carried?.symbol
             if (carried == null) {
-                val (market, price) = cheapestSource(material) ?: throw BehaviourFailure("nothing in ${me.nav.systemSymbol} sells $material")
                 val spendable = agent().credits - reserve
-                if (spendable <= price) {
+                val wanted = construction.outstanding
+                    .filter { only == null || it.tradeSymbol == only }
+                    .sortedByDescending { (it.required - it.fulfilled).toDouble() / it.required }
+                if (wanted.isEmpty()) { status("done", "nothing left that this ship may supply"); return }
+                if (spendable <= 0) {
                     status("waiting", "bank ${Intentions.format(agent().credits)} is at the reserve of ${Intentions.format(reserve)}; checking again in 10 minutes")
                     clock.sleep(10.minutes)
                     continue
                 }
-                val listing = snapshot().markets[market]?.good(material)
-                val healthy = if (nurse && listing != null) MarketHealth.healthyUnits(listing, rules) else Int.MAX_VALUE
-                val want = minOf(me.cargoSpaceLeft, construction.remaining(material).toInt(), (spendable / price).toInt(), healthy)
-                if (want <= 0) {
-                    // The producer cannot spare any: bring it what it is short of instead.
-                    val producer = snapshot().markets[market]!!
-                    val leg = nurseLeg(producer, material, spendable, rules)
+                data class Pick(val material: TradeSymbol, val market: String, val listing: MarketTradeGood?, val units: Int)
+                val picks = wanted.mapNotNull { m ->
+                    val (market, price) = cheapestSource(m.tradeSymbol) ?: return@mapNotNull null
+                    val listing = snapshot().markets[market]?.good(m.tradeSymbol)
+                    val healthy = if (nurse && listing != null) minOf(MarketHealth.healthyUnits(listing, rules), shared.takeBudget.available(market, listing, rules, clock.now())) else Int.MAX_VALUE
+                    Pick(m.tradeSymbol, market, listing, minOf(me.cargoSpaceLeft, construction.remaining(m.tradeSymbol).toInt(), (spendable / price).toInt(), healthy))
+                }
+                if (picks.isEmpty()) throw BehaviourFailure("nothing in ${me.nav.systemSymbol} sells what ${site} needs")
+                val pick = picks.firstOrNull { it.units > 0 }
+                if (pick == null) {
+                    // Every producer is short or its rate is spent: bring the shortest one what it lacks, two levels deep.
+                    val leg = picks.firstNotNullOfOrNull { p -> snapshot().markets[p.market]?.let { producer -> nurseLeg(producer, p.material, spendable, rules)?.let { producer to it } } }
                     if (leg == null) {
-                        status("waiting", "$material at $market is ${MarketHealth.explain(listing!!, rules)}; nothing to feed it with; checking again in 10 minutes")
+                        val why = picks.joinToString("; ") { p -> "${p.material} at ${p.market} is ${p.listing?.let { MarketHealth.explain(it, rules) } ?: "unread"}" }
+                        status("waiting", "$why; nothing to feed; checking again in 10 minutes")
                         clock.sleep(10.minutes)
                         continue
                     }
-                    nurse(producer, material, leg)
+                    nurse(leg.first, leg.second)
                     continue
                 }
-                phase("buy", "$want $material at $market") {
-                    travelVia(market)
+                material = pick.material
+                phase("buy", "${pick.units} $material at ${pick.market}") {
+                    travelVia(pick.market)
                     dock(ship)
-                    val live = refreshMarket(market).good(material)
-                    val allowed = if (nurse && live != null) minOf(want, MarketHealth.healthyUnits(live, rules)) else want
+                    val live = refreshMarket(pick.market).good(material)
+                    val allowed = if (nurse && live != null) {
+                        val cap = minOf(pick.units, MarketHealth.healthyUnits(live, rules))
+                        shared.takeBudget.take(pick.market, live, cap, rules, clock.now())
+                    } else pick.units
                     if (allowed <= 0) {
-                        status(detail = "$material at $market is ${live?.let { MarketHealth.explain(it, rules) }}; not buying this visit")
+                        status(detail = "$material at ${pick.market} is ${live?.let { MarketHealth.explain(it, rules) }}; the rate is spent, not buying this visit")
                     } else {
                         val bought = purchase(ship, material, allowed)
-                        status(detail = "bought ${bought.units} $material for ${Intentions.format(bought.credits)} (${bought.averagePrice.toInt()} each); producer read ${live?.let { MarketHealth.describe(it) }}")
+                        if (live != null && bought.units < allowed) shared.takeBudget.refund(pick.market, live, allowed - bought.units, rules, clock.now())
+                        status(detail = "bought ${bought.units} $material for ${Intentions.format(bought.credits)} (${bought.averagePrice.toInt()} each); producer read ${live?.let { MarketHealth.describe(it) }}, ${shared.takeBudget.available(pick.market, live ?: return@phase, rules, clock.now())} more this hour")
                     }
                 }
                 if (me.unitsOf(material) == 0) continue
             }
-            phase("haul", "${me.unitsOf(material)} $material to $site") { travelVia(site) }
-            phase("supply", "$material at $site") {
+            val chosen: TradeSymbol = material ?: continue
+            phase("haul", "${me.unitsOf(chosen)} $chosen to $site") { travelVia(site) }
+            phase("supply", "$chosen at $site") {
                 dock(ship)
-                val units = me.unitsOf(material)
-                val after = supplyConstruction(site, ship, material, units)
-                val left = after.remaining(material)
-                status(detail = "delivered $units $material; $left still needed" + if (after.isComplete) "; COMPLETE" else "")
+                val units = me.unitsOf(chosen)
+                val after = supplyConstruction(site, ship, chosen, units)
+                val left = after.remaining(chosen)
+                status(detail = "delivered $units $chosen; $left still needed" + if (after.isComplete) "; COMPLETE" else "")
                 try { refuel(ship) } catch (e: VerbFailure) { status(detail = "could not refuel at $site: ${e.message}") }
             }
         }
@@ -136,15 +149,16 @@ private fun BehaviourScope.cheapestSource(good: TradeSymbol): Pair<String, Int>?
         .mapNotNull { m -> m.good(good)?.purchasePrice?.let { m.symbol to it } }
         .minByOrNull { it.second }
 
-/** An input the producer is short of, where to buy it, and how many units. */
-data class NurseLeg(val input: MarketTradeGood, val source: Market, val offer: MarketTradeGood, val units: Int)
+/** An input a producer is short of, the producer to bring it to, where to buy it, and how many units. */
+data class NurseLeg(val target: Market, val material: TradeSymbol, val input: MarketTradeGood, val source: Market, val offer: MarketTradeGood, val units: Int)
 
 /**
  * The most starved input of [material] at [producer] that some healthy market in the system sells
- * for no less than [MarketAssumptions.nurseMinSellRatio] of what the producer pays back; null when
- * nothing can be fed.
+ * for no less than [MarketAssumptions.nurseMinSellRatio] of what the producer pays back. When no
+ * market can spare an input, the input's own producer is nursed instead (iron short everywhere
+ * means the refinery wants ore), down to [depth] levels. Null when nothing can be fed.
  */
-fun BehaviourScope.nurseLeg(producer: Market, material: TradeSymbol, spendable: Long, rules: MarketAssumptions): NurseLeg? {
+fun BehaviourScope.nurseLeg(producer: Market, material: TradeSymbol, spendable: Long, rules: MarketAssumptions, depth: Int = 2): NurseLeg? {
     val system = me.nav.systemSymbol
     for (input in MarketHealth.starvedInputs(producer, material)) {
         if (MarketHealth.saturated(input, rules)) continue
@@ -152,19 +166,27 @@ fun BehaviourScope.nurseLeg(producer: Market, material: TradeSymbol, spendable: 
             .filter { it.symbol != producer.symbol }
             .mapNotNull { m -> m.good(input.symbol)?.let { offer -> m to offer } }
             .filter { (_, offer) -> !MarketHealth.starved(offer, rules) && offer.purchasePrice > 0 && input.sellPrice >= offer.purchasePrice * rules.nurseMinSellRatio }
-        val (source, offer) = candidates.minByOrNull { (_, offer) -> offer.purchasePrice } ?: continue
-        val units = minOf(me.cargoSpaceLeft, (spendable / offer.purchasePrice).toInt(), (rules.nurseVolumesPerVisit * input.tradeVolume).toInt())
-        if (units > 0) return NurseLeg(input, source, offer, units)
+        val best = candidates.minByOrNull { (_, offer) -> offer.purchasePrice }
+        if (best != null) {
+            val (source, offer) = best
+            val units = minOf(me.cargoSpaceLeft, (spendable / offer.purchasePrice).toInt(), (rules.nurseVolumesPerVisit * input.tradeVolume).toInt())
+            if (units > 0) return NurseLeg(producer, material, input, source, offer, units)
+            continue
+        }
+        if (depth > 1) {
+            val upstream = snapshot().marketsIn(system).firstOrNull { m -> m.symbol != producer.symbol && m.typeOf(input.symbol) == model.market.TradeGoodType.EXPORT && m.hasPrices }
+            if (upstream != null) nurseLeg(upstream, input.symbol, spendable, rules, depth - 1)?.let { return it }
+        }
     }
     return null
 }
 
-/** Buy the input, haul it to the producer, sell it there, and note how the producer looks after. */
-private suspend fun BehaviourScope.nurse(producer: Market, material: TradeSymbol, leg: NurseLeg) {
+/** Buy the input, haul it to the leg's target producer, sell it there, and note how the producer looks after. */
+private suspend fun BehaviourScope.nurse(gateProducer: Market, leg: NurseLeg) {
     val good = leg.input.symbol
-    val site = shared.plan.assignmentFor(ship)?.params?.get("site")?.uppercase() ?: producer.symbol
+    val site = shared.plan.assignmentFor(ship)?.params?.get("site")?.uppercase() ?: gateProducer.symbol
     setChain(ship, "nurse:$site")
-    try { nurseRun(producer, material, leg, good) } finally { setChain(ship, "gate:$site") }
+    try { nurseRun(leg.target, leg.material, leg, good) } finally { setChain(ship, "gate:$site") }
 }
 
 private suspend fun BehaviourScope.nurseRun(producer: Market, material: TradeSymbol, leg: NurseLeg, good: TradeSymbol) {

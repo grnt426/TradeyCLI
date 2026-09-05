@@ -25,6 +25,17 @@ listing in the system. Once the bank covers `RUSH_COMFORT` (1.5) times that, plu
 in nursing mode. When the site completes, every hauler finishes and becomes a boom trader. The
 constants live in `knowledge/Strategy.kt`; the summary screen says when the rush is on.
 
+The rush is rate-limited, not bang-bang. Three haulers each taking a full load from one producer
+drained it from MODERATE to LIMITED in an hour on 2026-09-05 and then all three sat idle. Now every
+producer has a take-rate bucket (`knowledge/TakeBudget.kt`) shared by all our ships, refilled at
+`takeVolumesPerHour` for the stock level last read (SCARCE 0, LIMITED 1, MODERATE 2.5, HIGH 4,
+ABUNDANT 6 trade volumes an hour, halved when RESTRICTED) and banked for at most an hour and a
+half. A hauler takes what the bucket holds, so the draw follows the stock up and down instead of
+stopping and restarting at a threshold. Haulers also pick the material whose producer can spare
+the most right now, and when nothing can be taken they nurse two levels deep: an input nobody can
+spare (iron) sends the hauler to feed that input's own producer (the refinery) with what it lacks
+(ore).
+
 In ESCAPE the point is never to tip a market into SCARCE or RESTRICTED. In LATE the point is the
 opposite: loosen the weights on purpose and record where each market tips, so the limits become
 numbers. Every market reading already lands in `market_prices` with supply and activity, so the

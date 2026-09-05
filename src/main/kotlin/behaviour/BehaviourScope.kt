@@ -197,6 +197,9 @@ class SharedState {
 
     fun editPlan(why: String, edit: (Plan) -> Plan) = onPlanEdited(edit, why)
 
+    /** The producers' take-rate buckets, shared by every ship so three haulers do not each take a full load. */
+    val takeBudget = knowledge.TakeBudget()
+
     /** The construction site's bill as the gate hauler last read it, for the summary. */
     @Volatile
     var constructionBill: List<model.ConstructionMaterial>? = null

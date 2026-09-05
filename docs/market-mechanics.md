@@ -58,6 +58,9 @@ The community wiki's `Market-Export-&-Import-Map.md` lists what every export is 
 | `sourceActivityWeight` [RESTRICTED 0, WEAK 0.8, GROWING 1, STRONG 1] | a RESTRICTED producer cannot grow output; feed it instead |
 | `destinationSupplyWeight` [SCARCE 1, LIMITED 1, MODERATE 0.9, HIGH 0.5, ABUNDANT 0] | a stocked consumer pays little and grows nothing |
 | `healthyBuyVolumes` [SCARCE 0, LIMITED 0, MODERATE 1, HIGH 2, ABUNDANT 4] | trade volumes the gate hauler may take per visit without pushing the producer unhealthy |
+| `takeVolumesPerHour` [SCARCE 0, LIMITED 1, MODERATE 2.5, HIGH 4, ABUNDANT 6] | trade volumes an hour a producer can be drawn on without its stock falling; shared by all our ships via `TakeBudget` (measured at F47: ~100/h at MODERATE held, ~160/h drained it) |
+| `restrictedTakeFactor` [0.5], `takeBucketHours` [1.5] | a RESTRICTED producer's rate is halved; an idle producer banks at most that many hours of rate |
+| `importFeedBonus` [SCARCE 2, LIMITED 1.5] | how much more a sale to a starved importer is worth to a health-first decision (mining in ESCAPE) |
 | `nurseMinSellRatio` [0.5] | a nursing leg may lose up to half its cost; the goal is the producer's price |
 | `nurseVolumesPerVisit` [2] | how much input to deliver per nursing visit |
 | `importRecoveryHours` [6] | how long a drained import takes to pay again |

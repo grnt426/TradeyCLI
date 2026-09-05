@@ -160,10 +160,16 @@ object Summary {
                 if (bill != null) {
                     lines += Intent("Spent ${Intentions.format(spent)} on the gate and on feeding its producers so far", Intent.Tone.NEUTRAL)
                     if (remainingCost != null) {
-                        val comfortable = Strategy.gateRush(credits, remainingCost)
+                        val haulerGoal = snapshot.plan?.goals?.fleet?.firstOrNull { it.type == model.ship.ShipType.SHIP_LIGHT_HAULER }?.count ?: 0
+                        val rushing = haulerGoal >= Strategy.RUSH_HAULERS
+                        val comfortable = rushing || Strategy.gateRush(credits, remainingCost)
                         lines += Intent(
                             "To finish: about ${Intentions.format(remainingCost)} at today's prices against a bank of ${Intentions.format(credits)}" +
-                                if (comfortable) "; comfortable, rushing with ${Strategy.RUSH_HAULERS} haulers" else "; not yet comfortable (need ${Intentions.format(Strategy.comfortableBank(remainingCost))})",
+                                when {
+                                    rushing -> "; rushing with $haulerGoal haulers, drawing at the producers' healthy rate"
+                                    comfortable -> "; comfortable, the rush starts on the hauler's next check"
+                                    else -> "; not yet comfortable (need ${Intentions.format(Strategy.comfortableBank(remainingCost))})"
+                                },
                             if (comfortable) Intent.Tone.GOOD else Intent.Tone.NEUTRAL,
                         )
                     }

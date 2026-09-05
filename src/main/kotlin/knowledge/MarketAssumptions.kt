@@ -53,6 +53,18 @@ data class MarketAssumptions(
      * carries its quartz past the nearer exchange to the fab-mats plant that is out of it.
      */
     val importFeedBonus: Map<SupplyLevel, Double> = mapOf(SCARCE to 2.0, LIMITED to 1.5, MODERATE to 1.0, HIGH to 1.0, ABUNDANT to 1.0),
+    /**
+     * The rate at which a producer can be drawn on without its stock falling, in trade volumes per
+     * hour at each stock level, shared by every ship of ours that buys there ([knowledge.TakeBudget]).
+     * Measured 2026-09-05 at F47 (volume 43): one hauler taking ~100 units/h with its inputs fed held
+     * MODERATE/STRONG all night and the price fell; three haulers at ~160/h drained it to LIMITED in
+     * an hour. So MODERATE is about 2.5 volumes an hour; the other levels scale from there.
+     */
+    val takeVolumesPerHour: Map<SupplyLevel, Double> = mapOf(SCARCE to 0.0, LIMITED to 1.0, MODERATE to 2.5, HIGH to 4.0, ABUNDANT to 6.0),
+    /** A RESTRICTED producer is not replacing what we take: its rate counts this much. */
+    val restrictedTakeFactor: Double = 0.5,
+    /** How many hours of the rate a producer may bank while nobody buys, so a ship arriving after a lull can fill up. */
+    val takeBucketHours: Double = 1.5,
     /** A nursing leg may sell an input for less than it cost, down to this share of the buy price, because the goal is the producer's price, not the leg's. */
     val nurseMinSellRatio: Double = 0.5,
     /** Trade volumes of an input to deliver per nursing visit; the docs say consumption grows as we supply, so a few volumes is enough to move it. */
