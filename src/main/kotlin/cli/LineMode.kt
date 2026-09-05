@@ -597,14 +597,14 @@ class LineMode(
                 val phase = Plan.load(Layout.planFile(symbol)).phase
                 rows += listOf(
                     symbol, hq, phase.name, ships.size.toString(),
-                    first?.credits?.let { Intentions.format(it) } ?: "-", Intentions.format(agent.credits),
+                    first?.let { "${Intentions.format(it.credits)} at ${time(it.at)}" } ?: "-", Intentions.format(agent.credits),
                     "%.1f".format(hours), if (hours > 0 && first != null) Intentions.format(((agent.credits - first.credits) / hours).toLong()) else "-",
                     if (hourAgo != null && last != null) Intentions.format(last.credits - hourAgo.credits) else "-",
                     site?.symbol ?: "none", delivered?.ifEmpty { "nothing" } ?: "-",
                 )
             }
         }
-        table(listOf("agent", "home", "phase", "ships", "first bank", "bank now", "hours", "cr/h overall", "last hour", "gate", "we delivered"), rows)
+        table(listOf("agent", "home", "phase", "ships", "bank at first record", "bank now", "hours", "cr/h overall", "last hour", "gate", "we delivered"), rows)
     }
 
     /** `goal fleet TYPE COUNT [--reserve N]` adds a fleet goal; `goal clear TYPE` removes one. */
