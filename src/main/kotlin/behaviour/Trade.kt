@@ -139,17 +139,3 @@ private suspend fun BehaviourScope.buyLoad(plan: TradePlan, market: Market, assu
     return bought
 }
 
-/** Sells what the hold carries at the market that pays best for it, dropping what nothing buys. */
-private suspend fun BehaviourScope.sellLeftovers() {
-    val market = Selling.bestMarketFor(me.cargo, here, snapshot())
-    if (market == null) {
-        me.cargo.inventory.forEach { jettison(ship, it.symbol, it.units) }
-        return
-    }
-    travelTo(market.symbol)
-    dock(ship)
-    val live = refreshMarket(market.symbol)
-    val (toSell, toDrop) = Selling.split(me.cargo, live)
-    toSell.forEach { sell(ship, it.symbol, it.units) }
-    toDrop.forEach { jettison(ship, it.symbol, it.units) }
-}

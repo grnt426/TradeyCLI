@@ -94,12 +94,3 @@ private suspend fun BehaviourScope.runLeg(leg: Leg, reserve: Long) {
     }
 }
 
-private suspend fun BehaviourScope.sellLeftovers() {
-    val market = Selling.bestMarketFor(me.cargo, here, snapshot()) ?: run { me.cargo.inventory.forEach { jettison(ship, it.symbol, it.units) }; return }
-    travelTo(market.symbol)
-    dock(ship)
-    val live = refreshMarket(market.symbol)
-    val (toSell, toDrop) = Selling.split(me.cargo, live)
-    toSell.forEach { sell(ship, it.symbol, it.units) }
-    toDrop.forEach { jettison(ship, it.symbol, it.units) }
-}

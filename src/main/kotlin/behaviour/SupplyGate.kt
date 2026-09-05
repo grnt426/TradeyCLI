@@ -55,6 +55,9 @@ suspend fun BehaviourScope.supplyGate() {
             clock.sleep(1.seconds)
             val construction = phase("check site") { construction(site) }
             if (construction.isComplete) { status("done", "$site is complete"); return }
+            // A hold inherited from an earlier job (a killed trade run's clothing) is sold before anything else.
+            val materials = construction.materials.map { it.tradeSymbol }.toSet()
+            if (me.cargo.inventory.any { it.symbol !in materials }) phase("sell leftovers") { sellLeftovers(keep = materials) }
             // Carry what is in the hold first, then the material with the largest share still missing.
             val carried = me.cargo.inventory.firstOrNull { line -> construction.remaining(line.symbol) > 0 }
             val material = carried?.symbol ?: construction.outstanding
