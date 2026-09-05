@@ -100,7 +100,20 @@ suspend fun BehaviourScope.supplyGate() {
                     val floor = minOf(remaining, maxOf((me.cargo.capacity * rules.minHaulShare).toInt(), listing?.tradeVolume ?: 1))
                     Pick(m.tradeSymbol, market, listing, units, units >= floor)
                 }
-                if (picks.isEmpty()) throw BehaviourFailure("nothing in ${me.nav.systemSymbol} sells what ${site} needs")
+                if (picks.isEmpty()) {
+                    // No market shows a price for any of it right now. A producer we know of (it lists the
+                    // good as an export) may just be unread: go and read it rather than fail.
+                    val producer = wanted.firstNotNullOfOrNull { m -> snapshot().marketsIn(me.nav.systemSymbol).firstOrNull { it.typeOf(m.tradeSymbol) == model.market.TradeGoodType.EXPORT }?.let { it to m.tradeSymbol } }
+                        ?: throw BehaviourFailure("nothing in ${me.nav.systemSymbol} exports what $site needs")
+                    phase("read producer", "${producer.second} at ${producer.first.symbol}") {
+                        travelVia(producer.first.symbol)
+                        dock(ship)
+                        val live = refreshMarket(producer.first.symbol).good(producer.second)
+                        status(detail = "${producer.second} at ${producer.first.symbol} reads ${live?.let { MarketHealth.describe(it) } ?: "no prices"}")
+                    }
+                    clock.sleep(30.seconds)
+                    continue
+                }
                 val pick = picks.firstOrNull { it.units > 0 && it.worthwhile }
                 if (pick == null) {
                     // A stale reading is not a reason to park: go and read the producer before deciding it has nothing.

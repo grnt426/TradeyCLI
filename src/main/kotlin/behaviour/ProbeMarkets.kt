@@ -1,5 +1,6 @@
 package behaviour
 
+import engine.VerbFailure
 import behaviour.decisions.Tour
 import model.system.Waypoint
 import java.time.Instant
@@ -42,12 +43,19 @@ suspend fun BehaviourScope.probeMarkets() {
         shared.claim(ship, next.symbol)
         phase("travel", "to ${next.symbol} (${distanceTo(next.symbol).toInt()} away)") { travelTo(next.symbol) }
         phase("read prices", next.symbol) {
-            val market = refreshMarket(next.symbol)
+            var market = refreshMarket(next.symbol)
+            if (!market.hasPrices) {
+                // The server shows prices only once it counts the ship as present, which can lag our
+                // arrival by a few seconds: dock (free, and impossible until arrived) and read again.
+                clock.sleep(5.seconds)
+                try { dock(ship) } catch (e: VerbFailure) { status(detail = "${next.symbol}: could not dock yet (${e.message})") }
+                market = refreshMarket(next.symbol)
+            }
             if (next.hasShipyard) refreshShipyard(next.symbol)
             if (market.hasPrices) read++ else {
-                // The server shows prices only with a ship present; if it still shows none, do not spin on it.
+                // Still nothing with the ship docked: this market really shows no prices; do not spin on it.
                 unreadable += next.symbol
-                status(detail = "${next.symbol} showed no prices; skipping it")
+                status(detail = "${next.symbol} showed no prices even docked; skipping it")
                 clock.sleep(5.seconds)
             }
         }

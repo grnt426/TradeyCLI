@@ -247,6 +247,14 @@ class ShipVerbs(
 
     override suspend fun refreshMarket(waypoint: String): Market {
         val market = call { api.getMarket(OrbitalNames.getSectorSystem(waypoint), waypoint) }
+        val previous = world.markets[market.symbol]
+        if (!market.hasPrices && previous != null && previous.hasPrices) {
+            // The server shows prices only with a ship present; a read that came back bare (the ship
+            // not yet counted as arrived) must not replace the prices we had. Keep them, with their age.
+            val kept = market.copy(tradeGoods = previous.tradeGoods).also { it.lastRead = previous.lastRead }
+            world.markets[market.symbol] = kept
+            return market
+        }
         world.markets[market.symbol] = market
         sink.marketChanged(market)
         return market
