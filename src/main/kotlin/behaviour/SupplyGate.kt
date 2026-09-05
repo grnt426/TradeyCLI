@@ -94,7 +94,8 @@ suspend fun BehaviourScope.supplyGate() {
                     val (market, price) = cheapestSource(m.tradeSymbol) ?: return@mapNotNull null
                     val listing = snapshot().markets[market]?.good(m.tradeSymbol)
                     val healthy = if (nurse && listing != null) minOf(MarketHealth.healthyUnits(listing, rules), shared.takeBudget.available(market, listing, rules, clock.now())) else Int.MAX_VALUE
-                    val remaining = construction.remaining(m.tradeSymbol).toInt()
+                    // What the site still needs beyond what the other haulers already carry or are buying for it.
+                    val remaining = (construction.remaining(m.tradeSymbol).toInt() - shared.reservedByOthers(ship, site, m.tradeSymbol.name)).coerceAtLeast(0)
                     val units = minOf(me.cargoSpaceLeft, remaining, (spendable / price).toInt(), healthy)
                     // Six units on an 80 hold is a wasted round trip: a load must be a share of the hold, a volume, or the last of the bill.
                     val floor = minOf(remaining, maxOf((me.cargo.capacity * rules.minHaulShare).toInt(), listing?.tradeVolume ?: 1))
@@ -141,13 +142,14 @@ suspend fun BehaviourScope.supplyGate() {
                     continue
                 }
                 material = pick.material
+                shared.reserveDelivery(ship, site, material.name, pick.units)
                 phase("buy", "${pick.units} $material at ${pick.market}") {
                     travelVia(pick.market)
                     dock(ship)
                     val live = refreshMarket(pick.market).good(material)
                     // Another hauler may have finished this material while we flew: re-read the bill before paying.
-                    val stillNeeded = construction(site).remaining(material).toInt()
-                    if (stillNeeded <= 0) { status(detail = "$material is complete; not buying"); return@phase }
+                    val stillNeeded = (construction(site).remaining(material).toInt() - shared.reservedByOthers(ship, site, material.name)).coerceAtLeast(0)
+                    if (stillNeeded <= 0) { status(detail = "$material is covered by the other haulers; not buying"); shared.releaseDelivery(ship); return@phase }
                     val allowed = if (nurse && live != null) {
                         val cap = minOf(pick.units, stillNeeded, MarketHealth.healthyUnits(live, rules))
                         shared.takeBudget.take(pick.market, live, cap, rules, clock.now())
@@ -156,11 +158,12 @@ suspend fun BehaviourScope.supplyGate() {
                         status(detail = "$material at ${pick.market} is ${live?.let { MarketHealth.explain(it, rules) }}; the rate is spent, not buying this visit")
                     } else {
                         val bought = purchase(ship, material, allowed)
+                        shared.reserveDelivery(ship, site, material.name, me.unitsOf(material))
                         if (live != null && bought.units < allowed) shared.takeBudget.refund(pick.market, live, allowed - bought.units, rules, clock.now())
                         status(detail = "bought ${bought.units} $material for ${Intentions.format(bought.credits)} (${bought.averagePrice.toInt()} each); producer read ${live?.let { MarketHealth.describe(it) }}, ${shared.takeBudget.available(pick.market, live ?: return@phase, rules, clock.now())} more this hour")
                     }
                 }
-                if (me.unitsOf(material) == 0) continue
+                if (me.unitsOf(material) == 0) { shared.releaseDelivery(ship); continue }
             }
             val chosen: TradeSymbol = material ?: continue
             phase("haul", "${me.unitsOf(chosen)} $chosen to $site") { travelVia(site) }
@@ -168,12 +171,14 @@ suspend fun BehaviourScope.supplyGate() {
                 dock(ship)
                 val units = me.unitsOf(chosen)
                 val after = supplyConstruction(site, ship, chosen, units)
+                shared.releaseDelivery(ship)
                 val left = after.remaining(chosen)
                 status(detail = "delivered $units $chosen; $left still needed" + if (after.isComplete) "; COMPLETE" else "")
                 try { refuel(ship) } catch (e: VerbFailure) { status(detail = "could not refuel at $site: ${e.message}") }
             }
         }
     } finally {
+        shared.releaseDelivery(ship)
         setChain(ship, null)
     }
 }

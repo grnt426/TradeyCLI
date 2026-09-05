@@ -197,6 +197,20 @@ class SharedState {
 
     fun editPlan(why: String, edit: (Plan) -> Plan) = onPlanEdited(edit, why)
 
+    /** Units of a site's material a ship has claimed to deliver (bought or about to buy), keyed "site/material/ship". */
+    private val deliveries = ConcurrentHashMap<String, Int>()
+
+    fun reserveDelivery(ship: String, site: String, material: String, units: Int) {
+        deliveries.entries.removeIf { it.key.endsWith("/$ship") && it.key.startsWith("$site/") }
+        if (units > 0) deliveries["$site/$material/$ship"] = units
+    }
+
+    fun releaseDelivery(ship: String) = deliveries.entries.removeIf { it.key.endsWith("/$ship") }
+
+    /** What other ships already have in hand for this site and material. */
+    fun reservedByOthers(ship: String, site: String, material: String): Int =
+        deliveries.filterKeys { it.startsWith("$site/$material/") && !it.endsWith("/$ship") }.values.sum()
+
     /** The producers' take-rate buckets, shared by every ship so three haulers do not each take a full load. */
     val takeBudget = knowledge.TakeBudget()
 

@@ -771,7 +771,7 @@ class LineMode(
                 }
             }
         }
-        val supervisor = Supervisor(engine.scope, engine.verbs(), engine.clock, engine::emit, savePlan = { Plan.save(planFile(), it) })
+        val supervisor = Supervisor(engine.scope, engine.verbs(), engine.clock, engine::emit, savePlan = { Plan.save(planFile(), it) }, loadPlan = { runCatching { Plan.load(planFile()) }.getOrNull() })
         val problems = supervisor.apply(plan)
         if (problems.isNotEmpty()) { problems.forEach { err.println(it) }; heartbeat.cancel(); RunLock.release(lockFile); return 1 }
         val startCredits = engine.snapshot.agent?.credits ?: 0
@@ -805,7 +805,12 @@ class LineMode(
         }
         err.println("Running ${plan.assignments.size} assignment(s) for $duration as process ${lease.pid}; Ctrl+C stops early.")
         try {
-            withTimeoutOrNull(duration) { while (supervisor.active.isNotEmpty() && heartbeat.isActive) engine.clock.sleep(kotlin.time.Duration.parse("5s")) }
+            withTimeoutOrNull(duration) {
+                while (supervisor.active.isNotEmpty() && heartbeat.isActive) {
+                    engine.clock.sleep(kotlin.time.Duration.parse("5s"))
+                    supervisor.reloadIfChanged().forEach { err.println("${time(engine.clock.now())} plan.json: $it") }
+                }
+            }
         } finally {
             supervisor.stopAll()
             heartbeat.cancel()

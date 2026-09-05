@@ -33,6 +33,8 @@ class Supervisor(
     private val shared: SharedState = SharedState(),
     /** Called with the plan whenever the supervisor changes it itself (a bought ship gets an assignment). */
     private val savePlan: (Plan) -> Unit = {},
+    /** Reads the plan as it is on disk, so an `assign` typed while the run is going is applied rather than overwritten. */
+    private val loadPlan: () -> Plan? = { null },
 ) {
     private val running = ConcurrentHashMap<String, Running>()
 
@@ -41,21 +43,37 @@ class Supervisor(
 
     init {
         shared.onShipPurchased = { ship ->
-            val assignment = knowledge.Strategy.defaultAssignment(plan.phase, ship, verbs.snapshot())
-            if (assignment != null) change(plan.with(assignment), "assign ${assignment.behaviour} to ${ship.symbol}")
+            val assignment = knowledge.Strategy.defaultAssignment(plan.phase, ship, verbs.snapshot().copy(plan = loadPlan() ?: plan))
+            if (assignment != null) change("assign ${assignment.behaviour} to ${ship.symbol}") { it.with(assignment) }
         }
         shared.onPhaseChanged = { phase ->
             logger.info { "phase ${plan.phase} -> $phase" }
-            change(plan.withPhase(phase), "move to phase $phase")
+            change("move to phase $phase") { it.withPhase(phase) }
             emit(Event.PhaseAdvanced(phase.name, knowledge.Strategy.describe(phase)))
         }
-        shared.onPlanEdited = { edit, why -> change(edit(plan), why) }
+        shared.onPlanEdited = { edit, why -> change(why, edit) }
     }
 
-    /** Applies a plan the supervisor wrote itself and saves it when it is valid. */
+    /** Applies a plan the supervisor wrote itself and saves it when it is valid. The edit is made on top of the file's plan, not a stale copy. */
     private fun change(next: Plan, what: String) {
         val problems = apply(next)
         if (problems.isEmpty()) savePlan(next) else logger.warn { "could not $what: $problems" }
+    }
+
+    /** Applies [edit] to the latest plan on disk (or the running one), so a hand edit made meanwhile survives. */
+    private fun change(what: String, edit: (Plan) -> Plan) {
+        val base = loadPlan() ?: plan
+        change(edit(base), what)
+    }
+
+    /** Applies the plan file when it differs from what is running: `assign` and `phase` in another terminal take effect within seconds. */
+    fun reloadIfChanged(): List<String> {
+        val onDisk = loadPlan() ?: return emptyList()
+        if (onDisk == plan) return emptyList()
+        logger.info { "plan.json changed on disk; applying" }
+        val problems = apply(onDisk)
+        if (problems.isNotEmpty()) logger.warn { "plan.json has problems, keeping the running plan: $problems" }
+        return problems
     }
 
     /** Ships whose behaviour has run to completion since the last change to their assignment. */
@@ -105,7 +123,7 @@ class Supervisor(
                     // The phase may have a next job for a ship that is done; it is applied from outside this coroutine.
                     val snapshot = verbs.snapshot()
                     val next = snapshot.ships[assignment.ship]?.let { knowledge.Strategy.afterFinished(plan.phase, it, assignment.behaviour, snapshot.copy(plan = plan)) }
-                    if (next != null && next != assignment) scope.launch { change(plan.with(next), "follow ${assignment.behaviour} with ${next.behaviour} on ${assignment.ship}") }
+                    if (next != null && next != assignment) scope.launch { change("follow ${assignment.behaviour} with ${next.behaviour} on ${assignment.ship}") { it.with(next) } }
                     return@launch
                 } catch (e: CancellationException) {
                     throw e
