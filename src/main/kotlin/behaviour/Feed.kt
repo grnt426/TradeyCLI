@@ -3,6 +3,7 @@ package behaviour
 import behaviour.decisions.Intentions
 import behaviour.decisions.Selling
 import engine.VerbFailure
+import knowledge.MarketHealth
 import plan.Leg
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -51,6 +52,14 @@ suspend fun BehaviourScope.feed() {
 }
 
 private suspend fun BehaviourScope.runLeg(leg: Leg, reserve: Long) {
+    // A consumer already stocked to the brim pays nothing and grows nothing: let it drain first.
+    snapshot().markets[leg.to]?.good(leg.good)?.let { bid ->
+        if (MarketHealth.saturated(bid)) {
+            status("waiting", "${leg.to} is saturated with ${leg.good} (${MarketHealth.describe(bid)}); letting it drain for 10 minutes")
+            clock.sleep(10.minutes)
+            return
+        }
+    }
     phase("travel to source", "${leg.good} at ${leg.from}") { travelTo(leg.from) }
     val bought = phase("buy", "${leg.good} at ${leg.from}") {
         dock(ship)
@@ -58,6 +67,10 @@ private suspend fun BehaviourScope.runLeg(leg: Leg, reserve: Long) {
         val offer = market.good(leg.good)
         if (offer == null) {
             status(detail = "${leg.from} does not sell ${leg.good} now; skipping the leg")
+            0
+        } else if (MarketHealth.starved(offer)) {
+            // Taking the last of a producer's stock, or buying while its own inputs are unmet, only drives its price up.
+            status(detail = "${leg.from} is starved of ${leg.good} (${MarketHealth.describe(offer)}); not buying")
             0
         } else {
             val spendable = agent().credits - reserve

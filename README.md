@@ -43,7 +43,7 @@ TradeyCLI markets              # imports, exports, and when prices were last rea
 TradeyCLI market X1-AB12-C3
 TradeyCLI shipyards
 TradeyCLI asteroids            # every asteroid ranked by credits per hour for the mining ship
-TradeyCLI trades               # buy-here-sell-there routes ranked by credits per hour
+TradeyCLI trades               # buy-here-sell-there routes ranked by credits per hour weighted by market health (score)
 TradeyCLI intentions           # what the bot is doing and saving for, and the credits trend
 TradeyCLI contracts            # every contract seen: payment, our cost, dates
 TradeyCLI gate                 # the construction bill, what we delivered and spent, cost to finish
@@ -72,7 +72,7 @@ TradeyCLI assign TRIPLEHAT-2 expand                    # the probe parks at the 
 TradeyCLI plan                                         # the plan and its goals, with anything wrong with it
 TradeyCLI unassign TRIPLEHAT-1
 TradeyCLI assign TRIPLEHAT-4 runContract               # negotiate, procure, deliver, fulfil, repeat
-TradeyCLI assign TRIPLEHAT-1 supplyGate --site X1-TH77-I54   # haul the gate's materials, through a fuel stop
+TradeyCLI assign TRIPLEHAT-1 supplyGate --site X1-TH77-I54   # haul the gate's materials; nurses a short producer's inputs instead of buying through it (--nurse off to buy blindly)
 TradeyCLI chain add chips --leg COPPER:X1-TH77-H50/X1-TH77-A3 --ships TRIPLEHAT-3   # worker bees on a chain
 TradeyCLI chain                                        # the chains' ledgers and the damped release policy's verdicts
 TradeyCLI run --for 2h                                 # run the plan, printing every phase, then summarise
@@ -95,6 +95,8 @@ each ship while it runs. A behaviour that throws is restarted with backoff and t
 printed; one that finishes (a probe with nothing left to read) is left alone.
 
 `docs/scripting-rewrite.md` is the design and the strategy the decisions encode.
+`docs/market-mechanics.md` is what we know about how markets move and which knob in
+`knowledge/MarketAssumptions.kt` carries each rule; `gate` prints each producer's health and the inputs to feed it.
 
 ## The simulator
 

@@ -603,11 +603,18 @@ class SimMarket private constructor(
                     baseSell = sell.coerceAtLeast(1.0),
                     basePurchase = purchase.coerceAtLeast(2.0),
                     rules = rules, updatedAt = now,
+                    seedSupply = seen?.supply ?: SupplyLevel.MODERATE,
+                    seedActivity = seen?.activity ?: if (type == TradeGoodType.EXCHANGE) null else ActivityLevel.WEAK,
                 )
             }
             market.imports.forEach { add(it.symbol, TradeGoodType.IMPORT) }
             market.exports.forEach { add(it.symbol, TradeGoodType.EXPORT) }
             market.exchange.forEach { add(it.symbol, TradeGoodType.EXCHANGE) }
+            // An export's production depends on the inputs this market imports (knowledge.ImportMap).
+            val importSymbols = market.imports.map { it.symbol }
+            goods.values.filter { it.type == TradeGoodType.EXPORT }.forEach { export ->
+                export.inputs = knowledge.ImportMap.inputsOf(export.symbol, importSymbols).mapNotNull { goods[it] }
+            }
             return SimMarket(market.symbol, market.imports.map { it.symbol }, market.exports.map { it.symbol }, market.exchange.map { it.symbol }, goods, market.copy(tradeGoods = emptyList()))
         }
     }
@@ -621,9 +628,37 @@ class SimGood(
     private val basePurchase: Double,
     private val rules: SimRules,
     private var updatedAt: Instant,
+    /** The stock and activity the seed showed; the levels move from here as the price moves. */
+    private val seedSupply: SupplyLevel = SupplyLevel.MODERATE,
+    private val seedActivity: ActivityLevel? = ActivityLevel.WEAK,
 ) {
+    /** For an export: the inputs its market imports. Production is constrained while any is short. */
+    var inputs: List<SimGood> = emptyList()
+
     /** 1.0 is the seeded price; selling pushes it down, buying up, time pulls it back. */
     private var pressure = 1.0
+
+    /** Stock reads one level lower for every [SimRules.supplyLevelPerPriceRatio] the price sits above the seed, one higher below it. */
+    fun supply(now: Instant): SupplyLevel {
+        recover(now)
+        val shift = Math.round(Math.log(pressure) / Math.log(rules.supplyLevelPerPriceRatio)).toInt()
+        val levels = SupplyLevel.entries
+        return levels[(seedSupply.ordinal - shift).coerceIn(0, levels.size - 1)]
+    }
+
+    /** Whether this export's inputs are short (LIMITED or worse), which is what RESTRICTED means. */
+    private fun inputsShort(now: Instant): Boolean = inputs.any { it.supply(now) <= SupplyLevel.LIMITED }
+    private fun inputsFed(now: Instant): Boolean = inputs.isNotEmpty() && inputs.all { it.supply(now) >= SupplyLevel.HIGH }
+
+    fun activity(now: Instant): ActivityLevel? = when (type) {
+        TradeGoodType.EXCHANGE -> null
+        TradeGoodType.EXPORT -> when {
+            inputsShort(now) -> ActivityLevel.RESTRICTED
+            recentBought >= rules.growingAfterVolumes -> ActivityLevel.GROWING
+            else -> seedActivity ?: ActivityLevel.WEAK
+        }
+        TradeGoodType.IMPORT -> if (recentSold >= rules.growingAfterVolumes) ActivityLevel.GROWING else seedActivity ?: ActivityLevel.WEAK
+    }
 
     /** Volumes we have recently sold and bought here; each one makes the next hit harder. Decays with recovery. */
     private var recentSold = 0.0
@@ -633,8 +668,15 @@ class SimGood(
     private fun recover(now: Instant) {
         val hours = (now.toEpochMilli() - updatedAt.toEpochMilli()) / 3_600_000.0
         if (hours > 0) {
-            val step = hours * rules.priceRecoveryPerHour
-            pressure = if (pressure < 1.0) (pressure + step).coerceAtMost(1.0) else (pressure - step).coerceAtLeast(1.0)
+            // A producer short of inputs barely recovers; one whose inputs are stocked recovers faster (the official page's rule).
+            val factor = if (type == TradeGoodType.EXPORT && inputs.isNotEmpty()) when {
+                inputs.any { it.supplyQuiet() <= SupplyLevel.LIMITED } -> rules.restrictedRecoveryFactor
+                inputs.all { it.supplyQuiet() >= SupplyLevel.HIGH } -> rules.fedRecoveryFactor
+                else -> 1.0
+            } else 1.0
+            val step = hours * rules.priceRecoveryPerHour * factor
+            val target = if (type == TradeGoodType.EXPORT && inputs.isNotEmpty() && inputs.all { it.supplyQuiet() >= SupplyLevel.HIGH }) rules.fedExportTarget else 1.0
+            pressure = if (pressure < target) (pressure + step).coerceAtMost(target) else (pressure - step).coerceAtLeast(target)
             val fade = Math.pow(0.5, hours) // half of the memory gone per hour
             recentSold *= fade
             recentBought *= fade
@@ -663,15 +705,15 @@ class SimGood(
         recentSold += volumes
     }
 
+    /** The stock level without touching the clock; used while another good is recovering. */
+    private fun supplyQuiet(): SupplyLevel {
+        val shift = Math.round(Math.log(pressure) / Math.log(rules.supplyLevelPerPriceRatio)).toInt()
+        return SupplyLevel.entries[(seedSupply.ordinal - shift).coerceIn(0, SupplyLevel.entries.size - 1)]
+    }
+    private fun pressureNow(): Double = pressure
+
     fun asTradeGood(now: Instant): MarketTradeGood {
         recover(now)
-        val supply = when {
-            pressure > 0.95 -> SupplyLevel.SCARCE
-            pressure > 0.8 -> SupplyLevel.LIMITED
-            pressure > 0.6 -> SupplyLevel.MODERATE
-            pressure > 0.4 -> SupplyLevel.HIGH
-            else -> SupplyLevel.ABUNDANT
-        }
-        return MarketTradeGood(symbol, type, tradeVolume, supply, purchasePrice(now), sellPrice(now), if (type == TradeGoodType.EXCHANGE) null else ActivityLevel.WEAK)
+        return MarketTradeGood(symbol, type, tradeVolume, supply(now), purchasePrice(now), sellPrice(now), activity(now))
     }
 }

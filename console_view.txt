@@ -1,0 +1,56 @@
+╭──────────────────────────────────────────────────────────────┬─────────────────────────────────────────┬─────────────────────────────────────────┬────────────────────╮
+  2.00M                           ▁████████████████████████
+                                   ▂▁▁▂▂█▆█████████████████
+                                        ▃ ▄▆███████████████
+                                             ▁▃▅▆██████████
+                                                  ▂▄▅▇█████
+  1.34M                                               ▁▂▄▆█
+        last 51m                          next 25m
+now 1,543,480   +938,855/h   in 25m: ~2,000,967
+│System View                                                   │Waypoints In X1-TH77                     │Waypoint View                            │Waypoint X1-TH77-F47│
+│                                           A                  │X1-TH77-F47 ORBITAL_STATION@-49,58       │                .                        │Orbitals: 0         │
+│         A      A                                  A          │X1-TH77-F46 PLANET@-49,58                │        .           .                    │Orbits X1-TH77-F46  │
+│                                                              │X1-TH77-H50 PLANET@-17,-42               │                ██████▓█                 │Traits: ROCKY, OUTPO│
+│                                                              │X1-TH77-B13 ASTEROID@-338,-44            │              ██▓███▓█████               │ST, TERRAFORMED, HIG│
+│           A                                                  │X1-TH77-H51 MOON@-17,-42                 │             ██████▓▓████▓█        .     │H_TECH, MARKETPLACE │
+│                                                   A          │X1-TH77-B11 ASTEROID@-328,58             │            █▓▓█▓▓▓█████▓███             │Modifiers:          │
+│                                                    A         │X1-TH77-B9 ASTEROID@-320,10              │            █▓██▓████▓██████             │                    │
+│                                                     A A      │X1-TH77-C39 ORBITAL_STATION@152,-26      │            ▓████████▓██▓█▓█             │                    │
+│                                                              │X1-TH77-B19 ASTEROID@252,-283            │             ██▓█████▓█▓███              │                    │
+│    A                                                     A   │X1-TH77-K76 PLANET@101,38                │    .         ██▓▓██████▓█               │                    │
+│                                                              │X1-TH77-B16 ASTEROID@-250,-287           │                █▓██▓██▓                 │                    │
+│                            M                              A  │X1-TH77-B7 ASTEROID_BASE@-341,55         │      .                                  │                    │
+│                                                              │X1-TH77-C38 GAS_GIANT@152,-26            ├────────────────────┬────────────────────┼────────────────────┤
+│  A                          M                                │X1-TH77-B17 ASTEROID@-173,-273           │Imports             │Exports             │Exchange            │
+│                             E     M   F   G               A  │X1-TH77-B14 ASTEROID@-316,-119           │IRON, QUARTZ_SAND, S│FAB_MATS, ELECTRONIC│FUEL                │
+│                            O S                               │X1-TH77-H52 MOON@-17,-42                 │ILICON_CRYSTALS, COP│S                   │                    │
+│   A                                                          │X1-TH77-B6 FUEL_STATION@-110,155         │PER                 │                    │                    │
+│                                  M   P                       │X1-TH77-B15 ASTEROID@-232,-214           ├────────────────────┴────────────────────┴────────────────────┤
+│  AA                      P                                   │X1-TH77-H53 MOON@-17,-42                 │Prices                                                        │
+│                                                              │X1-TH77-B23 ASTEROID@281,-165            │FAB_MATS ASK:635 BUY:1304 VOL: 20 SUP: HIGH ACT: WEAK         │
+│                                                              │X1-TH77-B24 ASTEROID@353,-17             │IRON ASK:134 BUY:280 VOL: 60 SUP: MODERATE ACT: WEAK          │
+│                                                              │X1-TH77-B21 ASTEROID@160,-302            │QUARTZ_SAND ASK:24 BUY:48 VOL: 60 SUP: MODERATE ACT: WEAK     │
+│                                                     A        │X1-TH77-B22 ASTEROID@266,-173            │ELECTRONICS ASK:915 BUY:1948 VOL: 20 SUP: MODERATE ACT: WEAK  │
+│                     F                                     A  │X1-TH77-C40 FUEL_STATION@113,-19         │SILICON_CRYSTALS ASK:39 BUY:82 VOL: 60 SUP: MODERATE ACT: WEAK│
+│                                           F                  │X1-TH77-A2 MOON@-25,3                    │COPPER ASK:292 BUY:604 VOL: 60 SUP: LIMITED ACT: WEAK         │
+│                                                              │X1-TH77-A3 MOON@-25,3                    │FUEL ASK:68 BUY:72 VOL: 180 SUP: MODERATE ACT: null           │
+│       A                                                      │X1-TH77-A1 PLANET@-25,3                  ├──────────────────────────────────────────────────────────────┤
+│                                                              │X1-TH77-G48 PLANET@62,-19                │Credits                                                       │
+│                                                              │X1-TH77-G49 MOON@62,-19                  │                                                              │
+│              AA                              A               │X1-TH77-B29 ASTEROID@194,283             │                                                              │
+├─────────────────────────────────────────┬────────────────────┼────────────────────┬────────────────────┴──────────────────────────────────────────────────────────────┤
+│Fleet Status: X1-TH77                    │Agent               │Job Pressure        │Intentions                                                                         │
+│1 [C] trade: travel to destination (64.0s│TRIPLEHAT: $1543480 │                    │TRIPLEHAT-1 trade: travel to destination X1-TH77-D41                               │
+│)                                        │2 🚀 2 📰           │                    │TRIPLEHAT-2 probeMarkets: finished (read 1 markets; nothing left to read)          │
+│ Destination @ X1-TH77-D41               │                    │                    │Trading: 24 loads sold in the last hour, net +1,057,722 after fuel; mostly         │
+│ * 40 Synthetic Fabrics                  │                    │====================│  ADVANCED_CIRCUITRY, SHIP_PLATING, JEWELRY                                        │
+│2 [S] probeMarkets: done                 │                    │00000000000000000000│Bank 1,543,480, trending +938,855/h over the last half hour                        │
+│                                         │                    │                    │Ready to buy LIGHT_SHUTTLE #1 of 2 at 94,186: waiting for a trader to dock at      │
+│                                         │                    │                    │  X1-TH77-A2                                                                       │
+├─────────────────────────────────────────┼────────────────────┴────────────────────┼─────────────────────────────────────────┬─────────────────────────────────────────┤
+│Command                                  │Notifications                            │Console Stats                            │Plan                                     │
+│TRIPLEHAT-1#COMMAND IN_TRANSIT@X1-TH77-D4│ + Welcome, TRIPLEHAT                    │Requests 3 | Errors 0 | Throttled 0 | Beh│TRIPLEHAT-1 trade                        │
+│1                                        │ + X1-TH77 loaded                        │aviours 2                                │TRIPLEHAT-2 probeMarkets                 │
+│ C: 40/40 F: 134/400 travel to destinatio│                                         │                                         │fleet: 2 x LIGHT_SHUTTLE, reserve 150,0  │
+│n X1-TH77-D41                            │                                         │                                         │                                         │
+╰─────────────────────────────────────────┴─────────────────────────────────────────┴─────────────────────────────────────────┴─────────────────────────────────────────╯

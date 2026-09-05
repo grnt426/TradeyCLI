@@ -41,7 +41,7 @@ class TradingTest {
         assertTrue(fabrics.profit < 40L * fabrics.marginPerUnit, "impact discounts the naive margin: ${fabrics.profit} vs ${40 * fabrics.marginPerUnit}")
         assertTrue(fabrics.profit > 25_000, fabrics.summary())
         assertTrue(plans.first().creditsPerHour > 50_000, "the best run beats mining by a wide margin: ${plans.first().summary()}")
-        assertEquals(plans.sortedByDescending { it.creditsPerHour }, plans)
+        assertEquals(plans.sortedByDescending { it.score }, plans, "sorted by health-weighted score")
     }
 
     @Test
@@ -85,7 +85,7 @@ class TradingTest {
         val report = SimRun(seed, plan, hours = 6).run()
         assertTrue(report.failures.isEmpty(), report.failures.toString())
         val purchase = report.trace.events.filterIsInstance<Event.ShipPurchased>()
-        assertEquals(1, purchase.size, "exactly one shuttle: ${purchase}")
+        assertEquals(1, purchase.size, "exactly one shuttle: ${purchase}; credits by hour ${report.creditsByHour}; phases ${report.trace.phases.filter { it.first == Fixtures.COMMAND_SHIP }.map { it.second.phase + ": " + it.second.detail }.take(30)}")
         val shuttle = purchase.first().ship
         assertTrue(report.trace.phaseNames(shuttle).contains("sell"), "the shuttle traded: ${report.trace.phaseNames(shuttle).distinct()}")
         assertTrue(report.earned > 0)

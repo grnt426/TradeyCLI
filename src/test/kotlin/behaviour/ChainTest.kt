@@ -79,7 +79,7 @@ class ChainTest {
         val tagged = report.trace.tagged
         assertTrue(tagged.isNotEmpty() && tagged.all { it.second == "chips" })
         val goods = tagged.map { it.first.tradeSymbol }.toSet()
-        assertTrue(goods.containsAll(setOf(TradeSymbol.SILICON_CRYSTALS, TradeSymbol.COPPER, TradeSymbol.MICROPROCESSORS)), goods.toString())
+        assertTrue(goods.containsAll(setOf(TradeSymbol.SILICON_CRYSTALS, TradeSymbol.COPPER, TradeSymbol.MICROPROCESSORS)), goods.toString() + " phases: " + report.trace.phases.filter { it.first == Fixtures.COMMAND_SHIP }.map { it.second.phase + ": " + it.second.detail }.toString())
         val phases = report.trace.phaseNames(Fixtures.COMMAND_SHIP).distinct()
         assertTrue(phases.containsAll(listOf("travel to source", "buy", "travel to destination", "deliver")), phases.toString())
         assertNull(report.trace.tagged.firstOrNull { it.first.tradeSymbol == TradeSymbol.FUEL && it.second != "chips" })

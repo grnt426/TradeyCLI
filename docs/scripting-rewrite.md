@@ -219,6 +219,13 @@ Each lands green and behind `scriptsEnabled` until the last one.
 
 ## Where it stands (2026-09-04)
 
+Evening: market health became data. `knowledge/MarketAssumptions.kt` holds the type, supply and
+activity weights (and the healthy take per visit, and the nursing knobs), `knowledge/ImportMap.kt` what each
+export is made from, and `docs/market-mechanics.md` the sources and measurements behind every number. The
+trade ranking sorts by health-weighted score, chain bees skip saturated consumers and starved producers, and
+the gate hauler nurses a producer's inputs when it may not take from it. The simulator carries the same
+rules as guesses in `SimRules`.
+
 Landed: verbs, simulator and conformance test (milestone 1); `probeMarkets` and `mineAndSell`
 with their pure decisions (`behaviour/decisions/`), phase reporting and checkpoints (2);
 `plan.json`, `assign`, `unassign`, `plan`, `run` and the supervisor (3); the old layer deleted

@@ -67,6 +67,21 @@ data class SimRules(
     /** Trade volume for goods at markets whose prices were never seen. */
     val defaultTradeVolume: Int = 20,
 
+    /**
+     * Supply and activity, after the official markets page (docs/market-mechanics.md). Stock moves
+     * one level per this price ratio away from the seed (guess: 200 FAB_MATS bought live moved
+     * HIGH -> LIMITED while the price went 1,256 -> 1,975, about two levels for 1.57x).
+     */
+    val supplyLevelPerPriceRatio: Double = 1.25,
+    /** An export whose producer imports are LIMITED or worse is RESTRICTED and recovers this much slower. Guess from "a slower decrease in export prices". */
+    val restrictedRecoveryFactor: Double = 0.25,
+    /** An export whose inputs are all HIGH or better recovers this much faster. Guess. */
+    val fedRecoveryFactor: Double = 2.0,
+    /** Recent volumes bought (exports) or sold (imports) before the listing reads GROWING. Guess. */
+    val growingAfterVolumes: Double = 0.5,
+    /** Where an export's price settles, as a share of the seed, while its inputs are all HIGH or better: stock builds, so one supply level up. Guess. */
+    val fedExportTarget: Double = 0.8,
+
     /** Contracts: pay this multiple of the goods' sale value at the destination (the live offer paid 2.6x), with this long to deliver. */
     val contractPayMultiple: Double = 2.6,
     val contractDeadlineHours: Long = 24 * 7,

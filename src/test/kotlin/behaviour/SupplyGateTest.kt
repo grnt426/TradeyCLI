@@ -21,7 +21,7 @@ class SupplyGateTest {
         val report = SimRun(pricedSeed(), plan, hours = 4).run()
         assertTrue(report.failures.isEmpty(), report.failures.toString())
         val supplied = report.trace.events.filterIsInstance<Event.Supplied>()
-        assertTrue(supplied.size >= 3, "several loads in four hours: ${supplied.size}")
+        assertTrue(supplied.size >= 3, "several loads in four hours: ${supplied.size}; phases ${report.trace.phases.filter { it.first == Fixtures.COMMAND_SHIP }.map { it.second.phase + ": " + it.second.detail }}")
         assertTrue(supplied.all { it.site == "X1-TH77-I54" })
         assertTrue(supplied.map { it.good }.toSet().isNotEmpty())
         assertEquals(supplied.sumOf { it.units }, report.trace.supplies.sumOf { it.units })

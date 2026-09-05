@@ -330,11 +330,11 @@ class LineMode(
         val ship = (shipArg?.let { snap.ships[it] } ?: snap.ships.values.filter { it.cargo.capacity > 0 }.maxByOrNull { it.cargo.capacity })
             ?: return err.println("No ship with a cargo hold; name one with --ship")
         val plans = behaviour.decisions.Trading.rank(snap, ship, engine.clock.now())
-        err.println("Ranked for ${ship.symbol} (cargo ${ship.cargo.capacity}, speed ${ship.engine.speed}, ${snap.agent?.credits} credits) from ${ship.nav.waypointSymbol}; prices as last read, impact of our own trades discounted.")
+        err.println("Ranked for ${ship.symbol} (cargo ${ship.cargo.capacity}, speed ${ship.engine.speed}, ${snap.agent?.credits} credits) from ${ship.nav.waypointSymbol}; prices as last read, impact of our own trades discounted; score = cr/h weighted by market health (knowledge.MarketAssumptions).")
         table(
-            listOf("good", "buy at", "price", "sell at", "price", "units", "profit", "cr/h", "cycle", "legs"),
+            listOf("good", "buy at", "price", "sell at", "price", "units", "profit", "cr/h", "score", "cycle", "legs", "health"),
             plans.take(args.indexOf("--all").let { if (it >= 0) plans.size else 25 }).map { p ->
-                listOf(p.good.name, p.source.symbol, p.buyPrice.toString(), p.destination.symbol, p.sellPrice.toString(), p.units.toString(), p.profit.toString(), p.creditsPerHour.toInt().toString(), "${p.cycleSeconds / 60}m", "${p.legToSource.toInt()}+${p.legToDestination.toInt()}")
+                listOf(p.good.name, p.source.symbol, p.buyPrice.toString(), p.destination.symbol, p.sellPrice.toString(), p.units.toString(), p.profit.toString(), p.creditsPerHour.toInt().toString(), p.score.toInt().toString(), "${p.cycleSeconds / 60}m", "${p.legToSource.toInt()}+${p.legToDestination.toInt()}", p.health)
             },
         )
     }
@@ -482,6 +482,32 @@ class LineMode(
                 )
             },
         )
+        // The producers' health: whether the hauler may buy now, and which inputs it should feed instead.
+        val rules = knowledge.MarketAssumptions()
+        construction.materials.filter { it.required > it.fulfilled }.forEach { m ->
+            val producers = snap.marketsIn(snap.hqSystem ?: "").mapNotNull { market -> market.good(m.tradeSymbol)?.let { market to it } }
+                .filter { (_, g) -> g.type == model.market.TradeGoodType.EXPORT }
+            producers.forEach { (market, listing) ->
+                out.println("${m.tradeSymbol} at ${market.symbol}: ${knowledge.MarketHealth.explain(listing, rules)}; read ${age(market.lastRead)} ago")
+                val inputs = knowledge.MarketHealth.starvedInputs(market, m.tradeSymbol)
+                if (inputs.isNotEmpty()) table(
+                    listOf("input", "supply/activity", "pays", "cheapest healthy source", "price", "source health"),
+                    inputs.map { input ->
+                        val source = snap.marketsIn(snap.hqSystem ?: "").filter { it.symbol != market.symbol }
+                            .mapNotNull { s -> s.good(input.symbol)?.let { s to it } }
+                            .filter { (_, o) -> !knowledge.MarketHealth.starved(o, rules) }
+                            .minByOrNull { (_, o) -> o.purchasePrice }
+                        listOf(input.symbol.name, knowledge.MarketHealth.describe(input), input.sellPrice.toString(), source?.first?.symbol ?: "-", source?.second?.purchasePrice?.toString() ?: "-", source?.second?.let { knowledge.MarketHealth.describe(it) } ?: "-")
+                    },
+                )
+            }
+        }
+    }
+
+    private fun age(at: java.time.Instant?): String {
+        if (at == null) return "never"
+        val minutes = java.time.Duration.between(at, engine.clock.now()).toMinutes()
+        return if (minutes < 90) "${minutes}m" else "${minutes / 60}h"
     }
 
     private suspend fun extractions() {

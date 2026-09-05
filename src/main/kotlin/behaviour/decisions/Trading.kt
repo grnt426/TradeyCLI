@@ -8,6 +8,8 @@ import model.ship.FlightMode
 import model.ship.Ship
 import model.system.Waypoint
 import java.time.Instant
+import knowledge.MarketAssumptions
+import knowledge.MarketHealth
 import kotlin.math.min
 
 /** Buy [good] at [source], sell it at [destination], and what that should pay. */
@@ -26,6 +28,10 @@ data class TradePlan(
     val creditsPerHour: Double,
     val legToSource: Double,
     val legToDestination: Double,
+    /** Credits per hour weighted by how healthy the buy and the sell are for the markets (see [knowledge.MarketAssumptions]). */
+    val score: Double = creditsPerHour,
+    /** The listings' supply/activity at both ends, for the eye. */
+    val health: String = "",
 ) {
     val marginPerUnit: Int get() = sellPrice - buyPrice
     fun summary(): String =
@@ -54,6 +60,8 @@ data class TradingAssumptions(
      * the market for good; leaving 15% on the table keeps the route alive.
      */
     val minMarginRatio: Double = 0.15,
+    /** How the listings' type, supply and activity weight a route; the knowledge lives in [knowledge.MarketAssumptions]. */
+    val market: MarketAssumptions = MarketAssumptions(),
 ) {
     /** The smallest margin worth having on a unit bought at [buyPrice]. */
     fun floor(buyPrice: Double): Double = maxOf(minMarginPerUnit.toDouble(), buyPrice * minMarginRatio)
@@ -78,9 +86,13 @@ object Trading {
             val legToSource = Travel.distance(here.x, here.y, sourceWaypoint.x, sourceWaypoint.y)
             if (ship.usesFuel && Travel.fuelCost(legToSource, FlightMode.CRUISE) > ship.fuel.capacity) continue
             for (offer in source.tradeGoods) {
+                val sourceWeight = MarketHealth.sourceWeight(offer, assumptions.market)
+                if (sourceWeight <= 0.0) continue
                 for (destination in markets) {
                     if (destination.symbol == source.symbol) continue
                     val bid = destination.good(offer.symbol) ?: continue
+                    val destinationWeight = MarketHealth.destinationWeight(bid, assumptions.market)
+                    if (destinationWeight <= 0.0) continue
                     if (bid.sellPrice - offer.purchasePrice < assumptions.floor(offer.purchasePrice.toDouble())) continue
                     val destinationWaypoint = snapshot.waypoints[destination.symbol] ?: continue
                     val legToDestination = Travel.distance(sourceWaypoint.x, sourceWaypoint.y, destinationWaypoint.x, destinationWaypoint.y)
@@ -92,11 +104,16 @@ object Trading {
                     if (profit <= 0) continue
                     val seconds = (if (legToSource > 0) Travel.seconds(legToSource, FlightMode.CRUISE, ship.engine.speed) else 0L) +
                         Travel.seconds(legToDestination, FlightMode.CRUISE, ship.engine.speed) + assumptions.overheadSeconds
-                    plans += TradePlan(offer.symbol, source, destination, offer.purchasePrice, bid.sellPrice, load.units, profit, seconds, profit.toDouble() / seconds * 3600, legToSource, legToDestination)
+                    val perHour = profit.toDouble() / seconds * 3600
+                    plans += TradePlan(
+                        offer.symbol, source, destination, offer.purchasePrice, bid.sellPrice, load.units, profit, seconds, perHour, legToSource, legToDestination,
+                        score = perHour * sourceWeight * destinationWeight,
+                        health = "${offer.type.name.lowercase()} ${MarketHealth.describe(offer)} -> ${bid.type.name.lowercase()} ${MarketHealth.describe(bid)}",
+                    )
                 }
             }
         }
-        return plans.sortedByDescending { it.creditsPerHour }
+        return plans.sortedByDescending { it.score }
     }
 
     data class Load(val units: Int, val cost: Long, val revenue: Long) {
