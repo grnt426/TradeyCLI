@@ -25,8 +25,8 @@ class SystemView : WidgetView() {
 
     private val map: SystemMap = SystemMap(
         model = { model!! },
-        onSelectWaypoint = { selectedWaypoint = it; selectedShip = null; selectedStar = false; it?.let(list::selectKey) },
-        onSelectShip = { selectedShip = it; selectedStar = false },
+        onSelectWaypoint = { selectedWaypoint = it; selectedShip = null; selectedStar = false; model?.selectedWaypoint = it; it?.let(list::selectKey) },
+        onSelectShip = { selectedShip = it; selectedStar = false; model?.selectedShip = it },
         onSelectStar = { selectedShip = null; selectedStar = true },
     )
     private val list: Table = Table(
@@ -42,6 +42,7 @@ class SystemView : WidgetView() {
                 selectedShip = null
                 selectedStar = false
                 map.selectedWaypoint = row.key
+                model?.selectedWaypoint = row.key
             }
         },
         onActivate = { row: Table.Row -> map.centreOnKey(row.key) },

@@ -264,7 +264,8 @@ class Engine(
         store.listCheckpoints().forEach { c ->
             world.shipStatus[c.id] = ShipStatus(c.behaviour, c.phase, c.detail, c.updatedAt)
         }
-        world.creditsHistory = store.listCredits(since)
+        // The bank's history goes back further than the transactions: the chart shows the whole afternoon.
+        world.creditsHistory = store.listCredits(clock.now().minus(java.time.Duration.ofHours(6)))
         world.recentTransactions = store.listTransactions(since)
         world.taggedTransactions = store.listTaggedTransactions()
         world.ledger = store.listLedger()

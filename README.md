@@ -40,8 +40,10 @@ charting, market health), and the plan's notes. Every panel prints a bounded num
 A second console is being built beside the dashboard (`docs/console-redesign.md`). `bridge.bat`
 builds it into its own folder, `build/install-bridge/`, so rebuilding it never disturbs a `run`
 started from `build/install/`, and launches `TradeyCLI bridge`. It only watches: boot, then follow
-the store. `q` quits; number keys, F-keys or a click on the bottom bar switch screens; Tab moves
-focus; arrows and clicks pick rows. `TradeyCLI bridge --frame --no-boot --size 160x45` prints one
+the store. Screens: the bridge (the old console's panels), the system map, a waypoint up close
+with its portrait and market, a ship up close, and a terminal diagnostics screen. `q` quits;
+number keys, F-keys or a click on the bottom bar switch screens; Tab moves focus; arrows and
+clicks pick rows; Enter or a double click opens or centres. `TradeyCLI bridge --frame --no-boot --size 160x45` prints one
 frame as text without a terminal, which is how it is checked from a shell; `--wait` boots first,
 `--ansi` keeps the colours, `--sim` renders from the simulator, `--view NAME` picks the screen, and
 `--bench 200` reports bytes and milliseconds per frame.

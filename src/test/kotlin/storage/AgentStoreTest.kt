@@ -69,6 +69,21 @@ class AgentStoreTest {
     }
 
     @Test
+    fun `the current database's WAL sidecars are not mistaken for older resets`() = runBlocking {
+        val dir = tempDir()
+        File(dir, "data-2026-08-30.db-wal").writeText("")
+        File(dir, "data-2026-08-30.db-shm").writeText("")
+        File(dir, "data-2026-08-23.db").writeText("old")
+        File(dir, "data-2026-08-23.db-wal").writeText("")
+        AgentStore.archiveOlderResets(dir, "2026-08-30")
+        assertTrue(File(dir, "data-2026-08-30.db-wal").exists(), "the live WAL stays put")
+        assertTrue(File(dir, "data-2026-08-30.db-shm").exists(), "the live shm stays put")
+        assertFalse(File(dir, "data-2026-08-23.db").exists())
+        assertTrue(File(dir, "archive/data-2026-08-23.db").exists())
+        assertTrue(File(dir, "archive/data-2026-08-23.db-wal").exists(), "an older reset's sidecar goes with it")
+    }
+
+    @Test
     fun `databases from earlier resets are archived on open`() = runBlocking {
         val dir = tempDir()
         AgentStore.open(dir, "TEST", "2026-08-23").close()

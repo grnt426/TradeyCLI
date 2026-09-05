@@ -6,6 +6,7 @@ import bridge.Format
 import bridge.canvas.DotCanvas
 import bridge.canvas.Painter
 import bridge.glyphs.Palette
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -30,8 +31,13 @@ class CreditsChart(
         if (chartW < 8 || chartH < 2) return
         val mode = dots()
         val canvas = DotCanvas(chartW, chartH, mode)
-        val projection = canvas.dotsW / 4
-        val graph = CreditsTrend.graph(points, now(), historyColumns = canvas.dotsW - projection, projectionColumns = projection)
+        // Buckets sized so the history held fills the width, then a short projection: a quarter hour.
+        val at = now()
+        val held = Duration.between(points.first().at, at).coerceAtLeast(Duration.ofMinutes(30))
+        val bucketSeconds = ((held.seconds + PROJECTION.seconds) / canvas.dotsW).coerceAtLeast(15)
+        val bucket = Duration.ofSeconds(bucketSeconds)
+        val projection = Math.ceil(PROJECTION.seconds.toDouble() / bucketSeconds).toInt().coerceIn(2, canvas.dotsW / 2)
+        val graph = CreditsTrend.graph(points, at, bucket = bucket, historyColumns = canvas.dotsW - projection, projectionColumns = projection)
         // Anchored at zero with a round ceiling, so the scale only moves when the bank crosses a round number.
         val ceiling = niceCeiling(graph.max)
         fun dy(v: Long): Int = ((ceiling - v).toDouble() / ceiling * (canvas.dotsH - 1)).toInt().coerceIn(0, canvas.dotsH - 1)
@@ -56,21 +62,23 @@ class CreditsChart(
         val splitX = labelWidth + 1 + (canvas.dotsW - projection) / mode.dotsX
         p.vline(splitX, 0, chartH, '┆', Palette.track)
 
-        val bucketMinutes = graph.projectionSpan.toMinutes()
-        val historyMinutes = graph.columns.count { !it.projected } * graph.projectionSpan.toMinutes() / projection.coerceAtLeast(1)
-        p.text(labelWidth + 1, chartH, "-${Format.span(java.time.Duration.ofMinutes(historyMinutes))}", Palette.textDim)
-        p.text(splitX - 1, chartH, "now", Palette.textDim)
-        p.textRight(p.width, chartH, "+${bucketMinutes}m", Palette.textDim)
+        val ahead = graph.projectionSpan.toMinutes()
+        p.text(labelWidth + 1, chartH, "-${Format.span(graph.historySpan)}", Palette.textDim)
+        p.textRight(splitX + 1, chartH, "now", Palette.textDim)
+        if (p.width - splitX > 6) p.textRight(p.width, chartH, "+${ahead}m", Palette.textDim)
 
         val trend = graph.trend
         val rate = (if (trend.perHour >= 0) "+" else "") + Format.compact(trend.perHour.toLong()) + "/h"
         var x = 0
         x += p.text(x, chartH + 1, Format.credits(trend.nowValue.toLong()), Palette.textBright) + 2
         x += p.text(x, chartH + 1, rate, if (trend.perHour >= 0) Palette.good else Palette.bad) + 2
-        p.text(x, chartH + 1, "→ ~${Format.compact(graph.projectedEnd.toLong())} in ${bucketMinutes}m", Palette.warn)
+        p.text(x, chartH + 1, "→ ~${Format.compact(graph.projectedEnd.toLong())} in ${ahead}m", Palette.warn)
     }
 
     companion object {
+        /** How far the trend is drawn ahead. Longer looked impressive and predicted nothing. */
+        private val PROJECTION: Duration = Duration.ofMinutes(15)
+
         private val STEPS = doubleArrayOf(1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0)
 
         /** The smallest of 1, 1.5, 2, 3, 4, 5, 6, 8 times a power of ten that is at least [v]. */

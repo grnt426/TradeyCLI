@@ -21,6 +21,13 @@ value class Rgb(val packed: Int) {
         )
     }
 
+    /** Rounded to [levels] steps per channel: fewer distinct colours, so runs of cells share one style. */
+    fun quantize(levels: Int = 32): Rgb {
+        val q = 256 / levels
+        fun ch(v: Int) = ((v / q) * q + q / 2).coerceAtMost(255)
+        return Rgb(ch(r), ch(g), ch(b))
+    }
+
     /** Brightness scaled by [f]; 0 is black, 1 is unchanged, above 1 brightens. */
     fun scale(f: Double): Rgb = Rgb((r * f).toInt(), (g * f).toInt(), (b * f).toInt())
 

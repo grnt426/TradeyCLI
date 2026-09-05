@@ -12,8 +12,10 @@ import bridge.tty.MordantTty
 import bridge.tty.Size
 import bridge.tty.Tty
 import bridge.views.HomeView
+import bridge.views.ShipView
 import bridge.views.SpikeView
 import bridge.views.SystemView
+import bridge.views.WaypointView
 import cli.LineMode
 import engine.Engine
 import engine.Snapshot
@@ -23,6 +25,7 @@ import kotlinx.coroutines.runBlocking
 import model.BootProgress
 import model.exceptions.BootFailure
 import startup.BootManager
+import storage.PriceObservation
 import java.time.Instant
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
@@ -39,6 +42,36 @@ class BridgeModel(private val engine: Engine, val mode: String) {
     /** The screen's current size, for views that need to know where the bottom is. */
     var width: Int = 0
     var height: Int = 0
+
+    /** What the screens agree is selected: picking a ship on one screen shows it on the others. */
+    var selectedWaypoint: String? = null
+    var selectedShip: String? = null
+
+    /** A view asks for another view by name; the shell switches on the next frame. */
+    var pendingView: String? = null
+    fun navigateTo(name: String) { pendingView = name }
+
+    private class CachedPrices(val fetchedAt: Long, val observations: List<PriceObservation>)
+    private val priceCache = java.util.concurrent.ConcurrentHashMap<String, CachedPrices>()
+
+    /**
+     * The last day of price reads at [market] from the store, refreshed in the background at most
+     * once a minute; empty until the first read lands.
+     */
+    fun prices(market: String): List<PriceObservation> {
+        val cached = priceCache[market]
+        val nowNanos = System.nanoTime()
+        if (cached == null || nowNanos - cached.fetchedAt > 60_000_000_000L) {
+            priceCache[market] = CachedPrices(nowNanos, cached?.observations ?: emptyList())
+            val store = engine.store
+            if (store != null) engine.scope.launch {
+                runCatching { store.listPrices(market, now().minus(java.time.Duration.ofHours(24))) }
+                    .onSuccess { priceCache[market] = CachedPrices(System.nanoTime(), it) }
+                    .onFailure { logger.warn(it) { "reading prices for $market failed" } }
+            }
+        }
+        return cached?.observations ?: emptyList()
+    }
 
     private val feedLines = ArrayDeque<FeedLine>()
 
@@ -79,7 +112,7 @@ class BridgeModel(private val engine: Engine, val mode: String) {
 
 /**
  * The new console: `TradeyCLI bridge [--agent SYMBOL] [--sim[=FACTOR]] [--no-boot] [--fps N]
- * [--view NAME] [--frame [--size WxH] [--ansi] [--wait]] [--bench FRAMES]`. Without `--frame` or
+ * [--view NAME] [--select SYMBOL] [--frame [--size WxH] [--ansi] [--wait]] [--bench FRAMES]`. Without `--frame` or
  * `--bench` it takes the terminal and runs until `q`, Escape or Ctrl+C; `--frame` prints one frame to
  * stdout and exits, which is how the look is checked from a shell with no TTY; `--bench` renders
  * frames headless and reports what each would cost the terminal.
@@ -98,6 +131,7 @@ object Bridge {
         var fps = DEFAULT_FPS
         var bench = 0
         var viewName: String? = null
+        var select: String? = null
         var i = 0
         while (i < args.size) {
             val a = args[i]
@@ -115,6 +149,7 @@ object Bridge {
                 a == "--fps" && i + 1 < args.size -> fps = args[++i].toIntOrNull()?.coerceIn(1, 60) ?: return usage("bad --fps")
                 a == "--bench" && i + 1 < args.size -> bench = args[++i].toIntOrNull()?.coerceAtLeast(1) ?: return usage("bad --bench")
                 a == "--view" && i + 1 < args.size -> viewName = args[++i]
+                a == "--select" && i + 1 < args.size -> select = args[++i]
                 a == "--help" || a == "-h" -> return usage(null)
                 else -> return usage("unknown argument $a")
             }
@@ -127,10 +162,12 @@ object Bridge {
         model.followEvents()
         if (boot) startBoot(engine, sim, agent)
 
-        val shell = Shell(listOf(HomeView(), SystemView(), SpikeView()), model)
+        // A ship or waypoint symbol; each screen looks it up in its own table, so one flag serves both.
+        select?.let { model.selectedShip = it; model.selectedWaypoint = it }
+        val shell = Shell(listOf(HomeView(), SystemView(), WaypointView(), ShipView(), SpikeView()), model)
         if (viewName != null && !shell.show(viewName)) return usage("no view '$viewName'; views: ${shell.views.joinToString { it.title }}")
         return when {
-            bench > 0 -> bench(shell, model, size, fps, bench)
+            bench > 0 -> bench(shell, model, size, fps, bench, wait)
             frame -> renderOnce(shell, model, size, ansi, wait)
             else -> loop(shell, model, fps)
         }
@@ -138,7 +175,7 @@ object Bridge {
 
     private fun usage(problem: String?): Int {
         if (problem != null) System.err.println(problem)
-        System.err.println("usage: TradeyCLI bridge [--agent SYMBOL] [--sim[=FACTOR]] [--no-boot] [--fps N] [--view NAME] [--frame [--size WxH] [--ansi] [--wait]] [--bench FRAMES [--size WxH]]")
+        System.err.println("usage: TradeyCLI bridge [--agent SYMBOL] [--sim[=FACTOR]] [--no-boot] [--fps N] [--view NAME] [--select SYMBOL] [--frame [--size WxH] [--ansi] [--wait]] [--bench FRAMES [--size WxH]]")
         return if (problem == null) 0 else 1
     }
 
@@ -168,16 +205,19 @@ object Bridge {
         }
     }
 
-    private fun renderOnce(shell: Shell, model: BridgeModel, size: Size, ansi: Boolean, wait: Boolean): Int {
-        if (wait) {
-            runBlocking {
-                val deadline = System.nanoTime() + 60.seconds.inWholeNanoseconds
-                while (BootProgress.current != null || (model.snapshot().agent == null && BootProgress.failure == null)) {
-                    if (System.nanoTime() > deadline) break
-                    kotlinx.coroutines.delay(100)
-                }
+    /** Blocks until the background boot has finished or failed, a minute at most. */
+    private fun awaitBoot(model: BridgeModel) {
+        runBlocking {
+            val deadline = System.nanoTime() + 60.seconds.inWholeNanoseconds
+            while (BootProgress.current != null || (model.snapshot().agent == null && BootProgress.failure == null)) {
+                if (System.nanoTime() > deadline) break
+                kotlinx.coroutines.delay(100)
             }
         }
+    }
+
+    private fun renderOnce(shell: Shell, model: BridgeModel, size: Size, ansi: Boolean, wait: Boolean): Int {
+        if (wait) awaitBoot(model)
         model.ttyDescription = "headless ${size.width}x${size.height}"
         model.width = size.width
         model.height = size.height
@@ -188,7 +228,8 @@ object Bridge {
     }
 
     /** Renders [frames] consecutive frames headless at [fps] and reports what each would have cost the terminal. */
-    private fun bench(shell: Shell, model: BridgeModel, size: Size, fps: Int, frames: Int): Int {
+    private fun bench(shell: Shell, model: BridgeModel, size: Size, fps: Int, frames: Int, wait: Boolean): Int {
+        if (wait) awaitBoot(model)
         model.ttyDescription = "bench ${size.width}x${size.height}"
         model.width = size.width
         model.height = size.height

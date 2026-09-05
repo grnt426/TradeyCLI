@@ -50,7 +50,8 @@ class HomeView : WidgetView() {
             Table.Column("fuel", 7, alignRight = true),
             Table.Column("hold", 7, alignRight = true),
         ),
-        onSelect = { row -> selectedShip = row?.key },
+        onSelect = { row -> selectedShip = row?.key; model?.selectedShip = row?.key },
+        onActivate = { model?.navigateTo("Ship") },
     )
     private val health = Table(
         columns = listOf(
@@ -98,7 +99,7 @@ class HomeView : WidgetView() {
         val (left, right) = middle.cols(Len.weight(), Len.fixed(sideWidth))
         val (cardRect, feedRect) = right.rows(Len.fixed(15), Len.weight())
         fleetRows(snap, now)
-        place(fleet, p.panel(left, "Fleet (${snap.ships.size})", focus === fleet, hint = "↑↓ · click"), t)
+        place(fleet, p.panel(left, "Fleet (${snap.ships.size})", focus === fleet, hint = "↑↓ · Enter or double-click opens"), t)
         shipCard(p.panel(cardRect, selectedShip ?: "Ship"), snap.ships[selectedShip], model)
         place(feed, p.panel(feedRect, "Events", hint = "wheel"), t)
 

@@ -55,6 +55,12 @@ class Shell(val views: List<View>, private val model: BridgeModel) {
 
     /** True when the console should quit. */
     fun onInput(input: Input): Boolean {
+        val quit = route(input)
+        model.pendingView?.let { show(it); model.pendingView = null }
+        return quit
+    }
+
+    private fun route(input: Input): Boolean {
         when (input) {
             is Input.Key -> {
                 val key = Keys.normalise(input.key)

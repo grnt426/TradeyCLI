@@ -20,6 +20,7 @@ import model.system.System
 import model.system.Waypoint
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
+import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
@@ -163,21 +164,21 @@ class AgentStore private constructor(
         PriceTable.selectAll()
             .where { (PriceTable.marketSymbol eq market) and (PriceTable.tradeSymbol eq good.name) }
             .orderBy(PriceTable.observedAt, SortOrder.ASC)
-            .map { row ->
-                PriceObservation(
-                    MarketTradeGood(
-                        symbol = TradeSymbol.valueOf(row[PriceTable.tradeSymbol]),
-                        type = enumValueOf(row[PriceTable.type]),
-                        tradeVolume = row[PriceTable.tradeVolume],
-                        supply = enumValueOf(row[PriceTable.supply]),
-                        purchasePrice = row[PriceTable.purchasePrice],
-                        sellPrice = row[PriceTable.sellPrice],
-                        activity = row[PriceTable.activity]?.let { enumValueOf(it) },
-                    ),
-                    Instant.ofEpochMilli(row[PriceTable.observedAt]),
-                )
-            }
+            .map { row -> row.toObservation() }
     }
+
+    private fun ResultRow.toObservation() = PriceObservation(
+        MarketTradeGood(
+            symbol = TradeSymbol.valueOf(this[PriceTable.tradeSymbol]),
+            type = enumValueOf(this[PriceTable.type]),
+            tradeVolume = this[PriceTable.tradeVolume],
+            supply = enumValueOf(this[PriceTable.supply]),
+            purchasePrice = this[PriceTable.purchasePrice],
+            sellPrice = this[PriceTable.sellPrice],
+            activity = this[PriceTable.activity]?.let { enumValueOf(it) },
+        ),
+        Instant.ofEpochMilli(this[PriceTable.observedAt]),
+    )
 
     suspend fun putTransaction(t: MarketTransaction, chain: String? = null) = tx {
         TransactionTable.insert {
@@ -370,6 +371,14 @@ class AgentStore private constructor(
         }
     }
 
+    /** Every price read at [market] since [since], every good, oldest first: the console's sparklines. */
+    suspend fun listPrices(market: String, since: Instant): List<PriceObservation> = tx {
+        PriceTable.selectAll()
+            .where { (PriceTable.marketSymbol eq market) and (PriceTable.observedAt greaterEq since.toEpochMilli()) }
+            .orderBy(PriceTable.observedAt, SortOrder.ASC)
+            .map { row -> row.toObservation() }
+    }
+
     suspend fun listCredits(since: Instant): List<CreditPoint> = tx {
         CreditsTable.selectAll().where { CreditsTable.at greaterEq since.toEpochMilli() }.orderBy(CreditsTable.at, SortOrder.ASC)
             .map { CreditPoint(Instant.ofEpochMilli(it[CreditsTable.at]), it[CreditsTable.credits]) }
@@ -440,15 +449,31 @@ class AgentStore private constructor(
             return AgentStore(agentSymbol, resetDate, file, db, executor)
         }
 
-        private fun archiveOlderResets(agentDir: File, resetDate: String) {
-            val current = "data-$resetDate.db"
-            val older = agentDir.listFiles { f -> f.isFile && f.name.startsWith("data-") && f.name != current }
-                ?: return
+        private val RESET_DATABASE = Regex("""data-(\d{4}-\d{2}-\d{2})\.db""")
+
+        /**
+         * Moves the databases of earlier resets, with their WAL sidecars, into `archive/`. Only
+         * `data-YYYY-MM-DD.db` names count: the current database's own `-wal` and `-shm` files
+         * must stay where they are, and a file another process still holds is left with a warning
+         * rather than failing the boot.
+         */
+        internal fun archiveOlderResets(agentDir: File, resetDate: String) {
+            val older = agentDir.listFiles { f ->
+                f.isFile && RESET_DATABASE.matchEntire(f.name)?.groupValues?.get(1).let { it != null && it != resetDate }
+            } ?: return
             if (older.isEmpty()) return
             val archive = File(agentDir, "archive").apply { mkdirs() }
-            older.forEach { f ->
-                Files.move(f.toPath(), File(archive, f.name).toPath(), StandardCopyOption.REPLACE_EXISTING)
-                logger.info { "Archived ${f.name} (server has reset since)" }
+            older.forEach { db ->
+                for (name in listOf(db.name, "${db.name}-wal", "${db.name}-shm")) {
+                    val f = File(agentDir, name)
+                    if (!f.isFile) continue
+                    try {
+                        Files.move(f.toPath(), File(archive, name).toPath(), StandardCopyOption.REPLACE_EXISTING)
+                        logger.info { "Archived $name (server has reset since)" }
+                    } catch (e: java.io.IOException) {
+                        logger.warn(e) { "Could not archive $name; another process may still be using it" }
+                    }
+                }
             }
         }
     }

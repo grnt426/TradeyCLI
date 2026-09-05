@@ -405,3 +405,38 @@ Still assumed:
   and its card explains what it is and sums the system up (waypoint counts by type, the jump gate
   and its state, markets, shipyards, minable rocks, factions, ships present). Glyph rule from
   this: stay inside Box Drawing, Block Elements, Geometric Shapes, Braille and Arrows.
+- 2026-09-05, M4 landed: screens 3 and 4. `canvas/HalfCanvas` paints two colours per cell with
+  `▀`/`▄`, which makes half-cells nearly square and spheres round. `fx/Noise` is seeded value
+  noise; `fx/Art` draws every waypoint type: planets textured by trait (ocean, volcanic, frozen,
+  jungle, swamp, temperate, radioactive, barren, rocky) and lit from the upper left, turning
+  slowly, with clouds turning faster and an atmosphere glow past the limb whose colour follows the
+  trait (breathable blue, toxic green, corrosive yellow); gas giants with differential rotation;
+  cratered moons; tumbling asteroids with base lights; a station with beacons and walking dock
+  lights; the gate as a ring lit to the construction fraction with a travelling spark; fuel
+  stations; fields, nebulae and gravity wells. Rotation advances in half-pixel steps and colours
+  are quantised to 32 levels a channel, so a 60×40 ocean planet costs about 4.5 KB a frame at
+  20 fps rather than a full repaint each frame. `fx/ShipArt` has silhouettes per frame family,
+  tinted by role, the hold filling with cargo, thrusters flickering in flight, scorch at low
+  condition. `views/WaypointView`: portrait with trait chips, facts, the market as a table with
+  price sparklines from `market_prices` (a new `AgentStore.listPrices` read, cached a minute in
+  `BridgeModel.prices`), and the construction bill or our trades there. `views/ShipView`: the
+  silhouette and behaviour line, parts with condition gauges, mounts and modules, route with a
+  progress track, hold, trades. Left and Right step through the system or the fleet. Selection
+  is shared through the model: a ship picked on the home or system screen is the one the ship
+  screen shows; Enter or a double click on the fleet opens it.
+- 2026-09-05, found while booting the console beside a live `run`: `AgentStore.archiveOlderResets`
+  treated the current database's `-wal` and `-shm` files as older resets, moved the empty WAL
+  and died on the locked shm. It now matches `data-YYYY-MM-DD.db` only, moves an older
+  database's sidecars with it, and logs a move it cannot make instead of failing the boot.
+  Line mode and the old dashboard were exposed to the same failure.
+- 2026-09-05, after Grant's look: the planets, rocks and stations passed; the ships did not read.
+  The first templates were top-down with the nose up, which at that size looks head-on. They are
+  now side profiles, nose to the right, engines at the back: a lit spine, a shaded underside, the
+  bridge windows forward, cargo sections that fill with the hold, hardpoints on the spine when
+  the ship has mounts, and exhaust that streams left from the engines in flight, blue-white at the
+  nozzle breaking up to orange. `--select SYMBOL` picks the ship or waypoint for `--frame`.
+- 2026-09-05, the credits chart: buckets were a fixed 90 s, so a wide chart asked for more past
+  than the engine held and left its left fifth empty. Buckets are now sized so the history held
+  fills the width; the engine loads six hours of bank history instead of two (transactions stay
+  at two); the projection is a fixed quarter hour, Grant's call: ninety minutes of a line that
+  predicts nothing cost density for no information.
