@@ -111,7 +111,7 @@ suspend fun BehaviourScope.trade() {
 }
 
 /** Buys one trade volume at a time while the live price still leaves the margin. Returns units bought. */
-private suspend fun BehaviourScope.buyLoad(plan: TradePlan, market: Market, assumptions: TradingAssumptions): Int {
+internal suspend fun BehaviourScope.buyLoad(plan: TradePlan, market: Market, assumptions: TradingAssumptions): Int {
     var current = market
     var bought = 0
     var spent = 0L

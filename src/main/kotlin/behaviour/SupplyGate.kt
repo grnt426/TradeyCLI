@@ -88,25 +88,28 @@ suspend fun BehaviourScope.supplyGate() {
                     clock.sleep(10.minutes)
                     continue
                 }
-                data class Pick(val material: TradeSymbol, val market: String, val listing: MarketTradeGood?, val units: Int)
+                data class Pick(val material: TradeSymbol, val market: String, val listing: MarketTradeGood?, val units: Int, val worthwhile: Boolean)
                 val picks = wanted.mapNotNull { m ->
                     val (market, price) = cheapestSource(m.tradeSymbol) ?: return@mapNotNull null
                     val listing = snapshot().markets[market]?.good(m.tradeSymbol)
                     val healthy = if (nurse && listing != null) minOf(MarketHealth.healthyUnits(listing, rules), shared.takeBudget.available(market, listing, rules, clock.now())) else Int.MAX_VALUE
-                    Pick(m.tradeSymbol, market, listing, minOf(me.cargoSpaceLeft, construction.remaining(m.tradeSymbol).toInt(), (spendable / price).toInt(), healthy))
+                    val remaining = construction.remaining(m.tradeSymbol).toInt()
+                    val units = minOf(me.cargoSpaceLeft, remaining, (spendable / price).toInt(), healthy)
+                    // Six units on an 80 hold is a wasted round trip: a load must be a share of the hold, a volume, or the last of the bill.
+                    val floor = minOf(remaining, maxOf((me.cargo.capacity * rules.minHaulShare).toInt(), listing?.tradeVolume ?: 1))
+                    Pick(m.tradeSymbol, market, listing, units, units >= floor)
                 }
                 if (picks.isEmpty()) throw BehaviourFailure("nothing in ${me.nav.systemSymbol} sells what ${site} needs")
-                val pick = picks.firstOrNull { it.units > 0 }
+                val pick = picks.firstOrNull { it.units > 0 && it.worthwhile }
                 if (pick == null) {
                     // Every producer is short or its rate is spent: bring the shortest one what it lacks, two levels deep.
                     val leg = picks.firstNotNullOfOrNull { p -> snapshot().markets[p.market]?.let { producer -> nurseLeg(producer, p.material, spendable, rules)?.let { producer to it } } }
-                    if (leg == null) {
-                        val why = picks.joinToString("; ") { p -> "${p.material} at ${p.market} is ${p.listing?.let { MarketHealth.explain(it, rules) } ?: "unread"}" }
-                        status("waiting", "$why; nothing to feed; checking again in 10 minutes")
-                        clock.sleep(10.minutes)
-                        continue
-                    }
-                    nurse(leg.first, leg.second)
+                    if (leg != null) { nurse(leg.first, leg.second); continue }
+                    // Nothing to haul and nothing to feed: earn a load meanwhile rather than park; the rate refills while we are away.
+                    val why = picks.joinToString("; ") { p -> "${p.material} at ${p.market} is ${p.listing?.let { MarketHealth.explain(it, rules) } ?: "unread"}" + (if (p.units in 1 until (me.cargo.capacity * rules.minHaulShare).toInt()) " (only ${p.units} this hour)" else "") }
+                    if (me.cargo.capacity > 0 && tradeOnce(knowledge.Strategy.trading(shared.plan.phase), "gate:$site")) continue
+                    status("waiting", "$why; nothing to feed and no trade pays; checking again in 10 minutes")
+                    clock.sleep(10.minutes)
                     continue
                 }
                 material = pick.material
@@ -114,10 +117,13 @@ suspend fun BehaviourScope.supplyGate() {
                     travelVia(pick.market)
                     dock(ship)
                     val live = refreshMarket(pick.market).good(material)
+                    // Another hauler may have finished this material while we flew: re-read the bill before paying.
+                    val stillNeeded = construction(site).remaining(material).toInt()
+                    if (stillNeeded <= 0) { status(detail = "$material is complete; not buying"); return@phase }
                     val allowed = if (nurse && live != null) {
-                        val cap = minOf(pick.units, MarketHealth.healthyUnits(live, rules))
+                        val cap = minOf(pick.units, stillNeeded, MarketHealth.healthyUnits(live, rules))
                         shared.takeBudget.take(pick.market, live, cap, rules, clock.now())
-                    } else pick.units
+                    } else minOf(pick.units, stillNeeded)
                     if (allowed <= 0) {
                         status(detail = "$material at ${pick.market} is ${live?.let { MarketHealth.explain(it, rules) }}; the rate is spent, not buying this visit")
                     } else {

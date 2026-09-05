@@ -61,6 +61,8 @@ data class MarketAssumptions(
      * an hour. So MODERATE is about 2.5 volumes an hour; the other levels scale from there.
      */
     val takeVolumesPerHour: Map<SupplyLevel, Double> = mapOf(SCARCE to 0.0, LIMITED to 1.0, MODERATE to 2.5, HIGH to 4.0, ABUNDANT to 6.0),
+    /** A haul is not worth the round trip below this share of the hold (or one trade volume, whichever is more): wait or do something else instead. */
+    val minHaulShare: Double = 0.25,
     /** A RESTRICTED producer is not replacing what we take: its rate counts this much. */
     val restrictedTakeFactor: Double = 0.5,
     /** How many hours of the rate a producer may bank while nobody buys, so a ship arriving after a lull can fill up. */
