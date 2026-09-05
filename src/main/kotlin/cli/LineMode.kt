@@ -564,10 +564,10 @@ class LineMode(
     /** The dashboard's summary screen as text: phase progress, fleet, spending, revenue, market health. */
     private suspend fun summary() {
         // A one-shot process has not read the site yet; one request gives the progress panel its bill.
-        engine.snapshot.let { s ->
-            if (s.constructionBill == null) s.hqSystem?.let { h -> s.waypointsIn(h).firstOrNull { it.isUnderConstruction } }?.let { site -> runCatching { engine.verbs().construction(site.symbol) } }
+        val bill = engine.snapshot.let { s ->
+            s.constructionBill ?: s.hqSystem?.let { h -> s.waypointsIn(h).firstOrNull { it.isUnderConstruction } }?.let { site -> runCatching { engine.verbs().construction(site.symbol).materials }.getOrNull() }
         }
-        val snap = engine.snapshot
+        val snap = engine.snapshot.copy(constructionBill = bill)
         val now = engine.clock.now()
         val trend = behaviour.decisions.CreditsTrend.trend(snap.creditsHistory, now)
         val progress = behaviour.decisions.Summary.progress(snap, now, trend)
