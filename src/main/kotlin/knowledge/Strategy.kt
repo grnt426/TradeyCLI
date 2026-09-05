@@ -100,6 +100,24 @@ object Strategy {
         Phase.LATE -> Goals()
     }
 
+    /**
+     * The markets a spare probe should sit at and re-read every few minutes, most useful first:
+     * the producers of what the home site still needs, then the producers of their starved inputs.
+     * Fresh readings are what keep the haulers' rate honest; a stale LIMITED parked three haulers
+     * for four hours on 2026-09-05.
+     */
+    fun watchMarkets(snapshot: Snapshot): List<String> {
+        val home = snapshot.hqSystem ?: return emptyList()
+        val markets = snapshot.marketsIn(home)
+        val wanted = snapshot.constructionBill?.filter { it.fulfilled < it.required }?.map { it.tradeSymbol } ?: emptyList()
+        val out = linkedSetOf<String>()
+        wanted.forEach { good -> markets.filter { it.typeOf(good) == model.market.TradeGoodType.EXPORT }.forEach { out += it.symbol } }
+        wanted.forEach { good ->
+            ImportMap.inputs[good].orEmpty().forEach { input -> markets.filter { it.typeOf(input) == model.market.TradeGoodType.EXPORT }.forEach { out += it.symbol } }
+        }
+        return out.toList()
+    }
+
     /** The job a ship gets when nobody said otherwise: a bought ship, or a fresh agent's plan. */
     fun defaultAssignment(phase: Phase, ship: Ship, snapshot: Snapshot): Assignment? {
         val home = snapshot.hqSystem
@@ -108,6 +126,13 @@ object Strategy {
         return when (phase) {
             Phase.ESCAPE -> when {
                 isHauler && site != null && ship.nav.systemSymbol == home -> Assignment(ship.symbol, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000"))
+                // A second probe watches the producers that matter; the first one roams (and buys the fleet).
+                !ship.usesFuel && snapshot.plan?.assignments?.any { it.behaviour == "probeMarkets" || it.behaviour == "expand" } == true -> {
+                    val watched = snapshot.plan.assignments.mapNotNull { it.params["markets"] }.flatMap { it.split(',') }.toSet()
+                    val next = watchMarkets(snapshot).firstOrNull { it !in watched }
+                    if (next != null) Assignment(ship.symbol, "probeMarkets", mapOf("markets" to next, "maxAge" to "5"))
+                    else Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to "10"))
+                }
                 else -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
             }
             Phase.BOOM -> when {

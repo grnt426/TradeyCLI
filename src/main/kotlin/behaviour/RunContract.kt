@@ -4,9 +4,11 @@ import behaviour.decisions.Intentions
 import behaviour.decisions.Tour
 import engine.VerbFailure
 import model.contract.Contract
+import model.market.Market
 import model.market.TradeSymbol
 import java.time.Instant
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The contract runner: take whatever contract the faction offers, buy what it asks for at the
@@ -41,6 +43,11 @@ suspend fun BehaviourScope.runContract() {
         val remaining = (term.unitsRequired - term.unitsFulfilled).toInt()
         val payment = contract.terms.payment.onAccepted + contract.terms.payment.onFulfilled
         val source = cheapestSource(good)
+        if (source == null && !contract.accepted && listedSource(good) == null) {
+            status("skip", "${contract.id.takeLast(6)}: no market in ${me.nav.systemSymbol} lists $good; waiting for the offer to lapse")
+            clock.sleep(30.minutes)
+            continue
+        }
         val estimatedCost = source?.let { (m, price) -> price.toLong() * remaining } ?: 0L
         if (source != null && estimatedCost > payment + maxLoss && !contract.accepted) {
             status("skip", "${contract.id.takeLast(6)}: $remaining $good would cost ~${Intentions.format(estimatedCost)} against ${Intentions.format(payment)} paid; waiting for the offer to lapse")
@@ -58,7 +65,20 @@ suspend fun BehaviourScope.runContract() {
             if (left <= 0) break
             val have = me.unitsOf(good)
             if (have == 0) {
-                val (market, _) = cheapestSource(good) ?: throw BehaviourFailure("nothing in the system sells $good for contract ${accepted.id.takeLast(6)}")
+                val priced = cheapestSource(good)
+                if (priced == null) {
+                    // A market that lists the good but shows no price has not been read with a ship present: go and read it.
+                    val listed = listedSource(good) ?: throw BehaviourFailure("nothing in the system lists $good for contract ${accepted.id.takeLast(6)}")
+                    phase("read source", "$good at ${listed.symbol}") {
+                        travelTo(listed.symbol)
+                        dock(ship)
+                        val live = refreshMarket(listed.symbol).good(good)
+                        status(detail = "${listed.symbol} reads $good at ${live?.purchasePrice ?: "no price"}")
+                    }
+                    clock.sleep(30.seconds)
+                    continue
+                }
+                val (market, _) = priced
                 phase("procure", "$left $good at $market") {
                     travelTo(market)
                     dock(ship)
@@ -109,3 +129,9 @@ private fun BehaviourScope.cheapestSource(good: TradeSymbol): Pair<String, Int>?
     snapshot().marketsIn(me.nav.systemSymbol)
         .mapNotNull { m -> m.good(good)?.purchasePrice?.let { m.symbol to it } }
         .minByOrNull { it.second }
+
+/** A market in the ship's system that lists [good] for sale (export or exchange first), priced or not. */
+private fun BehaviourScope.listedSource(good: TradeSymbol): Market? =
+    snapshot().marketsIn(me.nav.systemSymbol).filter { it.typeOf(good) != null }
+        .sortedBy { m -> when (m.typeOf(good)) { model.market.TradeGoodType.EXPORT -> 0; model.market.TradeGoodType.EXCHANGE -> 1; else -> 2 } }
+        .firstOrNull()
