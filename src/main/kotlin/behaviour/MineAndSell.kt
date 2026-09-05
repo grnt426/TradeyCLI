@@ -50,7 +50,7 @@ suspend fun BehaviourScope.mineAndSell() {
     while (true) {
         clock.sleep(1.seconds)
         val plan = phase("plan") {
-            val ranked = Mining.rank(snapshot(), me, clock.now())
+            val ranked = Mining.rank(snapshot(), me, clock.now(), knowledge.Strategy.mining(shared.plan.phase))
                 .filter { it.asteroid.symbol !in avoid }
                 // One ship per rock: two lasers on one asteroid destabilize it twice as fast for the same total yield.
                 .filter { !shared.claimedByOther(it.asteroid.symbol, ship) }

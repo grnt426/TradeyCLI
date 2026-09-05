@@ -44,6 +44,7 @@ TradeyCLI market X1-AB12-C3
 TradeyCLI shipyards
 TradeyCLI asteroids            # every asteroid ranked by credits per hour for the mining ship
 TradeyCLI trades               # buy-here-sell-there routes ranked by credits per hour weighted by market health (score)
+TradeyCLI phase [escape|boom|late]   # show or set the plan's phase; race [AGENT ...] compares agents' banks, fleets and gate progress
 TradeyCLI intentions           # what the bot is doing and saving for, and the credits trend
 TradeyCLI contracts            # every contract seen: payment, our cost, dates
 TradeyCLI gate                 # the construction bill, what we delivered and spent, cost to finish
@@ -95,6 +96,7 @@ each ship while it runs. A behaviour that throws is restarted with backoff and t
 printed; one that finishes (a probe with nothing left to read) is left alone.
 
 `docs/scripting-rewrite.md` is the design and the strategy the decisions encode.
+`docs/phases.md` is the three-phase strategy (escape, boom, late) and what `phase` changes.
 `docs/market-mechanics.md` is what we know about how markets move and which knob in
 `knowledge/MarketAssumptions.kt` carries each rule; `gate` prints each producer's health and the inputs to feed it.
 

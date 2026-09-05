@@ -158,6 +158,8 @@ class LineMode(
             "unassign" -> return unassign(args)
             "goal" -> return goal(args)
             "chain" -> return chain(args)
+            "phase" -> return phase(args)
+            "race" -> race(args)
             "gate" -> gate(args)
             "jumpgate" -> jumpgate(args)
             "jump" -> return jump(args)
@@ -343,6 +345,7 @@ class LineMode(
     private fun intentions() {
         val snap = engine.snapshot
         val now = engine.clock.now()
+        snap.plan?.phase?.let { out.println("[neutral] Phase ${knowledge.Strategy.describe(it)}") }
         val trend = behaviour.decisions.CreditsTrend.trend(snap.creditsHistory, now)
         behaviour.decisions.Intentions.describe(snap, now, trend).forEach { out.println("[${it.tone.name.lowercase()}] ${it.text}") }
         val graph = behaviour.decisions.CreditsTrend.graph(snap.creditsHistory, now)
@@ -532,6 +535,7 @@ class LineMode(
                 listOf(a.ship, a.behaviour, a.params.entries.joinToString(" ") { (k, v) -> "--$k $v" }, plan.copy(assignments = listOf(a)).validate(snap).joinToString("; "))
             },
         )
+        out.println("phase ${plan.phase}: ${knowledge.Strategy.describe(plan.phase)}")
         plan.goals.credits?.let { out.println("goal: $it credits") }
         plan.goals.fleet.forEach { out.println("fleet goal: ${it.count} x ${it.type}, keeping ${it.reserve} credits") }
     }
@@ -552,6 +556,55 @@ class LineMode(
         Plan.save(planFile(), plan)
         out.println("$ship: $behaviour ${params.entries.joinToString(" ") { (k, v) -> "--$k $v" }}".trimEnd())
         return 0
+    }
+
+    /** `phase` shows the plan's phase; `phase escape|boom|late` sets it (the running supervisor picks it up on restart). */
+    private fun phase(args: List<String>): Int {
+        val file = planFile()
+        val current = Plan.load(file)
+        val wanted = args.firstOrNull()?.uppercase()
+        if (wanted == null) {
+            out.println("${current.phase}: ${knowledge.Strategy.describe(current.phase)}")
+            out.println("margin floor ${(knowledge.Strategy.marginFloor(current.phase) * 100).toInt()}%; ${if (current.phase == plan.Phase.ESCAPE) "mining sells where the buyer is starved" else "mining sells by price, skipping saturated buyers"}")
+            return 0
+        }
+        val phase = runCatching { plan.Phase.valueOf(wanted) }.getOrNull() ?: run { err.println("phase escape|boom|late"); return 1 }
+        Plan.save(file, current.withPhase(phase))
+        out.println("phase $phase: ${knowledge.Strategy.describe(phase)}")
+        return 0
+    }
+
+    /**
+     * `race [AGENT ...]`: every agent's bank over time, fleet, gate progress and phase, from their
+     * stores, so a late-strategy agent and one that ran the phased plan from the start can be compared.
+     */
+    private suspend fun race(args: List<String>) {
+        val agents = args.map { it.uppercase() }.ifEmpty { Layout.listAgents() }
+        val rows = mutableListOf<List<String>>()
+        for (symbol in agents) {
+            val db = Layout.latestDatabase(symbol) ?: continue
+            AgentStore.open(Layout.agentDir(symbol), symbol, Layout.resetDateOf(db)).use { store ->
+                val agent = store.getAgent() ?: return@use
+                val credits = store.listCredits(java.time.Instant.EPOCH)
+                val first = credits.firstOrNull()
+                val last = credits.lastOrNull()
+                val hours = if (first != null && last != null) (last.at.toEpochMilli() - first.at.toEpochMilli()) / 3_600_000.0 else 0.0
+                val hourAgo = last?.let { l -> credits.lastOrNull { it.at.isBefore(l.at.minusSeconds(3600)) } }
+                val ships = store.listShips()
+                val hq = agent.headquarters.substringBeforeLast('-')
+                val site = store.listWaypoints(hq).firstOrNull { it.isUnderConstruction }
+                val delivered = site?.let { s -> store.listSupplies(s.symbol).groupBy { it.good }.map { (g, list) -> "${list.sumOf { it.units }} ${g.name}" }.joinToString(", ") }
+                val phase = Plan.load(Layout.planFile(symbol)).phase
+                rows += listOf(
+                    symbol, hq, phase.name, ships.size.toString(),
+                    first?.credits?.let { Intentions.format(it) } ?: "-", Intentions.format(agent.credits),
+                    "%.1f".format(hours), if (hours > 0 && first != null) Intentions.format(((agent.credits - first.credits) / hours).toLong()) else "-",
+                    if (hourAgo != null && last != null) Intentions.format(last.credits - hourAgo.credits) else "-",
+                    site?.symbol ?: "none", delivered?.ifEmpty { "nothing" } ?: "-",
+                )
+            }
+        }
+        table(listOf("agent", "home", "phase", "ships", "first bank", "bank now", "hours", "cr/h overall", "last hour", "gate", "we delivered"), rows)
     }
 
     /** `goal fleet TYPE COUNT [--reserve N]` adds a fleet goal; `goal clear TYPE` removes one. */
@@ -707,6 +760,7 @@ class LineMode(
                     is Event.ContractFulfilled -> err.println("${time(engine.clock.now())} contract ${e.id.takeLast(6)} fulfilled: +${e.credits}")
                     is Event.Supplied -> err.println("${time(engine.clock.now())} ${e.ship} supplied ${e.units} ${e.good} to ${e.site}; ${e.remaining} to go")
                     is Event.Jumped -> err.println("${time(engine.clock.now())} ${e.ship} jumped to ${e.waypoint} (antimatter ${e.antimatterCost})")
+                    is Event.PhaseAdvanced -> err.println("${time(engine.clock.now())} PHASE ${e.phase}: ${e.description}")
                     is Event.Charted -> err.println("${time(engine.clock.now())} ${e.ship} charted ${e.waypoint}: +${e.credits}")
                     is Event.Warning -> err.println("${time(engine.clock.now())} warning: ${e.message}")
                     is Event.Failure -> err.println("${time(engine.clock.now())} failure: ${e.message}")
@@ -865,6 +919,8 @@ class LineMode(
               trades [--ship S] [--all]  buy-here-sell-there routes ranked by credits per hour
               intentions                 what the bot is doing and saving for, and the credits trend
               contracts                  every contract seen with its payment, our cost and the dates
+              phase [escape|boom|late]   show or set the plan's phase (docs/phases.md): which weights and default jobs apply
+              race [AGENT ...]           every agent's bank over time, fleet, gate progress and phase, side by side
               gate [SITE]                the construction bill, what we delivered and spent, and the cost to finish
               jumpgate [GATE]            a gate's connections
               jump SHIP GATE             jump a ship through the gate it is at to a connected gate (buys antimatter)
@@ -896,7 +952,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "catalog", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "catalog", "race", "extractions",
             "plan", "assign", "unassign", "goal", "chain", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")

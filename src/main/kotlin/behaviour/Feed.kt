@@ -52,9 +52,10 @@ suspend fun BehaviourScope.feed() {
 }
 
 private suspend fun BehaviourScope.runLeg(leg: Leg, reserve: Long) {
+    val rules = knowledge.Strategy.market(shared.plan.phase)
     // A consumer already stocked to the brim pays nothing and grows nothing: let it drain first.
     snapshot().markets[leg.to]?.good(leg.good)?.let { bid ->
-        if (MarketHealth.saturated(bid)) {
+        if (MarketHealth.saturated(bid, rules)) {
             status("waiting", "${leg.to} is saturated with ${leg.good} (${MarketHealth.describe(bid)}); letting it drain for 10 minutes")
             clock.sleep(10.minutes)
             return
@@ -68,7 +69,7 @@ private suspend fun BehaviourScope.runLeg(leg: Leg, reserve: Long) {
         if (offer == null) {
             status(detail = "${leg.from} does not sell ${leg.good} now; skipping the leg")
             0
-        } else if (MarketHealth.starved(offer)) {
+        } else if (MarketHealth.starved(offer, rules)) {
             // Taking the last of a producer's stock, or buying while its own inputs are unmet, only drives its price up.
             status(detail = "${leg.from} is starved of ${leg.good} (${MarketHealth.describe(offer)}); not buying")
             0

@@ -47,6 +47,12 @@ data class MarketAssumptions(
      * per visit at each supply level; 0 means feed its inputs instead of buying.
      */
     val healthyBuyVolumes: Map<SupplyLevel, Double> = mapOf(SCARCE to 0.0, LIMITED to 0.0, MODERATE to 1.0, HIGH to 2.0, ABUNDANT to 4.0),
+    /**
+     * How much more a sale to a starved importer is worth than its price says, for decisions that
+     * put health first (mining in ESCAPE): a SCARCE importer's price counts double, so a drone
+     * carries its quartz past the nearer exchange to the fab-mats plant that is out of it.
+     */
+    val importFeedBonus: Map<SupplyLevel, Double> = mapOf(SCARCE to 2.0, LIMITED to 1.5, MODERATE to 1.0, HIGH to 1.0, ABUNDANT to 1.0),
     /** A nursing leg may sell an input for less than it cost, down to this share of the buy price, because the goal is the producer's price, not the leg's. */
     val nurseMinSellRatio: Double = 0.5,
     /** Trade volumes of an input to deliver per nursing visit; the docs say consumption grows as we supply, so a few volumes is enough to move it. */
@@ -68,6 +74,10 @@ object MarketHealth {
         (a.destinationTypeWeight[good.type] ?: 1.0) * (a.destinationSupplyWeight[good.supply] ?: 1.0)
 
     fun saturated(good: MarketTradeGood, a: MarketAssumptions = MarketAssumptions()): Boolean = destinationWeight(good, a) <= 0.0
+
+    /** [destinationWeight] with the feed bonus for a starved importer: what a sale here is worth to the system, not just to us. */
+    fun feedWeight(good: MarketTradeGood, a: MarketAssumptions = MarketAssumptions()): Double =
+        destinationWeight(good, a) * (if (good.type == IMPORT) a.importFeedBonus[good.supply] ?: 1.0 else 1.0)
 
     /** True when taking from here would hurt: no weight at all, or a RESTRICTED producer below its take floor. */
     fun starved(good: MarketTradeGood, a: MarketAssumptions = MarketAssumptions()): Boolean =

@@ -87,6 +87,12 @@ data class MiningAssumptions(
     /** Seconds for docking, selling and refueling per cycle. */
     val overheadSeconds: Long = 20,
     val crowdedRadius: Double = 60.0,
+    /**
+     * When set, each good's sale price is weighted by how much the buyer needs it
+     * ([knowledge.MarketHealth.destinationWeight]): a SCARCE importer beats an exchange at the same
+     * price, and a saturated buyer is not counted at all. Null ranks by price alone.
+     */
+    val market: knowledge.MarketAssumptions? = null,
 )
 
 object Mining {
@@ -132,17 +138,23 @@ object Mining {
             markets.mapNotNull { market ->
                 val marketWaypoint = snapshot.waypoints[market.symbol] ?: return@mapNotNull null
                 val prices = mutableMapOf<TradeSymbol, Int>()
+                val weights = mutableMapOf<TradeSymbol, Double>()
                 var estimated = false
+                val healthNotes = mutableListOf<String>()
                 mix.keys.filter { market.trades(it) }.forEach { good ->
-                    val seen = market.sellPriceOf(good)
-                    if (seen != null) prices[good] = seen else {
+                    val listing = market.good(good)
+                    val weight = if (assumptions.market != null && listing != null) knowledge.MarketHealth.feedWeight(listing, assumptions.market) else 1.0
+                    if (weight <= 0.0) { healthNotes += "$good saturated at ${market.symbol}"; return@forEach }
+                    if (listing != null) prices[good] = listing.sellPrice else {
                         prices[good] = DefaultPrices.sell(good, market.typeOf(good)!!)
                         estimated = true
                     }
+                    weights[good] = weight
+                    if (listing != null && assumptions.market != null && listing.supply <= model.market.SupplyLevel.LIMITED && listing.type == model.market.TradeGoodType.IMPORT) healthNotes += "feeds $good (${knowledge.MarketHealth.describe(listing)})"
                 }
                 if (prices.isEmpty()) return@mapNotNull null
                 val tradedShare = prices.keys.sumOf { mix.getValue(it) }
-                val valuePerExtractedUnit = prices.entries.sumOf { (good, price) -> mix.getValue(good) * price }
+                val valuePerExtractedUnit = prices.entries.sumOf { (good, price) -> mix.getValue(good) * price * weights.getValue(good) }
                 val valuePerUnit = valuePerExtractedUnit / tradedShare
                 val distance = Travel.distance(asteroid.x, asteroid.y, marketWaypoint.x, marketWaypoint.y)
                 val extracts = ceil(capacity / (yieldPerExtract * tradedShare)).toLong()
@@ -164,7 +176,7 @@ object Mining {
                 }
                 val creditsPerCycle = capacity * valuePerUnit - fuelPerCycle * assumptions.creditsPerFuelUnit
                 val perHour = creditsPerCycle / cycleSeconds * 3600 * risk
-                MiningPlan(asteroid, market, perHour, valuePerUnit, tradedShare, cycleSeconds, distance, fuelPerCycle, returnLeg, risk, notes + observedNotes, prices, estimated)
+                MiningPlan(asteroid, market, perHour, valuePerUnit, tradedShare, cycleSeconds, distance, fuelPerCycle, returnLeg, risk, notes + observedNotes + healthNotes, prices, estimated)
             }
         }.sortedByDescending { it.creditsPerHour }
     }

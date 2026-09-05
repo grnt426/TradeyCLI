@@ -32,10 +32,7 @@ val tradeSpec = BehaviourSpec(
 
 suspend fun BehaviourScope.trade() {
     val onlyGood = param("good")?.uppercase()
-    val assumptions = TradingAssumptions(
-        minMarginPerUnit = param("minMargin")?.toIntOrNull() ?: 20,
-        minMarginRatio = param("minMarginRatio")?.toDoubleOrNull() ?: 0.15,
-    )
+    val assumptions = knowledge.Strategy.trading(shared.plan.phase, param("minMargin")?.toIntOrNull(), param("minMarginRatio")?.toDoubleOrNull())
     val setAside = mutableMapOf<String, Instant>()
 
     if (!me.cargo.isEmpty) phase("sell leftovers") { sellLeftovers() }

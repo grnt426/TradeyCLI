@@ -41,13 +41,20 @@ class Supervisor(
 
     init {
         shared.onShipPurchased = { ship ->
-            val behaviour = Behaviours.defaultFor(ship)
-            if (behaviour != null) {
-                val next = plan.with(Assignment(ship.symbol, behaviour))
-                val problems = apply(next)
-                if (problems.isEmpty()) savePlan(next) else logger.warn { "could not assign $behaviour to ${ship.symbol}: $problems" }
-            }
+            val assignment = knowledge.Strategy.defaultAssignment(plan.phase, ship, verbs.snapshot())
+            if (assignment != null) change(plan.with(assignment), "assign ${assignment.behaviour} to ${ship.symbol}")
         }
+        shared.onPhaseChanged = { phase ->
+            logger.info { "phase ${plan.phase} -> $phase" }
+            change(plan.withPhase(phase), "move to phase $phase")
+            emit(Event.PhaseAdvanced(phase.name, knowledge.Strategy.describe(phase)))
+        }
+    }
+
+    /** Applies a plan the supervisor wrote itself and saves it when it is valid. */
+    private fun change(next: Plan, what: String) {
+        val problems = apply(next)
+        if (problems.isEmpty()) savePlan(next) else logger.warn { "could not $what: $problems" }
     }
 
     /** Ships whose behaviour has run to completion since the last change to their assignment. */
@@ -92,6 +99,10 @@ class Supervisor(
                     entry.finished = true
                     shared.release(assignment.ship)
                     emit(Event.BehaviourFinished(assignment.ship, assignment.behaviour))
+                    // The phase may have a next job for a ship that is done; it is applied from outside this coroutine.
+                    val snapshot = verbs.snapshot()
+                    val next = snapshot.ships[assignment.ship]?.let { knowledge.Strategy.afterFinished(plan.phase, it, assignment.behaviour, snapshot.copy(plan = plan)) }
+                    if (next != null && next != assignment) scope.launch { change(plan.with(next), "follow ${assignment.behaviour} with ${next.behaviour} on ${assignment.ship}") }
                     return@launch
                 } catch (e: CancellationException) {
                     throw e

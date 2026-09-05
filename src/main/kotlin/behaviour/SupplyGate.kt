@@ -48,13 +48,17 @@ suspend fun BehaviourScope.supplyGate() {
     val reserve = param("reserve")?.toLongOrNull() ?: 300_000L
     val only = param("only")?.uppercase()?.let { TradeSymbol.valueOf(it) }
     val nurse = param("nurse") != "off"
-    val rules = MarketAssumptions()
+    val rules = knowledge.Strategy.market(shared.plan.phase)
     setChain(ship, "gate:$site")
     try {
         while (true) {
             clock.sleep(1.seconds)
             val construction = phase("check site") { construction(site) }
-            if (construction.isComplete) { status("done", "$site is complete"); return }
+            if (construction.isComplete) {
+                status("done", "$site is complete")
+                if (shared.plan.phase == plan.Phase.ESCAPE) shared.advancePhase(plan.Phase.BOOM)
+                return
+            }
             // A hold inherited from an earlier job (a killed trade run's clothing) is sold before anything else.
             val materials = construction.materials.map { it.tradeSymbol }.toSet()
             if (me.cargo.inventory.any { it.symbol !in materials }) phase("sell leftovers") { sellLeftovers(keep = materials) }

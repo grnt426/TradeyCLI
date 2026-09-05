@@ -18,7 +18,10 @@ data class Plan(
     val goals: Goals = Goals(),
     /** Teams of worker bees feeding a production chain; see `behaviour.decisions.Chains`. */
     val chains: List<Chain> = emptyList(),
+    /** Which stage of the reset the agent is in; `knowledge.Strategy` turns it into weights and default jobs. */
+    val phase: Phase = Phase.ESCAPE,
 ) {
+    fun withPhase(phase: Phase): Plan = copy(phase = phase)
     fun withChain(chain: Chain): Plan = copy(chains = chains.filterNot { it.id == chain.id } + chain)
     fun withoutChain(id: String): Plan = copy(chains = chains.filterNot { it.id == id })
     fun chain(id: String): Chain? = chains.firstOrNull { it.id == id }
@@ -52,6 +55,10 @@ data class Plan(
         }
     }
 }
+
+/** The stages of a reset (docs/phases.md): escape the home system, boom across fresh ones, then settle. */
+@Serializable
+enum class Phase { ESCAPE, BOOM, LATE }
 
 @Serializable
 data class Assignment(

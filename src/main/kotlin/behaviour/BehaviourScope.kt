@@ -185,6 +185,12 @@ class SharedState {
     @Volatile
     var onShipPurchased: (Ship) -> Unit = {}
 
+    /** Set by the supervisor: moves the plan to a new phase and saves it. */
+    @Volatile
+    var onPhaseChanged: (plan.Phase) -> Unit = {}
+
+    fun advancePhase(to: plan.Phase) { if (plan.phase != to) onPhaseChanged(to) }
+
     /** Whether any behaviour is buying a ship right now, so two traders at two yards do not both spend the reserve. */
     val buying = java.util.concurrent.atomic.AtomicBoolean(false)
 

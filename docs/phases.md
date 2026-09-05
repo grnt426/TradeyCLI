@@ -1,0 +1,31 @@
+# The three phases of a reset
+
+The plan carries a `phase` (`plan.json`, `phase` command). `knowledge/Strategy.kt` turns it into
+the market weights, the margin floor, the default job for a bought ship, what a ship does after its
+behaviour finishes, and the fleet goals a fresh agent starts with. Nothing else reads the phase, so
+changing a phase's behaviour means editing one object.
+
+| | ESCAPE | BOOM | LATE |
+| --- | --- | --- | --- |
+| Situation | home gate unfinished | gate open, map unread | stable, gates buildable |
+| Goal | keep producers healthy, fund the gate | discover markets, chart, cash boom | profit first, health for margins |
+| Health weights | strict (`MarketAssumptions()` defaults) | HIGH importers pay 0.7 | RESTRICTED sources 0.5, ABUNDANT importers 0.3, take floor LIMITED |
+| Margin floor | 15% | 10% | 10% |
+| Mining sells | where the buyer is starved: SCARCE importer counts x2, LIMITED x1.5 | by price with a small feed bonus | by price, skipping saturated buyers |
+| Bought hauler | `supplyGate` on the home site, nursing | trade | trade |
+| Bought probe | `probeMarkets`, then `expand` at a yard | `explore`, then `probeMarkets` where it stops | `probeMarkets` |
+| Fresh agent's goals | 2 shuttles (120k), 2 mining drones (150k), 1 hauler (250k) | 2 haulers (300k), 2 probes (100k) | none |
+| Leaves when | the gate completes (`supplyGate` advances the plan to BOOM itself) | by hand: `phase late` | - |
+
+In ESCAPE the point is never to tip a market into SCARCE or RESTRICTED. In LATE the point is the
+opposite: loosen the weights on purpose and record where each market tips, so the limits become
+numbers. Every market reading already lands in `market_prices` with supply and activity, so the
+measurement is the ordinary run; the analysis is a query over that table.
+
+## The experiment (from 2026-09-04)
+
+TRIPLEHAT (VOID, X1-TH77) got the phased plan late, after a day of blended strategy.
+TRIPLEHATCE2 (COSMIC, X1-JT70, gate unfinished, nobody contributing) runs it from its first
+minute: frigate trading on the ESCAPE weights, probe reading markets then buying the ESCAPE fleet,
+each new hauler going to the gate. `race` prints both agents' bank over time, fleet, gate deliveries
+and phase side by side; the question is how fast the fresh agent catches the old one.
