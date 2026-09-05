@@ -953,7 +953,7 @@ class LineMode(
     companion object {
         val COMMANDS = listOf(
             "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "catalog", "race", "extractions",
-            "plan", "assign", "unassign", "goal", "chain", "run", "buy", "sim", "repl",
+            "plan", "assign", "unassign", "goal", "chain", "phase", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
         private val PART_PREFIXES = listOf("MOUNT_", "MODULE_", "ENGINE_", "REACTOR_")
