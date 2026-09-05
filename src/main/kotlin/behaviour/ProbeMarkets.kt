@@ -25,10 +25,14 @@ val probeMarketsSpec = BehaviourSpec(
     run = { probeMarkets() },
 )
 
-suspend fun BehaviourScope.probeMarkets() {
-    val system = param("system") ?: me.nav.systemSymbol
-    val only = param("markets")?.split(',')?.map { it.trim().uppercase() }?.toSet()
-    val maxAge = param("maxAge")?.toLongOrNull()?.minutes
+suspend fun BehaviourScope.probeMarkets() = surveyMarkets(
+    system = param("system") ?: me.nav.systemSymbol,
+    only = param("markets")?.split(',')?.map { it.trim().uppercase() }?.toSet(),
+    maxAge = param("maxAge")?.toLongOrNull()?.minutes,
+)
+
+/** Reads every market of [system] (or [only]) that has no prices or is older than [maxAge]; with [maxAge] it keeps watching. */
+suspend fun BehaviourScope.surveyMarkets(system: String, only: Set<String>? = null, maxAge: kotlin.time.Duration? = null) {
     var read = 0
     val unreadable = mutableMapOf<String, Instant>()
     while (true) {

@@ -50,6 +50,15 @@ class Supervisor(
             logger.info { "phase ${plan.phase} -> $phase" }
             change("move to phase $phase") { it.withPhase(phase) }
             emit(Event.PhaseAdvanced(phase.name, knowledge.Strategy.describe(phase)))
+            // The ships that exist now get the new phase's jobs; the gate's connections say where the haulers go.
+            scope.launch {
+                val snapshot = verbs.snapshot()
+                val home = snapshot.hqSystem
+                val gate = home?.let { h -> snapshot.waypointsIn(h).firstOrNull { it.type == model.system.WaypointType.JUMP_GATE } }
+                val neighbours = gate?.let { g -> runCatching { verbs.jumpGate(g.symbol).connections.map { it.substringBeforeLast('-') } }.getOrElse { emptyList() } } ?: emptyList()
+                runCatching { home?.let { verbs.loadSystem(it) } } // the gate's under-construction flag is stale once it completes
+                change("re-plan the fleet for $phase") { knowledge.Strategy.rebalance(phase, it, snapshot, neighbours) }
+            }
         }
         shared.onPlanEdited = { edit, why -> change(why, edit) }
     }

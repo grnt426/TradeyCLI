@@ -20,6 +20,7 @@ import plan.Assignment
 import plan.FleetGoal
 import plan.Goals
 import plan.Phase
+import plan.Plan
 
 /**
  * The three phases of a reset and what each one changes, in one place so the plan's `phase` is
@@ -141,6 +142,27 @@ object Strategy {
             }
             Phase.LATE -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
         }
+    }
+
+    /**
+     * The plan for the ships that already exist when the phase changes. BOOM: the first probe keeps
+     * reading the home system's prices, every other probe explores, and each hauler takes a
+     * different neighbouring system to trade in; the rest keep their jobs.
+     */
+    fun rebalance(phase: Phase, plan: Plan, snapshot: Snapshot, neighbours: List<String>): Plan {
+        if (phase != Phase.BOOM) return plan
+        var next = plan
+        val ships = snapshot.ships.values.sortedBy { it.symbol }
+        val probes = ships.filter { !it.usesFuel }
+        probes.forEachIndexed { i, probe ->
+            next = next.with(if (i == 0) Assignment(probe.symbol, "probeMarkets", mapOf("maxAge" to "10")) else Assignment(probe.symbol, "explore", mapOf("maxSystems" to "10")))
+        }
+        val haulers = ships.filter { it.usesFuel && it.cargo.capacity >= 60 && !it.canMine }
+        haulers.forEachIndexed { i, hauler ->
+            val target = neighbours.getOrNull(i % neighbours.size.coerceAtLeast(1))
+            next = next.with(if (target != null) Assignment(hauler.symbol, "trade", mapOf("system" to target)) else Assignment(hauler.symbol, "trade"))
+        }
+        return next
     }
 
     /** What a ship does once its behaviour has run to completion; null leaves it finished. */

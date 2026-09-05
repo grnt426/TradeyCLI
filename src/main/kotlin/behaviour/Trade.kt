@@ -25,6 +25,7 @@ val tradeSpec = BehaviourSpec(
         ParamSpec("good", "Only trade this good"),
         ParamSpec("minMargin", "Minimum credits per unit after prices move (default 20)"),
         ParamSpec("minMarginRatio", "Stop a route once the margin drops below this share of the buy price (default 0.15)"),
+        ParamSpec("system", "Trade in this system: jump there through the gate first, and read its markets if nobody has"),
     ),
     validate = { _, ship, _ -> buildList { if (ship.cargo.capacity == 0) add("${ship.symbol} has no cargo hold") } },
     run = { trade() },
@@ -36,6 +37,8 @@ suspend fun BehaviourScope.trade() {
     val setAside = mutableMapOf<String, Instant>()
 
     if (!me.cargo.isEmpty) phase("sell leftovers") { sellLeftovers() }
+    param("system")?.uppercase()?.let { target -> if (me.nav.systemSymbol != target) phase("migrate", "to $target") { goToSystem(target) } }
+    var surveyed = false
 
     while (true) {
         clock.sleep(1.seconds)
@@ -53,6 +56,13 @@ suspend fun BehaviourScope.trade() {
                 ?.also { shared.claimRoute(ship, "${it.good}@${it.source.symbol}", "${it.good}@${it.destination.symbol}") }
         }
         if (plan == null) {
+            // In a system nobody of ours has read, read it once ourselves before waiting on a probe.
+            val system = me.nav.systemSymbol
+            if (!surveyed && snapshot().pricedMarketsIn(system).size < 3) {
+                surveyed = true
+                phase("survey", system) { surveyMarkets(system) }
+                continue
+            }
             // Nothing pays with the prices known right now; a probe may be reading more. Wait, do not fail.
             status("waiting", "no profitable trade between markets with fresh prices" + (onlyGood?.let { " for $it" } ?: "") + "; checking again in 5 minutes")
             clock.sleep(5.minutes)
