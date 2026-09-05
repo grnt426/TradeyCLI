@@ -84,4 +84,7 @@ simulator. Milestones from the design:
 - [ ] Terminal width from the terminal, not the 160-column constant.
 - [ ] Real waypoint art, or drop the placeholder planet.
 - [ ] Turn the remaining `println` calls into log lines; sane log level and rotation.
-- [ ] Decide Kotter versus Mosaic with a one-day spike once the engine is stable.
+- [x] Decide the terminal library: Mordant as the thin layer with our own canvas above it, JLine
+      the fallback; Kotter and Mosaic rejected (no mouse). `docs/console-redesign.md` has the
+      evaluation, the architecture and the milestones. The new console is built beside the Kotter
+      dashboard as `TradeyCLI bridge` with its own install folder, and replaces it at parity.

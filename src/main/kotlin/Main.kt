@@ -65,10 +65,19 @@ fun isActiveScreen(screen: Screen): Boolean = screen == appState.screen
 fun getActiveAppState(): AppState = appState
 
 /**
- * With arguments: line mode, one command and out (see [LineMode]). Without: the dashboard.
+ * With arguments: line mode, one command and out (see [LineMode]); `bridge` starts the new console
+ * ([bridge.Bridge], docs/console-redesign.md). Without: the Kotter dashboard.
  */
 suspend fun main(args: Array<String>) {
     ensureRuntimeDirectories()
+    if (args.firstOrNull() == "bridge") {
+        val code = try {
+            bridge.Bridge.run(args.drop(1))
+        } finally {
+            App.shutdown()
+        }
+        exitProcess(code)
+    }
     if (args.isNotEmpty()) {
         val code = try {
             LineMode().run(args.toList())

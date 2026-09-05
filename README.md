@@ -35,6 +35,17 @@ each purpose's fuel charged to it, where they came from by source (arbitrage, mi
 charting, market health), and the plan's notes. Every panel prints a bounded number of lines.
 `summary` in line mode prints the same as tables; `intentions` the older per-ship view.
 
+## The new console
+
+A second console is being built beside the dashboard (`docs/console-redesign.md`). `bridge.bat`
+builds it into its own folder, `build/install-bridge/`, so rebuilding it never disturbs a `run`
+started from `build/install/`, and launches `TradeyCLI bridge`. It only watches: boot, then follow
+the store. `q` quits; number keys, F-keys or a click on the bottom bar switch screens; Tab moves
+focus; arrows and clicks pick rows. `TradeyCLI bridge --frame --no-boot --size 160x45` prints one
+frame as text without a terminal, which is how it is checked from a shell; `--wait` boots first,
+`--ansi` keeps the colours, `--sim` renders from the simulator, `--view NAME` picks the screen, and
+`--bench 200` reports bytes and milliseconds per frame.
+
 ## Line mode
 
 Give it arguments and there is no dashboard, just an answer:
@@ -186,6 +197,7 @@ in this reset.
 - `src/main/kotlin/storage/` - one SQLite file per agent and server reset.
 - `src/main/kotlin/cli/` - line mode.
 - `src/main/kotlin/screen/` - the Kotter screens.
+- `src/main/kotlin/bridge/` - the new console: `tty` (the terminal, over Mordant), `canvas` (cells, frames, diffing, dot plots), `scene`, `fx`, `glyphs`, `views`.
 - `src/main/kotlin/model/` - the API models.
 - `profile/` - settings and the account token; `profile/agents/<SYMBOL>/` holds each agent's
   token, `plan.json` and its `data-<reset>.db` (git-ignored). Older resets end up in `archive/`.

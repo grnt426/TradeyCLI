@@ -17,8 +17,10 @@ repositories {
 }
 
 dependencies {
-    // Terminal UI
+    // Terminal UI: Kotter for the old dashboard; Mordant is the terminal layer under `bridge` (docs/console-redesign.md)
     implementation("com.varabyte.kotter:kotter-jvm:1.4.0")
+    implementation("com.github.ajalt.mordant:mordant:3.1.0")
+    implementation("com.github.ajalt.mordant:mordant-jvm-jna:3.1.0")
 
     // HTTP + JSON
     implementation("io.ktor:ktor-client-core:$ktorVersion")
@@ -70,4 +72,17 @@ kotlin {
 
 application {
     mainClass.set("MainKt")
+    // The screens write box drawing, blocks and braille; the JVM must not translate them to the console code page.
+    applicationDefaultJvmArgs = listOf("-Dstdout.encoding=UTF-8", "-Dstderr.encoding=UTF-8", "-Dfile.encoding=UTF-8")
+}
+
+/**
+ * The same distribution into its own folder, so rebuilding the new console (`bridge.bat`) does not
+ * replace the jars under a `run` started from build/install/TradeyCLI.
+ */
+val installBridge by tasks.registering(Sync::class) {
+    group = "distribution"
+    description = "Installs the distribution to build/install-bridge, leaving build/install alone."
+    with(distributions.named("main").get().contents)
+    into(layout.buildDirectory.dir("install-bridge/TradeyCLI"))
 }
