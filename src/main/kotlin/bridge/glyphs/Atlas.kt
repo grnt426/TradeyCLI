@@ -14,7 +14,7 @@ object Atlas {
 
     fun waypoint(type: WaypointType): Glyph = when (type) {
         WaypointType.PLANET -> Glyph('●', Rgb(96, 176, 128))
-        WaypointType.GAS_GIANT -> Glyph('◉', Rgb(224, 150, 84))
+        WaypointType.GAS_GIANT -> Glyph('◍', Rgb(224, 150, 84))
         WaypointType.MOON -> Glyph('○', Rgb(156, 160, 178))
         WaypointType.ORBITAL_STATION -> Glyph('■', Rgb(104, 164, 232))
         WaypointType.JUMP_GATE -> Glyph('◎', Rgb(204, 112, 240))
@@ -38,6 +38,9 @@ object Atlas {
         ShipRole.HARVESTER -> Rgb(120, 200, 200)
         else -> Rgb(180, 190, 210)
     }
+
+    /** The star itself. Geometric Shapes, not Dingbats: `★` renders wider than a cell in some fonts. */
+    const val STAR = '◉'
 
     /** The colour of a star from its type name (BLUE_STAR, RED_STAR, ...). */
     fun star(typeName: String): Rgb = when {

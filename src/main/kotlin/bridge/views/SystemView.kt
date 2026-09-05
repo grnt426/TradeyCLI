@@ -21,11 +21,13 @@ class SystemView : WidgetView() {
     private var model: BridgeModel? = null
     private var selectedWaypoint: String? = null
     private var selectedShip: String? = null
+    private var selectedStar = false
 
     private val map: SystemMap = SystemMap(
         model = { model!! },
-        onSelectWaypoint = { selectedWaypoint = it; selectedShip = null; it?.let(list::selectKey) },
-        onSelectShip = { selectedShip = it },
+        onSelectWaypoint = { selectedWaypoint = it; selectedShip = null; selectedStar = false; it?.let(list::selectKey) },
+        onSelectShip = { selectedShip = it; selectedStar = false },
+        onSelectStar = { selectedShip = null; selectedStar = true },
     )
     private val list: Table = Table(
         columns = listOf(
@@ -38,9 +40,11 @@ class SystemView : WidgetView() {
             if (row != null) {
                 selectedWaypoint = row.key
                 selectedShip = null
+                selectedStar = false
                 map.selectedWaypoint = row.key
             }
         },
+        onActivate = { row: Table.Row -> map.centreOnKey(row.key) },
     )
 
     override fun paint(p: Painter, model: BridgeModel, t: Double) {
@@ -69,17 +73,43 @@ class SystemView : WidgetView() {
         })
         map.selectedWaypoint = selectedWaypoint
         map.selectedShip = selectedShip
+        map.selectedStar = selectedStar
 
         place(map, p.panel(mapRect, sys ?: "System", focus === map), t)
-        place(list, p.panel(listRect, "Waypoints (${waypoints.size})", focus === list, hint = "↑↓ · click"), t)
+        place(list, p.panel(listRect, "Waypoints (${waypoints.size})", focus === list, hint = "↑↓ · double-click centres"), t)
         val ship = selectedShip?.let { snap.ships[it] }
         val wp = selectedWaypoint?.let { snap.waypoints[it] }
         when {
+            selectedStar && sys != null -> starCard(p.panel(cardRect, sys), sys, model)
             ship != null -> shipCard(p.panel(cardRect, ship.symbol), ship, model)
             wp != null -> waypointCard(p.panel(cardRect, wp.symbol), wp, model)
             else -> p.panel(cardRect, "Selection").text(0, 0, "click a waypoint or a ship", Palette.textDim)
         }
         endFrame(listOf(map, list))
+    }
+
+    /** The star is not a waypoint: nothing docks there. The card says what the system is instead. */
+    private fun starCard(p: Painter, sys: String, model: BridgeModel) {
+        val snap = model.snapshot()
+        val system = snap.systems[sys]
+        var y = 0
+        val colour = Atlas.star(system?.type ?: "")
+        p.put(0, y, Atlas.STAR, colour, null, Attr.BOLD)
+        p.text(2, y, (system?.type ?: "star").lowercase().replace('_', ' '), colour, null, Attr.BOLD)
+        if (system != null) p.textRight(p.width, y, "sector ${system.sectorSymbol} · ${system.x}, ${system.y}", Palette.textDim)
+        y++
+        p.text(0, y++, "the system's star; waypoints orbit it, ships cannot visit it", Palette.textDim)
+        y++
+        val waypoints = snap.waypointsIn(sys)
+        val counts = waypoints.groupingBy { it.type }.eachCount().entries.sortedByDescending { it.value }
+            .joinToString(", ") { "${it.value} ${it.key.name.lowercase().replace('_', ' ')}" }
+        for (line in bridge.scene.TextBlock.wrap("${waypoints.size} waypoints: $counts", p.width).take(3)) p.text(0, y++, line, Palette.text)
+        val gate = waypoints.firstOrNull { it.type.name.endsWith("GATE") }
+        if (gate != null) p.text(0, y++, "jump gate ${gate.symbol}" + (if (gate.isUnderConstruction) ", under construction" else ""), Palette.accent)
+        p.text(0, y++, "${waypoints.count { it.hasMarket }} markets, ${waypoints.count { it.hasShipyard }} shipyards, ${waypoints.count { it.isMineable }} minable", Palette.text)
+        if (system != null && system.factions.isNotEmpty()) p.text(0, y++, "factions: ${system.factions.joinToString { it.symbol.toString() }}".take(p.width), Palette.textDim)
+        val here = snap.ships.values.count { it.nav.systemSymbol == sys }
+        p.text(0, y, "$here of ${snap.ships.size} ships in this system", Palette.textDim)
     }
 
     private fun waypointCard(p: Painter, wp: Waypoint, model: BridgeModel) {

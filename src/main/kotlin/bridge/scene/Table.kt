@@ -31,6 +31,9 @@ class Table(
 
     override val focusable = true
 
+    private var lastClickAt = 0L
+    private var lastClickRow = -1
+
     val selectedRow: Row? get() = rows.getOrNull(selected)
 
     fun setRows(newRows: List<Row>) {
@@ -114,6 +117,11 @@ class Table(
         for (i in 0 until trackH) p.put(x, 1 + i, if (i in thumbY until thumbY + thumbH) '┃' else '│', if (i in thumbY until thumbY + thumbH) Palette.border else Palette.track)
     }
 
+    companion object {
+        /** Two clicks on the same row this close together activate it, like Enter. */
+        const val DOUBLE_CLICK_NANOS = 400_000_000L
+    }
+
     /** Column widths for [total] cells with one cell between columns. */
     fun widths(total: Int): List<Int> {
         val gaps = columns.size - 1
@@ -155,6 +163,14 @@ class Table(
                 val ri = scroll + y - 1
                 if (ri in rows.indices) {
                     select(ri)
+                    val now = System.nanoTime()
+                    if (ri == lastClickRow && now - lastClickAt < DOUBLE_CLICK_NANOS) {
+                        lastClickAt = 0
+                        rows[ri].let(onActivate)
+                    } else {
+                        lastClickAt = now
+                        lastClickRow = ri
+                    }
                     return true
                 }
             }

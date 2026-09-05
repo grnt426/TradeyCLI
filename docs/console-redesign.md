@@ -398,3 +398,10 @@ Still assumed:
   selected waypoint (traits, market read age, shipyard, ships here) or ship. Drag-to-pan and the
   isometric mode wait for M7. Parity with the Kotter console is reached; removing `screen/` and
   the Kotter dependency is Grant's call.
+- 2026-09-05, after Grant's first look at the map: double-clicking a waypoint or ship, on the map
+  or in the list (Enter does the same), centres the camera on it, which is how you find the gate.
+  The star is drawn with a Geometric Shapes glyph (`◉`, the gas giant moved to `◍`) because the
+  Dingbats `★` rendered wider than a cell in his font; its halo is four dim dots; it is clickable
+  and its card explains what it is and sums the system up (waypoint counts by type, the jump gate
+  and its state, markets, shipyards, minable rocks, factions, ships present). Glyph rule from
+  this: stay inside Box Drawing, Block Elements, Geometric Shapes, Braille and Arrows.

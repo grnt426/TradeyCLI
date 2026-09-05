@@ -9,6 +9,7 @@ import bridge.fx.Starfield
 import bridge.glyphs.Atlas
 import bridge.glyphs.Palette
 import bridge.scene.Keys
+import bridge.scene.Table
 import bridge.scene.Widget
 import bridge.tty.Input
 import engine.Snapshot
@@ -33,12 +34,17 @@ class SystemMap(
     private val model: () -> BridgeModel,
     private val onSelectWaypoint: (String?) -> Unit,
     private val onSelectShip: (String?) -> Unit,
+    private val onSelectStar: () -> Unit = {},
 ) : Widget() {
     override val focusable = true
 
     var system: String? = null
     var selectedWaypoint: String? = null
     var selectedShip: String? = null
+    var selectedStar: Boolean = false
+
+    private var lastClickAt = 0L
+    private var lastClickKey: String? = null
 
     private var cx = 0.0
     private var cy = 0.0
@@ -47,7 +53,9 @@ class SystemMap(
     private var unitsPerRow = 0.0
     private val stars = Starfield(seed = 3, density = 0.004)
 
-    private class Placed(val col: Int, val row: Int, val waypoint: String?, val ship: String?)
+    private class Placed(val col: Int, val row: Int, val waypoint: String?, val ship: String?, val star: Boolean = false) {
+        val key: String get() = waypoint ?: ship ?: "star"
+    }
     private var placed: List<Placed> = emptyList()
 
     fun fit() {
@@ -159,10 +167,12 @@ class SystemMap(
         for ((dc, dr) in listOf(-1 to 0, 1 to 0, -2 to 0, 2 to 0, 0 to -1, 0 to 1)) {
             if (labels.contains((sr + dr).toLong() shl 32 or ((sc + dc).toLong() and 0xffffffffL))) continue // a waypoint or label sits here
             val far = kotlin.math.abs(dc) == 2
-            p.put(sc + dc, sr + dr, if (far) '·' else '•', Palette.background.mix(starColour, if (far) 0.25 + 0.1 * pulse else 0.5 + 0.2 * pulse))
+            p.put(sc + dc, sr + dr, '·', Palette.background.mix(starColour, if (far) 0.2 + 0.1 * pulse else 0.4 + 0.2 * pulse))
         }
-        p.put(sc, sr, '★', starColour, null, Attr.BOLD)
+        p.put(sc, sr, Atlas.STAR, if (selectedStar) Palette.textBright else starColour, if (selectedStar) Palette.selection else null, Attr.BOLD)
         occupy(sc, sr)
+        out += Placed(sc, sr, null, null, star = true)
+        if (selectedStar || unitsPerRow < LABEL_ZOOM) p.text(sc + 2, sr, snap.systems[sys]?.type?.lowercase()?.replace('_', ' ') ?: "star", Palette.textDim)
 
         // Ships in flight: trail behind, road ahead, sprite.
         val flying = snap.ships.values.filter { it.nav.systemSymbol == sys && it.nav.inTransitAt(now) }
@@ -263,15 +273,7 @@ class SystemMap(
             "+", "=" -> unitsPerRow /= 1.25
             "-", "_" -> unitsPerRow *= 1.25
             "f" -> fit()
-            "c" -> {
-                val wp = selectedWaypoint?.let { snap.waypoints[it] }
-                val ship = selectedShip?.let { snap.ships[it] }
-                when {
-                    wp != null -> { val root = wp.orbits?.let { snap.waypoints[it] } ?: wp; centreOn(root.x.toDouble(), root.y.toDouble()) }
-                    ship != null -> shipWorld(ship, model().now())?.let { (x, y) -> centreOn(x, y) }
-                    else -> return false
-                }
-            }
+            "c" -> centreOnKey(selectedShip ?: selectedWaypoint ?: "star")
             "[", "]" -> {
                 val all = systems(snap)
                 if (all.isEmpty()) return false
@@ -282,6 +284,18 @@ class SystemMap(
             else -> return false
         }
         return true
+    }
+
+    /** Centres the camera on a waypoint, a ship, or the star; an orbital centres on its parent. */
+    fun centreOnKey(key: String) {
+        val snap = model().snapshot()
+        val wp = snap.waypoints[key]
+        val ship = snap.ships[key]
+        when {
+            wp != null -> { val root = wp.orbits?.let { snap.waypoints[it] } ?: wp; centreOn(root.x.toDouble(), root.y.toDouble()) }
+            ship != null -> shipWorld(ship, model().now())?.let { (x, y) -> centreOn(x, y) }
+            else -> centreOn(0.0, 0.0)
+        }
     }
 
     private fun shipWorld(ship: Ship, now: java.time.Instant): Pair<Double, Double>? {
@@ -309,14 +323,21 @@ class SystemMap(
                     .map { it to (kotlin.math.abs(it.col - x) / 2.0 + kotlin.math.abs(it.row - y)) }
                     .filter { it.second <= 1.5 }
                     .sortedWith(compareBy({ if (it.first.ship != null) 0 else 1 }, { it.second }))
-                    .firstOrNull()?.first
-                if (hit?.ship != null) {
-                    selectedShip = hit.ship
-                    onSelectShip(hit.ship)
-                } else if (hit?.waypoint != null) {
-                    selectedWaypoint = hit.waypoint
-                    selectedShip = null
-                    onSelectWaypoint(hit.waypoint)
+                    .firstOrNull()?.first ?: return true
+                selectedStar = hit.star
+                when {
+                    hit.ship != null -> { selectedShip = hit.ship; onSelectShip(hit.ship) }
+                    hit.waypoint != null -> { selectedWaypoint = hit.waypoint; selectedShip = null; onSelectWaypoint(hit.waypoint) }
+                    else -> { selectedShip = null; onSelectStar() }
+                }
+                // A second click on the same object soon after centres on it.
+                val now = System.nanoTime()
+                if (hit.key == lastClickKey && now - lastClickAt < Table.DOUBLE_CLICK_NANOS) {
+                    centreOnKey(hit.key)
+                    lastClickAt = 0
+                } else {
+                    lastClickAt = now
+                    lastClickKey = hit.key
                 }
                 return true
             }
