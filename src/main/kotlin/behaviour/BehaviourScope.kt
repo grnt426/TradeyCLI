@@ -218,6 +218,9 @@ class SharedState {
     /** Gates a jump was refused to because they are still under construction (API 4262): both ends must be built. */
     val unreachableGates: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
+    /** Drones sitting on rocks (mineInPlace), by ship symbol, for the collector. */
+    val parked = ConcurrentHashMap<String, String>()
+
     /** The producers' take-rate buckets, shared by every ship so three haulers do not each take a full load. */
     val takeBudget = knowledge.TakeBudget()
 

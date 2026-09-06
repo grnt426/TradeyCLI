@@ -948,6 +948,7 @@ class LineMode(
                     is Event.Jumped -> err.println("${time(engine.clock.now())} ${e.ship} jumped to ${e.waypoint} (antimatter ${e.antimatterCost})")
                     is Event.PhaseAdvanced -> err.println("${time(engine.clock.now())} PHASE ${e.phase}: ${e.description}")
                     is Event.Activity -> if (e.kind == "drift") err.println("${time(engine.clock.now())} ${e.ship} DRIFTING ${e.detail}, ${e.seconds / 60} min, on ${e.behaviour}")
+                    is Event.Transferred -> err.println("${time(engine.clock.now())} ${e.to} took ${e.units} ${e.good} from ${e.from}")
                     is Event.Charted -> err.println("${time(engine.clock.now())} ${e.ship} charted ${e.waypoint}: +${e.credits}")
                     is Event.Warning -> err.println("${time(engine.clock.now())} warning: ${e.message}")
                     is Event.Failure -> err.println("${time(engine.clock.now())} failure: ${e.message}")

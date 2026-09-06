@@ -256,6 +256,20 @@ class SimUniverse(
         put(ship.copy(cargo = ship.cargo.adjusted(good, -units))).cargo
     }
 
+    /** Cargo between two of our ships: same waypoint, same docked-or-orbit state, room in the receiver. */
+    fun transfer(fromSymbol: String, toSymbol: String, good: TradeSymbol, units: Int): model.responsebody.TransferResponse = counted {
+        val from = settle(fromSymbol)
+        val to = settle(toSymbol)
+        if (from.nav.waypointSymbol != to.nav.waypointSymbol) throw error(400, 4234, "$fromSymbol and $toSymbol are not at the same waypoint")
+        if (from.isDocked != to.isDocked) throw error(400, 4271, "$fromSymbol and $toSymbol must both be docked or both in orbit")
+        val have = from.unitsOf(good)
+        if (units <= 0 || units > have) throw error(400, 4219, "$fromSymbol has $have $good")
+        if (units > to.cargoSpaceLeft) throw error(400, 4217, "$toSymbol has room for ${to.cargoSpaceLeft}")
+        val after = put(from.copy(cargo = from.cargo.adjusted(good, -units)))
+        val target = put(to.copy(cargo = to.cargo.adjusted(good, units)))
+        model.responsebody.TransferResponse(after.cargo, target.cargo)
+    }
+
     fun survey(symbol: String): SurveyResponse = counted {
         val ship = settle(symbol)
         if (!ship.isInOrbit) throw error(400, 4223, "$symbol must be in orbit")

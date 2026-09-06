@@ -86,6 +86,9 @@ interface Verbs {
     /** Every agent on the server, public details; a request per twenty agents. */
     suspend fun agents(): List<model.PublicAgent>
 
+    /** Moves [units] of [good] from [from] to [to], both at one waypoint; puts both in orbit if their states differ. Returns [to] updated. */
+    suspend fun transferCargo(from: String, to: String, good: TradeSymbol, units: Int): Ship
+
     /** A gate's connections; one request. */
     suspend fun jumpGate(waypoint: String): JumpGate
 
@@ -144,6 +147,7 @@ sealed class VerbFailure(message: String, cause: Throwable? = null) : Exception(
     class CannotMine(val ship: String, val reason: String) : VerbFailure("$ship cannot mine: $reason")
 
     class NotEnoughCredits(val needed: Long, val available: Long) : VerbFailure("need $needed credits, have $available")
+    class Precondition(val reason: String) : VerbFailure(reason)
 
     class Api(val error: ApiError) : VerbFailure(error.message ?: "API error", error)
 }

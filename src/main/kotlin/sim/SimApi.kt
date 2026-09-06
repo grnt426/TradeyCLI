@@ -50,6 +50,7 @@ class SimApi(val universe: SimUniverse) : GameApi {
     override suspend fun sell(ship: String, symbol: TradeSymbol, units: Int): BuySellCargoResponse = universe.sell(ship, symbol, units)
     override suspend fun purchaseCargo(ship: String, symbol: TradeSymbol, units: Int): BuySellCargoResponse = universe.purchase(ship, symbol, units)
     override suspend fun jettison(ship: String, symbol: TradeSymbol, units: Int): Cargo = universe.jettison(ship, symbol, units)
+    override suspend fun transfer(fromShip: String, toShip: String, symbol: TradeSymbol, units: Int): model.responsebody.TransferResponse = universe.transfer(fromShip, toShip, symbol, units)
     override suspend fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse = universe.purchaseShip(type, waypoint)
     override suspend fun siphon(ship: String): SiphonResponse = universe.siphon(ship)
     override suspend fun chart(ship: String): ChartResponse = universe.chart(ship)

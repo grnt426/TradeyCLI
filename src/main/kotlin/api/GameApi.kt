@@ -57,6 +57,8 @@ interface GameApi {
     suspend fun sell(ship: String, symbol: TradeSymbol, units: Int): BuySellCargoResponse
     suspend fun purchaseCargo(ship: String, symbol: TradeSymbol, units: Int): BuySellCargoResponse
     suspend fun jettison(ship: String, symbol: TradeSymbol, units: Int): Cargo
+    /** Moves cargo between two of our ships at the same waypoint, both docked or both in orbit. */
+    suspend fun transfer(fromShip: String, toShip: String, symbol: TradeSymbol, units: Int): model.responsebody.TransferResponse
     suspend fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse
 
     suspend fun siphon(ship: String): SiphonResponse

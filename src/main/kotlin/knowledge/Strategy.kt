@@ -148,13 +148,19 @@ object Strategy {
                 // contract drip going, the third trades and gardens, and every further one goes to the gate.
                 isHauler && site != null && ship.nav.systemSymbol == home -> {
                     val haulersBefore = snapshot.ships.values.count { it.symbol != ship.symbol && it.symbol < ship.symbol && it.usesFuel && it.cargo.capacity >= 60 && !it.canMine }
+                    val parkedDrones = snapshot.plan?.assignments?.any { it.behaviour == "mineInPlace" } == true
+                    val collectorExists = snapshot.plan?.assignments?.any { it.behaviour == "collect" } == true
                     when {
                         haulersBefore == 0 -> Assignment(ship.symbol, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000"))
                         haulersBefore == 1 -> Assignment(ship.symbol, "runContract")
+                        // Drones parked on rocks need a collector before another trader.
+                        parkedDrones && !collectorExists -> Assignment(ship.symbol, "collect")
                         snapshot.plan?.rushing == true -> Assignment(ship.symbol, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000"))
                         else -> Assignment(ship.symbol, "trade")
                     }
                 }
+                // A drone where no rock is within its tank of a buyer sits on a rock and waits for the collector.
+                ship.canMine && ship.cargo.capacity in 1..20 && !dronesWorthIt(snapshot) -> Assignment(ship.symbol, "mineInPlace")
                 // At a reset the home system is uncharted and each chart paid ~28k on 2026-09-05: the probe charts
                 // before it reads prices. That is the fastest money there is in the first hours, and it funds the gate.
                 !ship.usesFuel && home != null && snapshot.waypointsIn(home).any { it.hasTrait(model.WaypointTraitSymbol.UNCHARTED) } &&

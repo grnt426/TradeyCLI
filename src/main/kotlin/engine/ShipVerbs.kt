@@ -331,6 +331,24 @@ class ShipVerbs(
 
     override suspend fun agents(): List<model.PublicAgent> = call { api.listAgents() }
 
+    override suspend fun transferCargo(from: String, to: String, good: TradeSymbol, units: Int): Ship {
+        var giver = settled(from)
+        var taker = settled(to)
+        if (giver.nav.waypointSymbol != taker.nav.waypointSymbol) throw VerbFailure.Precondition("$from and $to are not at the same waypoint")
+        if (giver.isDocked != taker.isDocked) {
+            if (giver.isDocked) giver = orbit(from)
+            if (taker.isDocked) taker = orbit(to)
+        }
+        val have = giver.unitsOf(good)
+        val moving = minOf(units, have, taker.cargoSpaceLeft)
+        if (moving <= 0) return taker
+        val response = call { api.transfer(from, to, good, moving) }
+        update(giver.copy(cargo = response.cargo))
+        val updated = update(taker.copy(cargo = response.targetCargo ?: taker.cargo.adjusted(good, moving)))
+        sink.event(Event.Transferred(from, to, good.name, moving))
+        return updated
+    }
+
     /** Reports a timed activity to the sink under the ship's current behaviour. */
     private fun activity(ship: String, kind: String, detail: String, seconds: Long) {
         if (seconds > 0) sink.event(Event.Activity(ship, world.shipStatus[ship]?.behaviour ?: "-", kind, detail, seconds))

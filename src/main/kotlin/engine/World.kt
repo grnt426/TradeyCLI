@@ -184,6 +184,7 @@ sealed interface Event {
     data class Supplied(val ship: String, val site: String, val good: String, val units: Int, val remaining: Long) : Event
     data class Jumped(val ship: String, val waypoint: String, val antimatterCost: Long) : Event
     data class PhaseAdvanced(val phase: String, val description: String) : Event
+    data class Transferred(val from: String, val to: String, val good: String, val units: Int) : Event
     /** A timed activity: a leg flown (kind cruise/drift/burn), an extraction, a siphon, a survey, a jump; [seconds] is how long it holds the ship. */
     data class Activity(val ship: String, val behaviour: String, val kind: String, val detail: String, val seconds: Long) : Event
 }

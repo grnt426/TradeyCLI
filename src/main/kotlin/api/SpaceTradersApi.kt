@@ -128,7 +128,7 @@ class SpaceTradersApi(val client: ApiClient) : GameApi {
         client.post("my/ships/$ship/jettison", JettisonRequest(symbol, units), Priority.ACTION)
             .jsonObject.getValue("cargo").decode()
 
-    suspend fun transfer(fromShip: String, toShip: String, symbol: TradeSymbol, units: Int): TransferResponse =
+    override suspend fun transfer(fromShip: String, toShip: String, symbol: TradeSymbol, units: Int): TransferResponse =
         client.post("my/ships/$fromShip/transfer", CargoTransferRequest(symbol, units, toShip), Priority.ACTION).decode()
 
     override suspend fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse =
