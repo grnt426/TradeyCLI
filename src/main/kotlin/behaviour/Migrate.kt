@@ -19,8 +19,9 @@ suspend fun BehaviourScope.goToSystem(system: String): Boolean {
         ?: throw BehaviourFailure("$from has no jump gate to reach $system through")
     val target = phase("find the way", "to $system") {
         jumpGate(gate.symbol).connections.firstOrNull { it.substringBeforeLast('-') == system }
-            ?: throw BehaviourFailure("${gate.symbol} does not connect to $system")
     }
+    // Not a neighbour of where the ship is now (it may have been diverted already): the caller picks another.
+    if (target == null) { status(detail = "${gate.symbol} does not connect to $system"); return false }
     if (target in shared.unreachableGates) { status(detail = "$target is under construction; $system cannot be reached yet"); return false }
     phase("travel to gate", gate.symbol) { travelVia(gate.symbol) }
     val jumped = phase("jump", "to $target") {
