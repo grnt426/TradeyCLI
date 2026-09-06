@@ -75,8 +75,13 @@ class Supervisor(
         change(edit(base), what)
     }
 
-    /** The boom's bookkeeping, once a minute: stage transitions per system from what the snapshot shows (docs/boom.md). */
+    /** Once a minute: in the escape the gate chains and their teams, in the boom stage transitions per system (docs/boom.md). */
     fun tick() {
+        if (plan.phase == Phase.ESCAPE) {
+            val snapshot = verbs.snapshot().copy(plan = plan)
+            if (knowledge.Strategy.seedGateChains(plan, snapshot, clock.now()) != plan) change("seed the gate chains") { knowledge.Strategy.seedGateChains(it, snapshot.copy(plan = it), clock.now()) }
+            return
+        }
         if (plan.phase != Phase.BOOM) return
         val snapshot = verbs.snapshot().copy(plan = plan)
         val next = knowledge.Strategy.advanceSystems(plan, snapshot, clock.now())

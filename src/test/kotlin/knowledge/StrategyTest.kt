@@ -101,6 +101,42 @@ class StrategyTest {
     }
 
     @Test
+    fun `the gate chains feed each producer's inputs from the cheapest other market, one level down, and feeders join the smallest team`() {
+        val seed = pricedSeed()
+        val snap = SimRun.worldFrom(SimUniverse(seed, VirtualClock(TestCoroutineScheduler(), now))).snapshot(1).let { s ->
+            s.copy(
+                markets = seed.markets.associateBy { it.symbol }.mapValues { (_, m) -> m.also { it.lastRead = now } },
+                constructionBill = listOf(model.ConstructionMaterial(TradeSymbol.FAB_MATS, 1600, 0), model.ConstructionMaterial(TradeSymbol.ADVANCED_CIRCUITRY, 400, 0)),
+            )
+        }
+        val chains = Strategy.gateChains(snap, now)
+        assertEquals(listOf("gate-FAB_MATS", "gate-ADVANCED_CIRCUITRY"), chains.map { it.id })
+        val fab = chains.first()
+        assertTrue(fab.legs.any { it.good == TradeSymbol.IRON && it.from == "X1-TH77-H50" && it.to == "X1-TH77-F47" }, fab.legs.toString())
+        val circ = chains.last()
+        assertTrue(circ.legs.any { it.good == TradeSymbol.MICROPROCESSORS && it.to == "X1-TH77-D42" }, circ.legs.toString())
+        assertTrue(circ.legs.any { it.to == "X1-TH77-A3" }, "one level down: the microprocessor plant's own inputs " + circ.legs)
+        // Seeding is idempotent and enrols a feeder on its chain's team.
+        val seeded = Plan().let { Strategy.seedGateChains(it, snap.copy(plan = it), now) }
+        assertEquals(seeded, Strategy.seedGateChains(seeded, snap.copy(plan = seeded), now))
+        val withFeeder = seeded.with(plan.Assignment(Fixtures.COMMAND_SHIP, "feed", mapOf("chain" to "gate-FAB_MATS")))
+        assertTrue(Fixtures.COMMAND_SHIP in Strategy.seedGateChains(withFeeder, snap.copy(plan = withFeeder), now).chain("gate-FAB_MATS")!!.ships)
+        // A hauler after the crew feeds; the gate hauler, the contract hauler and one trader come first.
+        val frigate = snap.ships.getValue(Fixtures.COMMAND_SHIP)
+        val hauler = frigate.copy(mounts = emptyList(), cargo = frigate.cargo.copy(capacity = 80))
+        val withSite = snap.copy(waypoints = snap.waypoints.mapValues { (_, w) -> if (w.type == model.system.WaypointType.JUMP_GATE) w.copy(isUnderConstruction = true) else w })
+        val crewed = (1..Strategy.ESCAPE_CREW).map { i -> hauler.copy(symbol = "X-$i") }
+        val late = hauler.copy(symbol = "X-9")
+        val fleet = withSite.copy(ships = withSite.ships + crewed.associateBy { it.symbol } + (late.symbol to late), plan = seeded)
+        val job = Strategy.defaultAssignment(Phase.ESCAPE, late, fleet)
+        assertEquals("feed", job?.behaviour, job.toString())
+        assertEquals("gate-FAB_MATS", job?.params?.get("chain"))
+        val full = fleet.copy(plan = seeded.with(plan.Assignment("X-1", "feed", mapOf("chain" to "gate-FAB_MATS"))).with(plan.Assignment("X-2", "feed", mapOf("chain" to "gate-ADVANCED_CIRCUITRY"))))
+        assertEquals("trade", Strategy.defaultAssignment(Phase.ESCAPE, late, full)?.behaviour, "the feeder slots are full")
+        assertEquals(5 + Strategy.FEEDERS, Strategy.goals(Phase.ESCAPE).fleet.first { it.type == model.ship.ShipType.SHIP_LIGHT_HAULER }.count)
+    }
+
+    @Test
     fun `the plan carries its phase through json and starts in escape`() {
         val file = File.createTempFile("plan", ".json").also { it.deleteOnExit() }
         Plan.save(file, Plan().withPhase(Phase.BOOM))

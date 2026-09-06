@@ -39,6 +39,16 @@ object Strategy {
 
     /** Haulers on the gate once finishing is comfortable; the rest of the escape fleet stays on health and income. */
     const val RUSH_HAULERS = 3
+    /**
+     * Haulers in ESCAPE that do nothing but feed the gate's producers (`feed` on the gate chains).
+     * The clock on the escape is the producers' output, not money: on 2026-09-06 F55 made about
+     * 40 FAB_MATS an hour with its iron flickering LIMITED, the bank sat on 1.5M it could not
+     * spend, and the trade routes were down to two. Fed inputs turn WEAK production GROWING and
+     * then STRONG, and trade volume grows with it.
+     */
+    const val FEEDERS = 2
+    /** Haulers in ESCAPE with a job of their own before any feeder: the gate hauler, the contract hauler, a trader. */
+    const val ESCAPE_CREW = 3
     /** The bank must cover this many times the remaining bill at today's prices, plus [POST_GATE_RESERVE], before the rush starts. Nursed producers held or lowered their prices through the whole bill on 2026-09-05, so the margin is small. */
     const val RUSH_COMFORT = 1.25
     /** Credits kept back through the rush so the boom starts with working capital and a hull or two. */
@@ -113,6 +123,58 @@ object Strategy {
         chainSources = if (phase == Phase.ESCAPE && snapshot != null) chainSources(snapshot) else emptySet(),
     )
 
+    const val GATE_CHAIN = "gate-"
+
+    /**
+     * One chain per material the gate still needs: every input its home producer imports, hauled
+     * from the cheapest other market that lists it, and the same again for the inputs' own
+     * producers in the system (A3's copper and silicon behind D47's microprocessors). Legs run
+     * whether or not they pay; the chain's ledger judges them (`chain` in line mode).
+     */
+    fun gateChains(snapshot: Snapshot, now: java.time.Instant): List<plan.Chain> {
+        val home = snapshot.hqSystem ?: return emptyList()
+        val roots = snapshot.constructionBill?.filter { it.fulfilled < it.required }?.map { it.tradeSymbol } ?: return emptyList()
+        val markets = snapshot.marketsIn(home)
+        fun producerOf(good: model.market.TradeSymbol) = markets.filter { it.typeOf(good) == model.market.TradeGoodType.EXPORT }.minByOrNull { it.good(good)?.purchasePrice ?: Int.MAX_VALUE }
+        // The cheapest source, unless one within a tenth of its price is nearer: quartz at B7 and H59 both cost 22, and H59 is 200 closer to the fab.
+        fun sourceOf(input: model.market.TradeSymbol, to: model.market.Market): model.market.Market? {
+            val candidates = markets.filter { it.symbol != to.symbol && it.typeOf(input).let { t -> t == model.market.TradeGoodType.EXPORT || t == model.market.TradeGoodType.EXCHANGE } }
+            val cheapest = candidates.minOfOrNull { it.good(input)?.purchasePrice ?: Int.MAX_VALUE } ?: return null
+            val there = snapshot.waypoints[to.symbol]
+            return candidates.filter { (it.good(input)?.purchasePrice ?: Int.MAX_VALUE) <= cheapest * 1.1 }
+                .minByOrNull { m -> val w = snapshot.waypoints[m.symbol]; if (w == null || there == null) Double.MAX_VALUE else engine.Travel.distance(w.x, w.y, there.x, there.y) }
+        }
+        return roots.mapNotNull { root ->
+            val producer = producerOf(root) ?: return@mapNotNull null
+            val legs = linkedSetOf<plan.Leg>()
+            fun feed(p: model.market.Market, good: model.market.TradeSymbol, depth: Int) {
+                ImportMap.inputsOf(good, p.imports.map { it.symbol }).forEach { input ->
+                    val source = sourceOf(input, p) ?: return@forEach
+                    legs += plan.Leg(input, source.symbol, p.symbol)
+                    if (depth < 1 && source.typeOf(input) == model.market.TradeGoodType.EXPORT) feed(source, input, depth + 1)
+                }
+            }
+            feed(producer, root, 0)
+            if (legs.isEmpty()) null
+            else plan.Chain("$GATE_CHAIN${root.name}", legs.toList(), enrolledAt = now.toString(), note = "feeds ${producer.symbol}, the ${root.name} producer, so its output grows")
+        }
+    }
+
+    /**
+     * The escape's bookkeeping, once a minute: the gate chains exist while the bill is unpaid, and
+     * every ship assigned to feed one is on its team (so the legs rotate over the team). Chains
+     * already in the plan, by hand or earlier, are left as they are. Pure.
+     */
+    fun seedGateChains(plan: Plan, snapshot: Snapshot, now: java.time.Instant): Plan {
+        var next = plan
+        gateChains(snapshot, now).forEach { chain -> if (plan.chain(chain.id) == null) next = next.withChain(chain) }
+        next.assignments.filter { it.behaviour == "feed" }.forEach { a ->
+            val chain = next.chain(a.params["chain"] ?: return@forEach) ?: return@forEach
+            if (a.ship !in chain.ships) next = next.withChain(chain.copy(ships = chain.ships + a.ship))
+        }
+        return next
+    }
+
     /** "market/good" for every export of a gate-chain good in the home system, healthy or not. */
     fun chainSources(snapshot: Snapshot): Set<String> {
         val home = snapshot.hqSystem ?: return emptySet()
@@ -181,7 +243,7 @@ object Strategy {
         // Light shuttles are a trap: a small hold, no faster, less fuel, not much cheaper. Haulers, and drones for ore.
         // Haulers first: on 2026-09-06 a fresh system paid a trader ~500k an hour, so a 273k hauler earns itself back in about an hour.
         Phase.ESCAPE -> Goals(fleet = listOf(
-            FleetGoal(ShipType.SHIP_LIGHT_HAULER, 5, reserve = 200_000),
+            FleetGoal(ShipType.SHIP_LIGHT_HAULER, 5 + FEEDERS, reserve = 200_000),
             FleetGoal(ShipType.SHIP_SURVEYOR, 2, reserve = 100_000),
             FleetGoal(ShipType.SHIP_MINING_DRONE, 2, reserve = 150_000),
         ))
@@ -235,6 +297,10 @@ object Strategy {
                         // Drones parked on rocks need a collector before another trader.
                         parkedDrones && !collectorExists -> Assignment(ship.symbol, "collect")
                         snapshot.plan?.rushing == true -> Assignment(ship.symbol, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000"))
+                        // After the crew, FEEDERS haulers work the gate chains, each joining the chain with the fewest hands.
+                        haulersBefore >= ESCAPE_CREW && (snapshot.plan?.assignments?.count { it.behaviour == "feed" && it.ship != ship.symbol } ?: 0) < FEEDERS &&
+                            snapshot.plan?.chains?.any { it.id.startsWith(GATE_CHAIN) } == true ->
+                            Assignment(ship.symbol, "feed", mapOf("chain" to snapshot.plan.chains.filter { it.id.startsWith(GATE_CHAIN) }.minBy { it.ships.size }.id))
                         else -> Assignment(ship.symbol, "trade")
                     }
                 }

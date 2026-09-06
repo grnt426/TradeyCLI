@@ -75,7 +75,9 @@ private suspend fun BehaviourScope.runLeg(leg: Leg, reserve: Long) {
             0
         } else {
             val spendable = agent().credits - reserve
-            val want = minOf(me.cargoSpaceLeft, (spendable / offer.purchasePrice).toInt())
+            // A source down to LIMITED gives up one trade volume a visit, not a whole hold: a bee that empties it only moves the shortage.
+            val cap = if (offer.supply <= model.market.SupplyLevel.LIMITED) offer.tradeVolume else Int.MAX_VALUE
+            val want = minOf(me.cargoSpaceLeft, cap, (spendable / offer.purchasePrice).toInt())
             if (want <= 0) {
                 status(detail = "bank ${Intentions.format(agent().credits)} is at the chain's reserve of ${Intentions.format(reserve)}; not buying")
                 0

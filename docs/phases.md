@@ -12,10 +12,18 @@ changing a phase's behaviour means editing one object.
 | Health weights | strict (`MarketAssumptions()` defaults) | HIGH importers pay 0.7 | RESTRICTED sources 0.5, ABUNDANT importers 0.3, take floor LIMITED |
 | Margin floor | 15% | 10% | 10% |
 | Mining sells | where the buyer is starved: SCARCE importer counts x2, LIMITED x1.5 | by price with a small feed bonus | by price, skipping saturated buyers |
-| Bought hauler | `supplyGate` on the home site, nursing | trade | trade |
+| Bought hauler | by arrival: `supplyGate` on the home site, `runContract`, `trade`, then `FEEDERS` (2) on the gate chains, then trade | trade | trade |
 | Bought probe | `probeMarkets`, then `expand` at a yard | `explore`, then `probeMarkets` where it stops | `probeMarkets` |
-| Fresh agent's goals | 2 shuttles (120k), 2 mining drones (150k), 1 hauler (250k) | 2 haulers (300k), 2 probes (100k) | none |
+| Fresh agent's goals | 5 + `FEEDERS` haulers (200k), 2 surveyors (100k), 2 mining drones (150k, only where a rock is within reach of a buyer) | 2 haulers (300k), 2 probes (100k) | none |
 | Leaves when | the gate completes (`supplyGate` advances the plan to BOOM itself) | by hand: `phase late` | - |
+
+**The feeders.** The clock on the escape is the producers' output, not the bank: on 2026-09-06 F55
+made about 40 FAB_MATS an hour with its iron flickering LIMITED while 1.5M sat unspendable and the
+trade routes were down to two. The supervisor seeds one chain per unpaid material (`gate-FAB_MATS`,
+`gate-ADVANCED_CIRCUITRY`): every input the producer imports, from the cheapest other market, and
+the same for an input's own producer in the system. `FEEDERS` haulers work them with `feed`,
+whether or not a leg pays (iron costs 8 a unit more at the refinery than the fab pays); a source
+down to LIMITED gives up one trade volume a visit. `chain` prints each chain's ledger and verdict.
 
 **The gate rush.** ESCAPE is rushed, but not at the cost of market health or of the capital the
 boom needs. The gate hauler re-reads the bill every load and prices what is left at the cheapest
