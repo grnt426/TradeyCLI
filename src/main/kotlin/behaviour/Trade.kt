@@ -96,13 +96,14 @@ suspend fun BehaviourScope.trade() {
         val bought = phase("buy", "${plan.good} at ${plan.source.symbol}") {
             dock(ship)
             val live = refreshMarket(plan.source.symbol)
-            val margin = Trading.stillPays(plan, live, assumptions)
+            val rules = if (plan.feeds) assumptions.forFeeding() else assumptions
+            val margin = Trading.stillPays(plan, live, rules)
             if (margin == null) {
                 status(detail = "${plan.good} at ${plan.source.symbol} no longer pays; setting the pair aside")
                 setAside[key] = now.plusSeconds(30.minutes.inWholeSeconds)
                 0
             } else {
-                buyLoad(plan, live, assumptions)
+                buyLoad(plan, live, rules)
             }
         }
         if (bought == 0) continue

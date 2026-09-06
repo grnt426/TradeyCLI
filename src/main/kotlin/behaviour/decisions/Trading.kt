@@ -32,6 +32,8 @@ data class TradePlan(
     val score: Double = creditsPerHour,
     /** The listings' supply/activity at both ends, for the eye. */
     val health: String = "",
+    /** The load delivers a short input to one of the gate's producers: any positive margin is worth it. */
+    val feeds: Boolean = false,
 ) {
     val marginPerUnit: Int get() = sellPrice - buyPrice
     fun summary(): String =
@@ -67,6 +69,9 @@ data class TradingAssumptions(
 ) {
     /** The smallest margin worth having on a unit bought at [buyPrice]. */
     fun floor(buyPrice: Double): Double = maxOf(minMarginPerUnit.toDouble(), buyPrice * minMarginRatio)
+
+    /** The same rules with the floor down to break-even, for a load that feeds a gate producer. */
+    fun forFeeding(): TradingAssumptions = copy(minMarginPerUnit = 1, minMarginRatio = 0.0)
 }
 
 object Trading {
@@ -95,11 +100,13 @@ object Trading {
                     val bid = destination.good(offer.symbol) ?: continue
                     val destinationWeight = MarketHealth.destinationWeight(bid, assumptions.market)
                     if (destinationWeight <= 0.0) continue
-                    if (bid.sellPrice - offer.purchasePrice < assumptions.floor(offer.purchasePrice.toDouble())) continue
+                    val feeds = "${destination.symbol}/${offer.symbol.name}" in assumptions.chainTargets
+                    val rules = if (feeds) assumptions.forFeeding() else assumptions
+                    if (bid.sellPrice - offer.purchasePrice < rules.floor(offer.purchasePrice.toDouble())) continue
                     val destinationWaypoint = snapshot.waypoints[destination.symbol] ?: continue
                     val legToDestination = Travel.distance(sourceWaypoint.x, sourceWaypoint.y, destinationWaypoint.x, destinationWaypoint.y)
                     if (ship.usesFuel && Travel.fuelCost(legToDestination, FlightMode.CRUISE) > ship.fuel.capacity) continue
-                    val load = sizeLoad(offer.purchasePrice, offer.tradeVolume, bid.sellPrice, bid.tradeVolume, capacity, (credits * assumptions.capitalShare).toLong(), assumptions)
+                    val load = sizeLoad(offer.purchasePrice, offer.tradeVolume, bid.sellPrice, bid.tradeVolume, capacity, (credits * assumptions.capitalShare).toLong(), rules)
                     if (load.units <= 0) continue
                     val fuel = if (ship.usesFuel) Travel.fuelCost(legToSource, FlightMode.CRUISE) + Travel.fuelCost(legToDestination, FlightMode.CRUISE) else 0L
                     val profit = load.profit - (fuel * assumptions.creditsPerFuelUnit).toLong()
@@ -107,11 +114,11 @@ object Trading {
                     val seconds = (if (legToSource > 0) Travel.seconds(legToSource, FlightMode.CRUISE, ship.engine.speed) else 0L) +
                         Travel.seconds(legToDestination, FlightMode.CRUISE, ship.engine.speed) + assumptions.overheadSeconds
                     val perHour = profit.toDouble() / seconds * 3600
-                    val feeds = "${destination.symbol}/${offer.symbol.name}" in assumptions.chainTargets
                     plans += TradePlan(
                         offer.symbol, source, destination, offer.purchasePrice, bid.sellPrice, load.units, profit, seconds, perHour, legToSource, legToDestination,
                         score = perHour * sourceWeight * destinationWeight * (if (feeds) assumptions.market.chainFeedBonus else 1.0),
                         health = "${offer.type.name.lowercase()} ${MarketHealth.describe(offer)} -> ${bid.type.name.lowercase()} ${MarketHealth.describe(bid)}" + (if (feeds) " (feeds the gate)" else ""),
+                        feeds = feeds,
                     )
                 }
             }
