@@ -3,6 +3,7 @@ package bridge.views
 import bridge.BridgeModel
 import bridge.Format
 import bridge.canvas.Attr
+import bridge.canvas.DotCanvas
 import bridge.canvas.Len
 import bridge.canvas.Painter
 import bridge.canvas.Rect
@@ -18,6 +19,7 @@ import bridge.scene.Widget
 import bridge.tty.Input
 import model.system.OrbitalNames
 import model.system.System
+import model.system.WaypointType
 import java.time.Duration
 import java.time.Instant
 import kotlin.math.roundToInt
@@ -217,6 +219,32 @@ class GalaxyMap(private val model: () -> BridgeModel) : Widget() {
         val homes = HashMap<String, MutableList<String>>()
         val board = m.galaxy.status()?.leaderboards?.mostCredits?.map { it.agentSymbol } ?: emptyList()
         for ((symbol, agent) in m.galaxy.agents) homes.getOrPut(OrbitalNames.getSectorSystem(agent.headquarters)) { ArrayList() }.add(symbol)
+        // Gate connections first, under the stars: the home's in the accent, the rest dim.
+        val lookup = m.galaxy.systems()
+        val dots = DotCanvas(w, h, m.dots)
+        for ((from, tos) in m.galaxy.connections) {
+            val a = lookup[from] ?: continue
+            for (to in tos) {
+                if (to < from && m.galaxy.connections.containsKey(to)) continue // drawn from the other end
+                val b = lookup[to] ?: continue
+                val ax = col(a.x.toDouble(), w)
+                val ay = row(a.y.toDouble(), h)
+                val bx = col(b.x.toDouble(), w)
+                val by = row(b.y.toDouble(), h)
+                val inView = (ax in 0.0..w.toDouble() && ay in 0.0..h.toDouble()) || (bx in 0.0..w.toDouble() && by in 0.0..h.toDouble())
+                if (!inView) continue
+                val touchesHome = from == home || to == home
+                val touchesSelected = from == selected || to == selected
+                val colour = when {
+                    touchesSelected -> Palette.textBright
+                    touchesHome -> Palette.accent.mix(Palette.background, 0.3)
+                    else -> Palette.border.mix(Palette.background, 0.35)
+                }
+                dots.line((ax * m.dots.dotsX).roundToInt(), (ay * m.dots.dotsY).roundToInt(), (bx * m.dots.dotsX).roundToInt(), (by * m.dots.dotsY).roundToInt(), colour)
+            }
+        }
+        dots.paint(p, 0, 0)
+
         val out = ArrayList<Placed>()
         val dense = unitsPerRow > 400
         for (s in systems) {
@@ -253,13 +281,15 @@ class GalaxyMap(private val model: () -> BridgeModel) : Widget() {
         placed = out
         val sel = selected?.let { m.galaxy.systems()[it] }
         if (sel != null) {
+            val links = m.galaxy.connections[sel.symbol]
             val card = "${sel.symbol} · ${sel.type.lowercase().replace('_', ' ')} · sector ${sel.sectorSymbol} · ${sel.x}, ${sel.y} · ${sel.waypoints.size} waypoints" +
                 (if (sel.factions.isNotEmpty()) " · ${sel.factions.joinToString { it.symbol.toString() }}" else "") +
+                (links?.let { " · gate to ${it.size}: ${it.sorted().take(6).joinToString(", ")}${if (it.size > 6) ", …" else ""}" } ?: if (sel.waypoints.any { it.type == WaypointType.JUMP_GATE }) " · gate not read yet" else " · no gate") +
                 (homes[sel.symbol]?.let { " · home of ${it.joinToString()}" } ?: "") +
                 (if (snap.waypointsIn(sel.symbol).isNotEmpty()) " · Enter opens" else "")
             p.text(1, 0, card.take(w - 2), Palette.text)
         }
-        val idle = "idle lane: ${m.galaxy.galaxyRequests()} req for the galaxy, ${m.galaxy.rankRequests()} to rank"
+        val idle = "idle lane: ${m.galaxy.galaxyRequests()} req for the galaxy, ${m.galaxy.rankRequests()} to rank, ${m.galaxy.gatesMapped} gates read"
         val hint = if (focused) "arrows pan · +/- zoom · f fit · R re-rank now · $idle" else "click to focus · $idle"
         p.text(1, h - 1, hint.take(w - 2), Palette.textDim)
     }

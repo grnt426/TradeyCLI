@@ -30,5 +30,6 @@ object EventLines {
         is Event.Supplied -> "${e.ship} supplied ${e.units} ${e.good} to ${e.site}, ${e.remaining} to go" to Palette.accent
         is Event.Jumped -> "${e.ship} jumped to ${e.waypoint}, antimatter ${e.antimatterCost}" to Palette.info
         is Event.PhaseAdvanced -> "phase ${e.phase}: ${e.description}" to Palette.accent
+        is Event.Activity -> "${e.ship} ${e.kind} ${e.detail}, ${e.seconds / 60} min" to (if (e.kind == "drift") Palette.warn else Palette.text)
     }
 }

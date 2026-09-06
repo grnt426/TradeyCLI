@@ -500,3 +500,13 @@ Still assumed:
   panel: agents headquartered in our system with their faction, bank and fleet, and every agent
   whose ships appear in the transaction history of the markets we have read, from the same
   ranking pass that already pages every agent.
+- 2026-09-06, Grant noticed the leaderboard homes trickling in and asked about connections. The
+  homes were one idle request per agent behind the galaxy crawl in the same queue. Now the ranking
+  pass runs first and is the only source of agents' records (it pages every agent anyway), the
+  crawl waits for it, and what does not change within a reset is kept in the store: every public
+  agent (`public_agents`) and every gate read (`gate_connections`), so a restart shows homes and
+  connections at once. Connections come only from reading each gate (one request per gate; the
+  API has no galaxy-wide graph), so `Galaxy.mapGates` reads them breadth first outward from home,
+  each gate's answer naming the next systems to read, at most 120 a run, and the map draws them
+  as dim lines with the home's in the accent and the selection's bright; a system's card lists
+  what its gate connects to.
