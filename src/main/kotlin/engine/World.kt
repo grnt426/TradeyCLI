@@ -66,6 +66,10 @@ class World {
     @Volatile
     var ledger: List<storage.LedgerEntry> = emptyList()
 
+    /** The last day of drift legs, for the idle report: how often a ship is sent further than its tank. */
+    @Volatile
+    var drifts: List<storage.DriftRecord> = emptyList()
+
     /** The last day of phase changes, for the idle report. */
     @Volatile
     var phases: List<storage.PhaseRecord> = emptyList()
@@ -103,6 +107,7 @@ class World {
         ledger = ledger,
         constructionBill = constructionBill,
         phases = phases,
+        drifts = drifts,
         plan = plan,
         runner = runner,
         contracts = contracts.values.sortedBy { it.id },
@@ -131,6 +136,7 @@ data class Snapshot(
     val ledger: List<storage.LedgerEntry> = emptyList(),
     val constructionBill: List<model.ConstructionMaterial>? = null,
     val phases: List<storage.PhaseRecord> = emptyList(),
+    val drifts: List<storage.DriftRecord> = emptyList(),
     val plan: Plan? = null,
     val runner: RunLease? = null,
     val contracts: List<Contract> = emptyList(),
@@ -178,4 +184,6 @@ sealed interface Event {
     data class Supplied(val ship: String, val site: String, val good: String, val units: Int, val remaining: Long) : Event
     data class Jumped(val ship: String, val waypoint: String, val antimatterCost: Long) : Event
     data class PhaseAdvanced(val phase: String, val description: String) : Event
+    /** A leg flown on DRIFT: ten times slower than cruise, so every one is a route planned beyond the tank. */
+    data class Drifted(val ship: String, val behaviour: String, val from: String, val to: String, val distance: Double, val seconds: Long) : Event
 }

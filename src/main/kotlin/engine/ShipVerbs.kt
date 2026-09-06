@@ -104,6 +104,10 @@ class ShipVerbs(
             throw e
         }
         current = update(current.copy(nav = response.nav, fuel = response.fuel ?: current.fuel))
+        if (mode == FlightMode.DRIFT) {
+            val seconds = java.time.Duration.between(response.nav.route.departureTime, response.nav.route.arrival).seconds
+            sink.event(Event.Drifted(ship, world.shipStatus[ship]?.behaviour ?: "-", from.symbol, waypoint, distance, seconds))
+        }
         clock.sleepUntil(response.nav.route.arrival.plusMillis(500))
         return settled(ship)
     }

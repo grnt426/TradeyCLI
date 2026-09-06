@@ -8,6 +8,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import model.Agent
 import model.ApiJson
+import model.PublicAgent
+import model.responsebody.JumpGate
 import model.Shipyard
 import model.contract.Contract
 import model.market.Market
@@ -56,6 +58,9 @@ data class SupplyRecord(val ship: String, val site: String, val good: TradeSymbo
 
 /** A market transaction with the tag the ship carried when it made it: a behaviour name, a chain id, `gate:SITE` or `nurse:SITE`. */
 data class TaggedTransaction(val transaction: MarketTransaction, val tag: String?)
+
+/** One drift leg. */
+data class DriftRecord(val at: Instant, val ship: String, val behaviour: String, val from: String, val to: String, val distance: Double, val seconds: Long)
 
 /** One phase change of one ship. */
 data class PhaseRecord(val at: Instant, val ship: String, val behaviour: String, val phase: String, val detail: String)
@@ -235,6 +240,26 @@ class AgentStore private constructor(
         }
     }
 
+    suspend fun putDrift(record: DriftRecord) = tx {
+        DriftTable.insert {
+            it[at] = record.at.toEpochMilli()
+            it[shipSymbol] = record.ship
+            it[behaviour] = record.behaviour
+            it[fromSymbol] = record.from
+            it[toSymbol] = record.to
+            it[distance] = record.distance
+            it[seconds] = record.seconds
+        }
+    }
+
+    suspend fun listDrifts(since: Instant? = null): List<DriftRecord> = tx {
+        val query = DriftTable.selectAll()
+        if (since != null) query.where { DriftTable.at greaterEq since.toEpochMilli() }
+        query.orderBy(DriftTable.id, SortOrder.ASC).map { row ->
+            DriftRecord(Instant.ofEpochMilli(row[DriftTable.at]), row[DriftTable.shipSymbol], row[DriftTable.behaviour], row[DriftTable.fromSymbol], row[DriftTable.toSymbol], row[DriftTable.distance], row[DriftTable.seconds])
+        }
+    }
+
     suspend fun putPhase(record: PhaseRecord) = tx {
         PhaseLogTable.insert {
             it[at] = record.at.toEpochMilli()
@@ -391,6 +416,30 @@ class AgentStore private constructor(
             it[CreditsTable.credits] = credits
         }
     }
+
+    /** The public records of every agent, replacing the last paging. */
+    suspend fun putPublicAgents(agents: List<PublicAgent>) = tx {
+        val now = Instant.now().toEpochMilli()
+        agents.forEach { a ->
+            PublicAgentTable.upsert {
+                it[symbol] = a.symbol
+                it[json] = ApiJson.encodeToString(a)
+                it[fetchedAt] = now
+            }
+        }
+    }
+
+    suspend fun listPublicAgents(): List<PublicAgent> = tx { PublicAgentTable.selectAll().map { decode<PublicAgent>(it[PublicAgentTable.json]) } }
+
+    suspend fun putGate(gate: JumpGate) = tx {
+        GateTable.upsert {
+            it[symbol] = gate.symbol
+            it[json] = ApiJson.encodeToString(gate)
+            it[fetchedAt] = Instant.now().toEpochMilli()
+        }
+    }
+
+    suspend fun listGates(): List<JumpGate> = tx { GateTable.selectAll().map { decode<JumpGate>(it[GateTable.json]) } }
 
     /** Every price read at [market] since [since], every good, oldest first: the console's sparklines. */
     suspend fun listPrices(market: String, since: Instant): List<PriceObservation> = tx {

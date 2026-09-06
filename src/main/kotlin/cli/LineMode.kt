@@ -678,6 +678,15 @@ class LineMode(
             listOf("ship", "busy", "idle", "idle %", "mostly because"),
             ships.map { s -> listOf(s.ship, hours(s.busy), hours(s.idle), "${(s.share * 100).toInt()}%", s.reasons.entries.firstOrNull()?.let { "${it.key} (${hours(it.value)})" } ?: "-") },
         )
+        val drifts = behaviour.decisions.Idle.drifts(snap.drifts)
+        if (drifts.isNotEmpty()) {
+            out.println()
+            out.println("drifting: ${drifts.sumOf { it.legs }} legs, ${hours(java.time.Duration.ofSeconds(drifts.sumOf { it.time.seconds }))} in the last day; each one is a route planned past the tank")
+            table(
+                listOf("ship", "drift legs", "drift time", "sent by", "longest leg"),
+                drifts.map { d -> listOf(d.ship, d.legs.toString(), hours(d.time), d.byBehaviour.entries.joinToString(", ") { "${it.key} ${it.value}" }, d.longest?.let { "${it.from} -> ${it.to} (${it.distance.toInt()} away, ${it.seconds / 60} min)" } ?: "-") },
+            )
+        }
         out.println()
         table(
             listOf("behaviour", "busy", "idle", "idle %"),
@@ -929,6 +938,7 @@ class LineMode(
                     is Event.Supplied -> err.println("${time(engine.clock.now())} ${e.ship} supplied ${e.units} ${e.good} to ${e.site}; ${e.remaining} to go")
                     is Event.Jumped -> err.println("${time(engine.clock.now())} ${e.ship} jumped to ${e.waypoint} (antimatter ${e.antimatterCost})")
                     is Event.PhaseAdvanced -> err.println("${time(engine.clock.now())} PHASE ${e.phase}: ${e.description}")
+                    is Event.Drifted -> err.println("${time(engine.clock.now())} ${e.ship} DRIFTING ${e.from} -> ${e.to} (${e.distance.toInt()} away, ${e.seconds / 60} min) on ${e.behaviour}")
                     is Event.Charted -> err.println("${time(engine.clock.now())} ${e.ship} charted ${e.waypoint}: +${e.credits}")
                     is Event.Warning -> err.println("${time(engine.clock.now())} warning: ${e.message}")
                     is Event.Failure -> err.println("${time(engine.clock.now())} failure: ${e.message}")

@@ -25,6 +25,12 @@ abstract class SystemScopedTable(name: String) : EntityTable(name) {
 }
 
 object AgentTable : EntityTable("agent")
+
+/** Every agent on the server as last paged: their homes do not change within a reset. */
+object PublicAgentTable : EntityTable("public_agents")
+
+/** Jump gates read, keyed by the gate waypoint, with their connections; they do not change within a reset. */
+object GateTable : EntityTable("gate_connections")
 object ShipTable : EntityTable("ships")
 object SystemTable : EntityTable("systems")
 object WaypointTable : SystemScopedTable("waypoints")
@@ -130,6 +136,19 @@ object PhaseLogTable : Table("phase_log") {
     override val primaryKey = PrimaryKey(id)
 }
 
+/** Every drift leg: the ship, the job it was on, the leg, and how long it took. */
+object DriftTable : Table("drift_log") {
+    val id = long("id").autoIncrement()
+    val at = long("at").index()
+    val shipSymbol = varchar("ship_symbol", 64).index()
+    val behaviour = varchar("behaviour", 64)
+    val fromSymbol = varchar("from_symbol", 64)
+    val toSymbol = varchar("to_symbol", 64)
+    val distance = double("distance")
+    val seconds = long("seconds")
+    override val primaryKey = PrimaryKey(id)
+}
+
 /** The bank after every change we caused: the credits graph and its trend. */
 object CreditsTable : Table("credits_history") {
     val id = long("id").autoIncrement()
@@ -164,6 +183,7 @@ object RequestLogTable : Table("request_log") {
 }
 
 val ALL_TABLES = listOf(
+    PublicAgentTable, GateTable,
     MetaTable, AgentTable, ShipTable, SystemTable, WaypointTable, MarketTable, ShipyardTable,
-    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable, LedgerTable, PhaseLogTable,
+    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable, LedgerTable, PhaseLogTable, DriftTable,
 )

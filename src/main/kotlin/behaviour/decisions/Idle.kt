@@ -45,6 +45,14 @@ object Idle {
         return if (total == 0L) 0.0 else ships.sumOf { it.idle.seconds }.toDouble() / total
     }
 
+    /** Drift time per ship: legs, hours, and the job that sent them. Every drift leg is a route planned past the tank. */
+    data class ShipDrift(val ship: String, val legs: Int, val time: Duration, val byBehaviour: Map<String, Int>, val longest: storage.DriftRecord?)
+
+    fun drifts(records: List<storage.DriftRecord>): List<ShipDrift> =
+        records.groupBy { it.ship }.map { (ship, list) ->
+            ShipDrift(ship, list.size, Duration.ofSeconds(list.sumOf { it.seconds }), list.groupingBy { it.behaviour }.eachCount(), list.maxByOrNull { it.seconds })
+        }.sortedByDescending { it.time }
+
     /** Idle time by behaviour: which plans keep failing to find work. */
     fun perBehaviour(records: List<PhaseRecord>, now: Instant): Map<String, Pair<Duration, Duration>> {
         val out = mutableMapOf<String, Pair<Duration, Duration>>()

@@ -270,6 +270,7 @@ class Engine(
         world.taggedTransactions = store.listTaggedTransactions()
         world.ledger = store.listLedger()
         world.phases = store.listPhases(clock.now().minus(java.time.Duration.ofHours(24)))
+        world.drifts = store.listDrifts(clock.now().minus(java.time.Duration.ofHours(24)))
         world.extractions = store.listExtractions().takeLast(2000)
         world.plan = runCatching { Plan.load(Layout.planFile(agentSymbol)) }.getOrNull()
         world.runner = RunLock.read(Layout.runLockFile(agentSymbol))
@@ -418,6 +419,11 @@ class Engine(
             when (event) {
                 is Event.ShipPurchased -> scope.launch { ledger(event.ship, "ships", -event.credits, event.type) }
                 is Event.Charted -> scope.launch { ledger(event.ship, "chart", event.credits, event.waypoint) }
+                is Event.Drifted -> scope.launch {
+                    val record = storage.DriftRecord(clock.now(), event.ship, event.behaviour, event.from, event.to, event.distance, event.seconds)
+                    store?.putDrift(record)
+                    world.drifts = world.drifts + record
+                }
                 else -> {}
             }
             emit(event)
