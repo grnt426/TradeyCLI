@@ -57,6 +57,9 @@ class SpaceTradersApi(val client: ApiClient) : GameApi {
     override suspend fun getStatus(): ServerStatus =
         client.getRoot("", Priority.INTERACTIVE).decode()
 
+    override suspend fun listAgents(): List<model.PublicAgent> =
+        client.getAll("agents", Priority.BACKGROUND).map { it.decode<model.PublicAgent>() }
+
     override suspend fun getMyAgent(): Agent =
         client.get("my/agent", Priority.INTERACTIVE).decode()
 

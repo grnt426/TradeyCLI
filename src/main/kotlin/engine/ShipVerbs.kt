@@ -325,6 +325,8 @@ class ShipVerbs(
         return waypoints
     }
 
+    override suspend fun agents(): List<model.PublicAgent> = call { api.listAgents() }
+
     override suspend fun jumpGate(waypoint: String): JumpGate =
         call { api.getJumpGate(OrbitalNames.getSectorSystem(waypoint), waypoint) }
 

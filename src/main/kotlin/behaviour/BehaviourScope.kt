@@ -60,6 +60,13 @@ class BehaviourScope(
      * Goes to [waypoint], topping up first when the tank would not cover the trip and a market is
      * at hand, and drifting when it still would not. Probes fly free.
      */
+    /**
+     * Goes to [waypoint] on cruise. When the tank cannot cover the leg it tops up here if it can,
+     * and otherwise routes through fuel stops ([engine.FuelRoute]), refuelling at each. Drifting,
+     * ten times slower, is the last resort when no chain of stops exists at all; on 2026-09-05 a
+     * shuttle with a full tank drifted for hours from the far corner of the home system because
+     * the direct leg was longer than its tank and nothing routed it through a stop.
+     */
     suspend fun travelTo(waypoint: String, mode: FlightMode = FlightMode.CRUISE): Ship {
         val s = me
         if (s.nav.waypointSymbol == waypoint) return s
@@ -69,38 +76,35 @@ class BehaviourScope(
             try {
                 refuel(ship)
             } catch (e: VerbFailure) {
-                logger.warn { "$ship could not top up at ${here.symbol}: ${e.message}; drifting" }
+                logger.warn { "$ship could not top up at ${here.symbol}: ${e.message}" }
             }
         }
-        return if (me.fuel.current >= needed) navigateTo(ship, waypoint, mode) else navigateTo(ship, waypoint, FlightMode.DRIFT)
+        if (me.fuel.current >= needed) return navigateTo(ship, waypoint, mode)
+        val route = fuelRoute(waypoint)
+        if (route == null) {
+            status(detail = "no fuel stop within reach on the way to $waypoint; drifting")
+            return navigateTo(ship, waypoint, FlightMode.DRIFT)
+        }
+        for (stop in route) {
+            navigateTo(ship, stop.symbol, FlightMode.CRUISE)
+            try { refuel(ship) } catch (e: VerbFailure) { logger.warn { "$ship could not refuel at ${stop.symbol}: ${e.message}" } }
+        }
+        val last = Travel.fuelCost(distanceTo(waypoint), FlightMode.CRUISE)
+        return if (me.fuel.current >= last) navigateTo(ship, waypoint, FlightMode.CRUISE) else navigateTo(ship, waypoint, FlightMode.DRIFT)
     }
 
-    /**
-     * Goes to [waypoint] on cruise, stopping to refuel at the market that adds the least distance
-     * when the tank cannot cover the leg. Probes fly free. Drifts only when no stop is in reach.
-     */
-    suspend fun travelVia(waypoint: String): Ship {
+    /** The fuel stops to pass through on the way to [waypoint], empty when direct, null when no chain of stops exists. */
+    fun fuelRoute(waypoint: String): List<Waypoint>? {
         val s = me
-        if (s.nav.waypointSymbol == waypoint || !s.usesFuel) return travelTo(waypoint)
-        val capacity = s.fuel.capacity
-        if (Travel.fuelCost(distanceTo(waypoint), FlightMode.CRUISE) <= capacity) {
-            ensureFuel(Travel.fuelCost(distanceTo(waypoint), FlightMode.CRUISE) + 5)
-            return travelTo(waypoint)
-        }
         val from = here
         val to = verbs.waypoint(waypoint)
         val snap = snapshot()
-        val stop = snap.waypointsIn(from.systemSymbol)
-            .filter { it.hasMarket && it.symbol != from.symbol && it.symbol != to.symbol && snap.markets[it.symbol]?.trades(model.market.TradeSymbol.FUEL) != false }
-            .map { it to (Travel.distance(from.x, from.y, it.x, it.y) to Travel.distance(it.x, it.y, to.x, to.y)) }
-            .filter { (_, legs) -> Travel.fuelCost(legs.first, FlightMode.CRUISE) <= capacity && Travel.fuelCost(legs.second, FlightMode.CRUISE) <= capacity }
-            .minByOrNull { (_, legs) -> legs.first + legs.second }
-        if (stop == null) return travelTo(waypoint)
-        ensureFuel(Travel.fuelCost(stop.second.first, FlightMode.CRUISE) + 5)
-        travelTo(stop.first.symbol)
-        refuel(ship)
-        return travelTo(waypoint)
+        val stops = snap.waypointsIn(from.systemSymbol).filter { it.hasMarket && snap.markets[it.symbol]?.trades(model.market.TradeSymbol.FUEL) != false }
+        return engine.FuelRoute.plan(from, to, stops, s.fuel.capacity.toLong(), s.fuel.current.toLong(), from.hasMarket)
     }
+
+    /** Kept for callers that say "via": [travelTo] routes through fuel stops itself now. */
+    suspend fun travelVia(waypoint: String): Ship = travelTo(waypoint)
 
     /** Refuels when the tank is below what [fuelNeeded] units of travel would take, if a market is here. */
     suspend fun ensureFuel(fuelNeeded: Long) {

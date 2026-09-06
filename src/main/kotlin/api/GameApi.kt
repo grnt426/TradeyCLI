@@ -35,6 +35,9 @@ import model.system.Waypoint
  */
 interface GameApi {
     suspend fun getStatus(): ServerStatus
+
+    /** Every agent on the server, public details only: symbol, headquarters, credits, ships. Twenty a request. */
+    suspend fun listAgents(): List<model.PublicAgent>
     suspend fun getMyAgent(): Agent
     suspend fun getSystem(symbol: String): System
     suspend fun listSystemWaypoints(system: String): List<Waypoint>

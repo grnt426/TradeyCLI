@@ -83,6 +83,9 @@ interface Verbs {
     /** Fetches a system and its waypoints into the world; for a system no ship of ours has seen. */
     suspend fun loadSystem(symbol: String): List<Waypoint>
 
+    /** Every agent on the server, public details; a request per twenty agents. */
+    suspend fun agents(): List<model.PublicAgent>
+
     /** A gate's connections; one request. */
     suspend fun jumpGate(waypoint: String): JumpGate
 

@@ -162,6 +162,7 @@ class LineMode(
             "chain" -> return chain(args)
             "phase" -> return phase(args)
             "summary" -> summary()
+            "neighbours" -> neighbours()
             "idle" -> idle()
             "race" -> race(args)
             "gate" -> gate(args)
@@ -635,6 +636,37 @@ class LineMode(
         return 0
     }
 
+    /**
+     * Who else is in our home system: every agent headquartered there from the public agent list,
+     * and every agent whose ships appear in the market transactions we have read. The API does not
+     * list ships by system, so the transactions are the only trace of a neighbour's activity.
+     */
+    private suspend fun neighbours() {
+        val snap = engine.snapshot
+        val home = snap.hqSystem ?: return err.println("No home system")
+        val mine = snap.agent?.symbol
+        val all = engine.verbs().agents()
+        val here = all.filter { it.headquarters.substringBeforeLast('-') == home }
+        out.println("${all.size} agents on the server; ${here.size} headquartered in $home" + (mine?.let { " (including $it)" } ?: ""))
+        table(
+            listOf("agent", "faction", "credits", "ships"),
+            here.sortedByDescending { it.credits }.map { listOf(it.symbol, it.startingFaction, Intentions.format(it.credits), it.shipCount.toString()) },
+        )
+        val seen = mutableMapOf<String, Pair<Int, String>>()
+        snap.marketsIn(home).forEach { m ->
+            m.transactions.forEach { t ->
+                val agent = t.shipSymbol.substringBeforeLast('-')
+                val (n, last) = seen[agent] ?: (0 to "")
+                seen[agent] = (n + 1) to maxOf(last, t.timestamp)
+            }
+        }
+        out.println()
+        val others = seen.filterKeys { it != mine }
+        if (others.isEmpty()) out.println("no other agent's ships appear in the ${snap.marketsIn(home).count { it.transactions.isNotEmpty() }} markets with transaction history we have read")
+        else table(listOf("agent seen trading here", "transactions", "last seen"), others.entries.sortedByDescending { it.value.first }.map { (a, v) -> listOf(a, v.first.toString(), v.second.take(16)) })
+        out.println("factions on the server: " + all.groupBy { it.startingFaction }.entries.sortedByDescending { it.value.size }.joinToString(", ") { "${it.key} ${it.value.size}" })
+    }
+
     /** Idle time per ship and per behaviour over the last day, from the phase log. */
     private fun idle() {
         val snap = engine.snapshot
@@ -1062,6 +1094,7 @@ class LineMode(
               contracts                  every contract seen with its payment, our cost and the dates
               summary                    the dashboard's summary as text: phase progress, fleet, spending, revenue, market health
               idle                       idle time per ship and per behaviour over the last day: the opportunity cost the plan leaves
+              neighbours                 agents headquartered in our system, and agents whose ships show in the markets we read
               phase [escape|boom|late]   show or set the plan's phase (docs/phases.md): which weights and default jobs apply
               race [AGENT ...]           every agent's bank over time, fleet, gate progress and phase, side by side
               gate [SITE]                the construction bill, what we delivered and spent, and the cost to finish
@@ -1096,7 +1129,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "reset", "catalog", "race", "summary", "idle", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "reset", "catalog", "race", "summary", "idle", "neighbours", "extractions",
             "plan", "assign", "unassign", "goal", "chain", "phase", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
