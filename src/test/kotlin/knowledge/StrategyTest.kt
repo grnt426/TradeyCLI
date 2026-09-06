@@ -53,6 +53,30 @@ class StrategyTest {
     }
 
     @Test
+    fun `in escape a load that feeds a gate producer's short input outscores the same money elsewhere`() {
+        val seed = pricedSeed()
+        val snap = SimRun.worldFrom(SimUniverse(seed, VirtualClock(TestCoroutineScheduler(), now))).snapshot(1).let { s ->
+            s.copy(
+                markets = seed.markets.associateBy { it.symbol }.mapValues { (_, m) -> m.also { it.lastRead = now } },
+                constructionBill = listOf(model.ConstructionMaterial(TradeSymbol.FAB_MATS, 1600, 0), model.ConstructionMaterial(TradeSymbol.ADVANCED_CIRCUITRY, 400, 0)),
+            )
+        }
+        val targets = Strategy.chainTargets(snap)
+        assertTrue(targets.isNotEmpty(), "the seed has LIMITED inputs in the chains")
+        assertTrue(targets.all { it.startsWith("X1-TH77-") && it.contains('/') }, targets.toString())
+        val ship = snap.ships.getValue(Fixtures.COMMAND_SHIP)
+        val plain = Mining.rank(snap, ship, now) // touch the ranking module so the import is used
+        val fed = behaviour.decisions.Trading.rank(snap, ship, now, Strategy.trading(Phase.ESCAPE, snapshot = snap))
+        val unfed = behaviour.decisions.Trading.rank(snap, ship, now, Strategy.trading(Phase.ESCAPE))
+        val feeding = fed.filter { it.health.endsWith("(feeds the gate)") }
+        assertTrue(feeding.isNotEmpty(), "some route feeds a chain: ${fed.take(5).map { it.health }}")
+        val f = feeding.first()
+        val u = unfed.first { it.good == f.good && it.source.symbol == f.source.symbol && it.destination.symbol == f.destination.symbol }
+        assertTrue(f.score > u.score * 2, "the bonus multiplies the score: ${f.score} vs ${u.score}")
+        assertTrue(plain.size >= 0)
+    }
+
+    @Test
     fun `the plan carries its phase through json and starts in escape`() {
         val file = File.createTempFile("plan", ".json").also { it.deleteOnExit() }
         Plan.save(file, Plan().withPhase(Phase.BOOM))

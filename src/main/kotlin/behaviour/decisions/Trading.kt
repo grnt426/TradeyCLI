@@ -62,6 +62,8 @@ data class TradingAssumptions(
     val minMarginRatio: Double = 0.15,
     /** How the listings' type, supply and activity weight a route; the knowledge lives in [knowledge.MarketAssumptions]. */
     val market: MarketAssumptions = MarketAssumptions(),
+    /** "market/good" pairs that are short inputs of the gate's producers: delivering there earns [MarketAssumptions.chainFeedBonus]. */
+    val chainTargets: Set<String> = emptySet(),
 ) {
     /** The smallest margin worth having on a unit bought at [buyPrice]. */
     fun floor(buyPrice: Double): Double = maxOf(minMarginPerUnit.toDouble(), buyPrice * minMarginRatio)
@@ -105,10 +107,11 @@ object Trading {
                     val seconds = (if (legToSource > 0) Travel.seconds(legToSource, FlightMode.CRUISE, ship.engine.speed) else 0L) +
                         Travel.seconds(legToDestination, FlightMode.CRUISE, ship.engine.speed) + assumptions.overheadSeconds
                     val perHour = profit.toDouble() / seconds * 3600
+                    val feeds = "${destination.symbol}/${offer.symbol.name}" in assumptions.chainTargets
                     plans += TradePlan(
                         offer.symbol, source, destination, offer.purchasePrice, bid.sellPrice, load.units, profit, seconds, perHour, legToSource, legToDestination,
-                        score = perHour * sourceWeight * destinationWeight,
-                        health = "${offer.type.name.lowercase()} ${MarketHealth.describe(offer)} -> ${bid.type.name.lowercase()} ${MarketHealth.describe(bid)}",
+                        score = perHour * sourceWeight * destinationWeight * (if (feeds) assumptions.market.chainFeedBonus else 1.0),
+                        health = "${offer.type.name.lowercase()} ${MarketHealth.describe(offer)} -> ${bid.type.name.lowercase()} ${MarketHealth.describe(bid)}" + (if (feeds) " (feeds the gate)" else ""),
                     )
                 }
             }

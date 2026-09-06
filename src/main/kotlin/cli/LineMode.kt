@@ -338,8 +338,8 @@ class LineMode(
         val snap = engine.snapshot
         val ship = (shipArg?.let { snap.ships[it] } ?: snap.ships.values.filter { it.cargo.capacity > 0 }.maxByOrNull { it.cargo.capacity })
             ?: return err.println("No ship with a cargo hold; name one with --ship")
-        val plans = behaviour.decisions.Trading.rank(snap, ship, engine.clock.now())
-        err.println("Ranked for ${ship.symbol} (cargo ${ship.cargo.capacity}, speed ${ship.engine.speed}, ${snap.agent?.credits} credits) from ${ship.nav.waypointSymbol}; prices as last read, impact of our own trades discounted; score = cr/h weighted by market health (knowledge.MarketAssumptions).")
+        val plans = behaviour.decisions.Trading.rank(snap, ship, engine.clock.now(), knowledge.Strategy.trading(snap.plan?.phase ?: plan.Phase.ESCAPE, snapshot = snap))
+        err.println("Ranked for ${ship.symbol} (cargo ${ship.cargo.capacity}, speed ${ship.engine.speed}, ${snap.agent?.credits} credits) from ${ship.nav.waypointSymbol}; prices as last read, impact of our own trades discounted; score = cr/h weighted by market health and, in escape, x${knowledge.MarketAssumptions().chainFeedBonus} for a load that feeds a gate producer's short input.")
         table(
             listOf("good", "buy at", "price", "sell at", "price", "units", "profit", "cr/h", "score", "cycle", "legs", "health"),
             plans.take(args.indexOf("--all").let { if (it >= 0) plans.size else 25 }).map { p ->

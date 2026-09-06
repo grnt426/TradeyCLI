@@ -93,11 +93,30 @@ object Strategy {
         Phase.LATE -> 0.10
     }
 
-    fun trading(phase: Phase, minMarginPerUnit: Int? = null, minMarginRatio: Double? = null): TradingAssumptions = TradingAssumptions(
+    fun trading(phase: Phase, minMarginPerUnit: Int? = null, minMarginRatio: Double? = null, snapshot: Snapshot? = null): TradingAssumptions = TradingAssumptions(
         minMarginPerUnit = minMarginPerUnit ?: 20,
         minMarginRatio = minMarginRatio ?: marginFloor(phase),
         market = market(phase),
+        chainTargets = if (phase == Phase.ESCAPE && snapshot != null) chainTargets(snapshot) else emptySet(),
     )
+
+    /** "market/good" for every LIMITED-or-worse input of a producer in the gate's chains, down to the ores. */
+    fun chainTargets(snapshot: Snapshot): Set<String> {
+        val home = snapshot.hqSystem ?: return emptySet()
+        val roots = snapshot.constructionBill?.filter { it.fulfilled < it.required }?.map { it.tradeSymbol } ?: return emptySet()
+        val goods = linkedSetOf<model.market.TradeSymbol>()
+        fun walk(g: model.market.TradeSymbol, depth: Int) { if (goods.add(g) && depth < 4) ImportMap.inputs[g].orEmpty().forEach { walk(it, depth + 1) } }
+        roots.forEach { walk(it, 0) }
+        val out = mutableSetOf<String>()
+        snapshot.marketsIn(home).forEach { m ->
+            goods.forEach { g ->
+                if (m.typeOf(g) == model.market.TradeGoodType.EXPORT) {
+                    MarketHealth.starvedInputs(m, g).filter { it.supply <= model.market.SupplyLevel.LIMITED }.forEach { out += "${m.symbol}/${it.symbol.name}" }
+                }
+            }
+        }
+        return out
+    }
 
     /** Mining sells where the sale helps most in ESCAPE; later phases weigh the sale softly and only skip saturated buyers. */
     fun mining(phase: Phase): MiningAssumptions = MiningAssumptions(market = market(phase))

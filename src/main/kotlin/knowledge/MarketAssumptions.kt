@@ -73,6 +73,13 @@ data class MarketAssumptions(
     val producerReadStaleMinutes: Long = 10,
     /** How many hours of the rate a producer may bank while nobody buys, so a ship arriving after a lull can fill up. */
     val takeBucketHours: Double = 1.5,
+    /**
+     * In ESCAPE, a route that delivers a short input to one of the gate's producers scores this
+     * much more, so the traders feed the chains as part of their ordinary trading rather than only
+     * when idle. On 2026-09-06 the frigate spent two hours drawing electronics and microprocessors
+     * out of the chains while the producers' silicon, copper, iron and quartz sat LIMITED unfed.
+     */
+    val chainFeedBonus: Double = 2.5,
     /** A nursing leg may sell an input for less than it cost, down to this share of the buy price, because the goal is the producer's price, not the leg's. */
     val nurseMinSellRatio: Double = 0.5,
     /** Trade volumes of an input to deliver per nursing visit; the docs say consumption grows as we supply, so a few volumes is enough to move it. */

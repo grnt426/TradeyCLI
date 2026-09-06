@@ -37,7 +37,7 @@ val tradeSpec = BehaviourSpec(
 
 suspend fun BehaviourScope.trade() {
     val onlyGood = param("good")?.uppercase()
-    val assumptions = knowledge.Strategy.trading(shared.plan.phase, param("minMargin")?.toIntOrNull(), param("minMarginRatio")?.toDoubleOrNull())
+    var assumptions = knowledge.Strategy.trading(shared.plan.phase, param("minMargin")?.toIntOrNull(), param("minMarginRatio")?.toDoubleOrNull(), snapshot())
     val setAside = mutableMapOf<String, Instant>()
 
     if (!me.cargo.isEmpty) phase("sell leftovers") { sellLeftovers() }
@@ -58,6 +58,8 @@ suspend fun BehaviourScope.trade() {
         val now = clock.now()
         setAside.entries.removeIf { it.value.isBefore(now) }
         shared.releaseRoutes(ship)
+        // The gate's short inputs change as the chains move; re-read them for every plan.
+        assumptions = knowledge.Strategy.trading(shared.plan.phase, param("minMargin")?.toIntOrNull(), param("minMarginRatio")?.toDoubleOrNull(), snapshot())
         val plan = phase("plan") {
             Trading.rank(snapshot(), me, now, assumptions)
                 .filter { onlyGood == null || it.good.name == onlyGood }
