@@ -26,8 +26,8 @@ class RebalanceTest {
         val next = Strategy.rebalance(Phase.BOOM, plan, snap, listOf("X1-MF53", "X1-XX21"))
         assertEquals("probeMarkets", next.assignmentFor(Fixtures.PROBE)?.behaviour)
         assertEquals(mapOf("maxAge" to "10"), next.assignmentFor(Fixtures.PROBE)?.params, "the first probe roams home")
-        // The frigate's hold is 40, below a hauler's, so it keeps its job; the phase's default gives it trade on finishing.
-        assertEquals("supplyGate", next.assignmentFor(Fixtures.COMMAND_SHIP)?.behaviour)
+        // The frigate has a real hold: in the boom it trades like a hauler.
+        assertEquals("trade", next.assignmentFor(Fixtures.COMMAND_SHIP)?.behaviour)
         assertEquals(plan, Strategy.rebalance(Phase.ESCAPE, plan, snap, emptyList()), "only boom re-plans")
     }
 }

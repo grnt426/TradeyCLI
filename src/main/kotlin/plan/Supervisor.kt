@@ -42,8 +42,8 @@ class Supervisor(
         private set
 
     init {
-        shared.onShipPurchased = { ship ->
-            val assignment = knowledge.Strategy.defaultAssignment(plan.phase, ship, verbs.snapshot().copy(plan = loadPlan() ?: plan))
+        shared.onShipPurchased = { ship, forSystem ->
+            val assignment = knowledge.Strategy.defaultAssignment(plan.phase, ship, verbs.snapshot().copy(plan = loadPlan() ?: plan), forSystem)
             if (assignment != null) change("assign ${assignment.behaviour} to ${ship.symbol}") { it.with(assignment) }
         }
         shared.onPhaseChanged = { phase ->
@@ -73,6 +73,14 @@ class Supervisor(
     private fun change(what: String, edit: (Plan) -> Plan) {
         val base = loadPlan() ?: plan
         change(edit(base), what)
+    }
+
+    /** The boom's bookkeeping, once a minute: stage transitions per system from what the snapshot shows (docs/boom.md). */
+    fun tick() {
+        if (plan.phase != Phase.BOOM) return
+        val snapshot = verbs.snapshot().copy(plan = plan)
+        val next = knowledge.Strategy.advanceSystems(plan, snapshot, clock.now())
+        if (next != plan) change("advance the boom") { knowledge.Strategy.advanceSystems(it, snapshot.copy(plan = it), clock.now()) }
     }
 
     /** Applies the plan file when it differs from what is running: `assign` and `phase` in another terminal take effect within seconds. */

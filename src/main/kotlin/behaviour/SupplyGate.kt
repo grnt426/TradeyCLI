@@ -32,6 +32,7 @@ val supplyGateSpec = BehaviourSpec(
         ParamSpec("reserve", "Credits the bank never drops below (default 300000)"),
         ParamSpec("only", "Restrict to one material, such as FAB_MATS"),
         ParamSpec("nurse", "off to buy regardless of the producer's health (default on)"),
+        ParamSpec("reserveShare", "Keep at least this share of the bank, 0..1, whatever the fixed reserve says (a far gate's network share)"),
     ),
     validate = { snapshot, ship, params ->
         buildList {
@@ -45,7 +46,10 @@ val supplyGateSpec = BehaviourSpec(
 
 suspend fun BehaviourScope.supplyGate() {
     val site = param("site")!!.uppercase()
-    val reserve = param("reserve")?.toLongOrNull() ?: 300_000L
+    val fixedReserve = param("reserve")?.toLongOrNull() ?: 300_000L
+    val reserveShare = param("reserveShare")?.toDoubleOrNull()
+    // A share-based reserve moves with the bank: the network never draws below that share of what the empire has.
+    suspend fun currentReserve(): Long = maxOf(fixedReserve, reserveShare?.let { (agent().credits * it).toLong() } ?: 0L)
     val only = param("only")?.uppercase()?.let { TradeSymbol.valueOf(it) }
     val nurse = param("nurse") != "off"
     val rules = knowledge.Strategy.market(shared.plan.phase)
@@ -89,6 +93,7 @@ suspend fun BehaviourScope.supplyGate() {
             val carried = me.cargo.inventory.firstOrNull { line -> construction.remaining(line.symbol) > 0 }
             var material = carried?.symbol
             if (carried == null) {
+                val reserve = currentReserve()
                 val spendable = agent().credits - reserve
                 val wanted = construction.outstanding
                     .filter { only == null || it.tradeSymbol == only }

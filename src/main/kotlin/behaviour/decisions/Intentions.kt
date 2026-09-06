@@ -72,9 +72,9 @@ object Intentions {
 
         // What it is saving for
         plan?.goals?.fleet?.forEach { goal ->
-            val owned = snapshot.ships.values.count { BehaviourScope.shipTypeOf(it) == goal.type }
+            val owned = goal.owned(snapshot.ships.values)
             if (owned >= goal.count) {
-                lines += Intent("Fleet goal met: $owned of ${goal.count} ${goal.type.name.removePrefix("SHIP_")}", Intent.Tone.NEUTRAL)
+                lines += Intent("Fleet goal met: $owned of ${goal.describe()}", Intent.Tone.NEUTRAL)
                 return@forEach
             }
             val yards = snapshot.shipyards.values.filter { it.sells(goal.type) }

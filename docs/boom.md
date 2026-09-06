@@ -54,11 +54,21 @@ Exists: `explore` (chart, read, jump on), `chartSystem --system`, `probeMarkets 
 `trade --system` with gardening, `supplyGate` with nursing and the take-rate budget, gate
 diversion on unbuilt gates, tagged transactions and the ledger, idle and activity time.
 
-New: the per-system record and frontier in the plan; per-system fleet goals and a buyer that
-buys for the system it stands in; the `pioneer` behaviour (cascade + rush kit, then the next
-frontier system); stage transitions driven by facts (charted count, markets read, gate state);
-the Network funding rule; a `systems` command showing every system's stage, ships, income and
-what it is waiting for.
+Built on 2026-09-06: the per-system record and frontier in `plan.json` (`systems`, `frontier`);
+fleet goals with a `system` (`goal fleet TYPE N --system S`), counted and bought per system, and
+seeded from any yard when the system has none; the `pioneer` behaviour (frontier gate, read the
+far gate, buy the kit at the yard or chart on the spot); a bought ship's job in the system it was
+bought for; stage transitions once a minute in `Strategy.advanceSystems` (charted and read ->
+NETWORK when the gate is unbuilt, else SETTLE; NETWORK sends one hauler to the gate with
+`--reserveShare 0.75`, the bank's 25% network share; SETTLE hands spare probes to the frontier
+while pioneers are below the cap); the boom rebalance settles home, seeds the frontier from the
+home gate and makes two probes pioneers; the `systems` command. Knobs: `Strategy.RUSH_KIT`
+(350k), `GALAXY_RESERVE` (300k), `PIONEERS` (2), `NETWORK_SHARE` (0.25), `SETTLE_HAULERS`,
+`SETTLE_PROBES`.
+
+Still to do: the cascade does not yet send a follow-up ship to a system whose only known gate is
+two jumps away when the pioneer count is exhausted; Settle does not yet release surplus haulers to
+systems that need seeding; per-system idle time.
 
 ## Measurements to keep
 

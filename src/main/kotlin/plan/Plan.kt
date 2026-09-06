@@ -22,16 +22,24 @@ data class Plan(
     val phase: Phase = Phase.ESCAPE,
     /** Set once the gate is comfortably affordable: traders are called to it and new haulers go straight there. */
     val rushing: Boolean = false,
+    /** One record per system the fleet has entered in the boom (docs/boom.md). */
+    val systems: Map<String, SystemRecord> = emptyMap(),
+    /** Gates we know of and have not entered, each with the system whose gate leads to it. */
+    val frontier: List<FrontierGate> = emptyList(),
 ) {
     fun withPhase(phase: Phase): Plan = copy(phase = phase)
+    fun withSystem(record: SystemRecord): Plan = copy(systems = systems + (record.symbol to record))
+    fun system(symbol: String): SystemRecord? = systems[symbol]
+    fun withFrontier(gates: List<FrontierGate>): Plan = copy(frontier = (frontier + gates).distinctBy { it.gate }.filter { it.gate.substringBeforeLast('-') !in systems })
+    fun withoutFrontier(gate: String): Plan = copy(frontier = frontier.filterNot { it.gate == gate })
     fun withChain(chain: Chain): Plan = copy(chains = chains.filterNot { it.id == chain.id } + chain)
     fun withoutChain(id: String): Plan = copy(chains = chains.filterNot { it.id == id })
     fun chain(id: String): Chain? = chains.firstOrNull { it.id == id }
     fun with(assignment: Assignment): Plan = copy(assignments = assignments.filterNot { it.ship == assignment.ship } + assignment)
     fun without(ship: String): Plan = copy(assignments = assignments.filterNot { it.ship == ship })
     fun assignmentFor(ship: String): Assignment? = assignments.firstOrNull { it.ship == ship }
-    fun withGoal(goal: FleetGoal): Plan = copy(goals = goals.copy(fleet = goals.fleet.filterNot { it.type == goal.type } + goal))
-    fun withoutGoal(type: model.ship.ShipType): Plan = copy(goals = goals.copy(fleet = goals.fleet.filterNot { it.type == type }))
+    fun withGoal(goal: FleetGoal): Plan = copy(goals = goals.copy(fleet = goals.fleet.filterNot { it.type == goal.type && it.system == goal.system } + goal))
+    fun withoutGoal(type: model.ship.ShipType, system: String? = null): Plan = copy(goals = goals.copy(fleet = goals.fleet.filterNot { it.type == type && it.system == system }))
 
     /** Problems that would stop the plan from running, one line each. Empty means it is fine. */
     fun validate(snapshot: Snapshot): List<String> = assignments.flatMap { a ->
@@ -115,4 +123,36 @@ data class FleetGoal(
     val count: Int,
     /** Credits that must remain after the purchase. */
     val reserve: Long = 100_000,
+    /** The system this goal is for: only ships there count, and the ship is bought for it (null: anywhere). */
+    val system: String? = null,
+) {
+    fun owned(ships: Collection<model.ship.Ship>): Int = ships.count { behaviour.BehaviourScope.shipTypeOf(it) == type && (system == null || it.nav.systemSymbol == system) }
+    fun describe(): String = "${count}x${type.name.removePrefix("SHIP_")}" + (system?.let { " in $it" } ?: "")
+}
+
+/** Where a system stands in the boom (docs/boom.md). */
+@Serializable
+enum class Stage { CASCADE, RUSH, NETWORK, SETTLE }
+
+@Serializable
+data class SystemRecord(
+    val symbol: String,
+    val stage: Stage = Stage.CASCADE,
+    val gate: String? = null,
+    val gateBuilt: Boolean = false,
+    /** The shipyard the rush buys at; null when the system has none and its kit is seeded from a neighbour. */
+    val yard: String? = null,
+    val pioneer: String? = null,
+    val arrivedAt: String? = null,
+    /** Credits the rush may spend on this system's kit. */
+    val budget: Long = 350_000,
+    /** Credits spent on ships for this system. */
+    val spent: Long = 0,
+    val note: String = "",
 )
+
+/** A gate we know of and have not entered, and the system whose gate leads to it. */
+@Serializable
+data class FrontierGate(val gate: String, val via: String) {
+    val system: String get() = gate.substringBeforeLast('-')
+}

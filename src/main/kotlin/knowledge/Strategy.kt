@@ -21,6 +21,9 @@ import plan.FleetGoal
 import plan.Goals
 import plan.Phase
 import plan.Plan
+import plan.SystemRecord
+import plan.Stage
+import plan.FrontierGate
 
 /**
  * The three phases of a reset and what each one changes, in one place so the plan's `phase` is
@@ -42,6 +45,15 @@ object Strategy {
     const val POST_GATE_RESERVE = 500_000L
 
     fun comfortableBank(remainingCost: Long): Long = (remainingCost * RUSH_COMFORT).toLong() + POST_GATE_RESERVE
+
+    /** The boom (docs/boom.md): what a system's rush may spend, the bank floor no rush goes below, how many pioneers roam, and the share of the bank a far gate may draw. */
+    const val RUSH_KIT = 350_000L
+    const val GALAXY_RESERVE = 300_000L
+    const val PIONEERS = 2
+    const val NETWORK_SHARE = 0.25
+    /** Ships a settled system keeps: two haulers trading and gardening, one probe watching prices. */
+    const val SETTLE_HAULERS = 2
+    const val SETTLE_PROBES = 1
 
     /** Whether the gate is close enough to finish that more haulers should be bought for it, without touching the post-gate reserve. */
     fun gateRush(bank: Long, remainingCost: Long): Boolean = remainingCost > 0 && bank >= comfortableBank(remainingCost)
@@ -137,8 +149,17 @@ object Strategy {
         return out.toList()
     }
 
-    /** The job a ship gets when nobody said otherwise: a bought ship, or a fresh agent's plan. */
-    fun defaultAssignment(phase: Phase, ship: Ship, snapshot: Snapshot): Assignment? {
+    /** The job a ship gets when nobody said otherwise: a bought ship, or a fresh agent's plan. [forSystem] is the system it was bought for. */
+    fun defaultAssignment(phase: Phase, ship: Ship, snapshot: Snapshot, forSystem: String? = null): Assignment? {
+        if (phase == Phase.BOOM && forSystem != null) {
+            // Born for a system in the boom: probes chart it, then watch it; haulers trade it. Both migrate if bought elsewhere.
+            val there = ship.nav.systemSymbol == forSystem
+            return when {
+                !ship.usesFuel -> Assignment(ship.symbol, "chartSystem", if (there) emptyMap() else mapOf("system" to forSystem))
+                ship.cargo.capacity >= 40 && !ship.canMine -> Assignment(ship.symbol, "trade", if (there) emptyMap() else mapOf("system" to forSystem))
+                else -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
+            }
+        }
         val home = snapshot.hqSystem
         val site = home?.let { h -> snapshot.waypointsIn(h).firstOrNull { it.isUnderConstruction } }
         val isHauler = ship.usesFuel && ship.cargo.capacity >= 60 && !ship.canMine
@@ -176,7 +197,9 @@ object Strategy {
                 else -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
             }
             Phase.BOOM -> when {
-                !ship.usesFuel -> Assignment(ship.symbol, "explore", mapOf("maxSystems" to "10"))
+                // A probe bought without a system in mind pioneers while the frontier has room for one, else charts where it is.
+                !ship.usesFuel && (snapshot.plan?.assignments?.count { it.behaviour == "pioneer" } ?: 0) < PIONEERS -> Assignment(ship.symbol, "pioneer")
+                !ship.usesFuel -> Assignment(ship.symbol, "chartSystem")
                 else -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
             }
             Phase.LATE -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
@@ -184,22 +207,77 @@ object Strategy {
     }
 
     /**
-     * The plan for the ships that already exist when the phase changes. BOOM: the first probe keeps
-     * reading the home system's prices, every other probe explores, and each hauler takes a
-     * different neighbouring system to trade in; the rest keep their jobs.
+     * The plan for the ships that already exist when the phase changes. BOOM: home becomes a settled
+     * system, the home gate's connections become the frontier, the first probe keeps reading home's
+     * prices and the next [PIONEERS] pioneer; haulers keep trading at home (gardening when routes
+     * run out) until a system's rush kit or network needs them. [neighbours] are the far gates.
      */
     fun rebalance(phase: Phase, plan: Plan, snapshot: Snapshot, neighbours: List<String>): Plan {
         if (phase != Phase.BOOM) return plan
+        val home = snapshot.hqSystem
         var next = plan
+        if (home != null) {
+            val gate = snapshot.waypointsIn(home).firstOrNull { it.type == model.system.WaypointType.JUMP_GATE }
+            next = next.withSystem(SystemRecord(home, Stage.SETTLE, gate = gate?.symbol, gateBuilt = true, arrivedAt = snapshot.creditsHistory.firstOrNull()?.at?.toString(), note = "home"))
+            next = next.withFrontier(neighbours.map { FrontierGate(it, home) })
+        }
         val ships = snapshot.ships.values.sortedBy { it.symbol }
         val probes = ships.filter { !it.usesFuel }
         probes.forEachIndexed { i, probe ->
-            next = next.with(if (i == 0) Assignment(probe.symbol, "probeMarkets", mapOf("maxAge" to "10")) else Assignment(probe.symbol, "explore", mapOf("maxSystems" to "10")))
+            next = next.with(
+                when {
+                    i == 0 -> Assignment(probe.symbol, "probeMarkets", mapOf("maxAge" to "10"))
+                    i <= PIONEERS -> Assignment(probe.symbol, "pioneer")
+                    else -> Assignment(probe.symbol, "chartSystem")
+                },
+            )
         }
-        val haulers = ships.filter { it.usesFuel && it.cargo.capacity >= 40 && !it.canMine }
-        haulers.forEachIndexed { i, hauler ->
-            val target = neighbours.getOrNull(i % neighbours.size.coerceAtLeast(1))
-            next = next.with(if (target != null) Assignment(hauler.symbol, "trade", mapOf("system" to target)) else Assignment(hauler.symbol, "trade"))
+        // The frigate carries a laser but is a trader in the boom: anything with a real hold trades.
+        ships.filter { it.usesFuel && it.cargo.capacity >= 40 }.forEach { hauler -> next = next.with(Assignment(hauler.symbol, "trade")) }
+        return next
+    }
+
+    /**
+     * The boom's stage transitions, from facts: a rushed system whose waypoints are all charted and
+     * markets all read moves to NETWORK when its gate is unbuilt (one hauler there goes to the gate
+     * with the network's share of the bank) and to SETTLE otherwise; a networked system settles
+     * when its gate completes. Pure: the same plan comes back when nothing changes.
+     */
+    fun advanceSystems(plan: Plan, snapshot: Snapshot, now: java.time.Instant): Plan {
+        var next = plan
+        for (record in plan.systems.values) {
+            val waypoints = snapshot.waypointsIn(record.symbol)
+            if (waypoints.isEmpty()) continue
+            val charted = waypoints.none { it.hasTrait(model.WaypointTraitSymbol.UNCHARTED) }
+            val markets = waypoints.count { it.hasMarket }
+            val read = snapshot.pricedMarketsIn(record.symbol).size
+            val gate = record.gate?.let { snapshot.waypoints[it] } ?: waypoints.firstOrNull { it.type == model.system.WaypointType.JUMP_GATE }
+            val gateUnbuilt = gate?.isUnderConstruction == true
+            when (record.stage) {
+                // "Read" allows for the odd market that shows no prices even with a ship present.
+                Stage.RUSH -> if (charted && read >= (markets * 0.9).toInt()) {
+                    next = next.withSystem(record.copy(stage = if (gateUnbuilt) Stage.NETWORK else Stage.SETTLE, gateBuilt = !gateUnbuilt))
+                }
+                Stage.NETWORK -> {
+                    if (!gateUnbuilt) next = next.withSystem(record.copy(stage = Stage.SETTLE, gateBuilt = true))
+                    else if (gate != null && next.assignments.none { it.behaviour == "supplyGate" && it.params["site"] == gate.symbol }) {
+                        // One hauler in the system goes to its gate, drawing at most the network's share of the bank.
+                        val hauler = snapshot.ships.values.filter { it.nav.systemSymbol == record.symbol && it.usesFuel && it.cargo.capacity >= 40 }
+                            .sortedByDescending { it.cargo.capacity }
+                            .firstOrNull { s -> next.assignmentFor(s.symbol)?.behaviour == "trade" }
+                        if (hauler != null) next = next.with(Assignment(hauler.symbol, "supplyGate", mapOf("site" to gate.symbol, "reserveShare" to (1 - NETWORK_SHARE).toString())))
+                    }
+                }
+                Stage.SETTLE -> {
+                    // Extra probes beyond the watcher pioneer while the frontier has room.
+                    val probesHere = snapshot.ships.values.filter { it.nav.systemSymbol == record.symbol && !it.usesFuel }.sortedBy { it.symbol }
+                    val pioneers = next.assignments.count { it.behaviour == "pioneer" }
+                    probesHere.drop(SETTLE_PROBES).filter { next.assignmentFor(it.symbol)?.behaviour in setOf("probeMarkets", "chartSystem", null) }
+                        .take((PIONEERS - pioneers).coerceAtLeast(0))
+                        .forEach { next = next.with(Assignment(it.symbol, "pioneer")) }
+                }
+                Stage.CASCADE -> {}
+            }
         }
         return next
     }
@@ -215,7 +293,8 @@ object Strategy {
     fun afterFinished(phase: Phase, ship: Ship, behaviour: String, snapshot: Snapshot): Assignment? = when {
         // The gate is done: its haulers become the boom's traders.
         behaviour == "supplyGate" && ship.cargo.capacity > 0 -> Assignment(ship.symbol, "trade")
-        // Home charted: now read every market once.
+        // Home charted: now read every market once; in the boom a charted system just needs its prices watched.
+        !ship.usesFuel && behaviour == "chartSystem" && phase == Phase.BOOM -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to "10"))
         !ship.usesFuel && behaviour == "chartSystem" -> Assignment(ship.symbol, "probeMarkets")
         // The probe has read every market: park it at a yard and buy the fleet the goals ask for, if any is still unmet.
         !ship.usesFuel && behaviour == "probeMarkets" && goalsUnmet(snapshot) -> Assignment(ship.symbol, "expand")
@@ -225,7 +304,7 @@ object Strategy {
     }
 
     /** Whether any fleet goal still wants a ship. */
-    fun goalsUnmet(snapshot: Snapshot): Boolean = snapshot.plan?.goals?.fleet?.any { goal -> snapshot.ships.values.count { typeOf(it) == goal.type } < goal.count } == true
+    fun goalsUnmet(snapshot: Snapshot): Boolean = snapshot.plan?.goals?.fleet?.any { goal -> goal.owned(snapshot.ships.values) < goal.count } == true
 
     fun describe(phase: Phase): String = when (phase) {
         Phase.ESCAPE -> "ESCAPE: market health first; profits fund the logistics that keep producers fed and the gate supplied"

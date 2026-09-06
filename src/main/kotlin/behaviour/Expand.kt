@@ -1,5 +1,6 @@
 package behaviour
 
+import behaviour.BehaviourScope.Companion.buyableAt
 import behaviour.decisions.Intentions
 import behaviour.decisions.Tour
 import kotlin.time.Duration.Companion.minutes
@@ -35,7 +36,7 @@ suspend fun BehaviourScope.expand() {
     while (true) {
         val goals = shared.goals.fleet
         val fleet = snapshot().ships.values
-        val wanted = goals.firstOrNull { goal -> fleet.count { BehaviourScope.shipTypeOf(it) == goal.type } < goal.count }
+        val wanted = goals.filter { it.buyableAt(me.nav.systemSymbol, shared.plan) }.firstOrNull { goal -> goal.owned(fleet) < goal.count }
         if (wanted == null) {
             status("idle", if (goals.isEmpty()) "no fleet goal; `goal fleet TYPE N` to set one" else "every fleet goal is met; parked at ${here.symbol}")
             clock.sleep(every * 2)
@@ -51,7 +52,7 @@ suspend fun BehaviourScope.expand() {
         val bought = phase("buy", "at $yard for ${wanted.type.name.removePrefix("SHIP_")}") { maybeExpand() }
         if (bought != null) continue
         val price = snapshot().shipyards[yard]?.priceOf(wanted.type)
-        val owned = snapshot().ships.values.count { BehaviourScope.shipTypeOf(it) == wanted.type }
+        val owned = wanted.owned(snapshot().ships.values)
         status(
             "waiting",
             "at $yard for ${wanted.type.name.removePrefix("SHIP_")} #${owned + 1} of ${wanted.count}" +

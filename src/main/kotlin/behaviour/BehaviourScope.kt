@@ -11,6 +11,7 @@ import model.system.Waypoint
 import java.util.concurrent.ConcurrentHashMap
 import plan.Goals
 import plan.Plan
+import plan.Stage
 
 private val logger = KotlinLogging.logger {}
 
@@ -125,14 +126,14 @@ class BehaviourScope(
      * Returns the new ship, or null when nothing was bought.
      */
     suspend fun maybeExpand(): Ship? {
-        val goals = shared.goals.fleet
+        val goals = shared.goals.fleet.filter { it.buyableAt(me.nav.systemSymbol, shared.plan) }
         if (goals.isEmpty() || !here.hasShipyard) return null
         if (!shared.buying.compareAndSet(false, true)) return null
         try {
             val yard = refreshShipyard(here.symbol)
             val fleet = snapshot().ships.values
             for (goal in goals) {
-                val owned = fleet.count { shipTypeOf(it) == goal.type }
+                val owned = goal.owned(fleet)
                 if (owned >= goal.count) continue
                 val price = yard.priceOf(goal.type) ?: continue
                 if (agent().credits - price < goal.reserve) {
@@ -141,8 +142,9 @@ class BehaviourScope(
                 }
                 if (!me.isDocked) dock(ship)
                 val bought = purchaseShip(goal.type, here.symbol)
-                status(detail = "bought ${bought.symbol} (${goal.type}) for $price; ${owned + 1}/${goal.count}")
-                shared.onShipPurchased(bought)
+                status(detail = "bought ${bought.symbol} (${goal.type}) for $price; ${owned + 1}/${goal.count}" + (goal.system?.let { " for $it" } ?: ""))
+                goal.system?.let { s -> shared.plan.system(s)?.let { r -> shared.editPlan("rush spend in $s") { p -> p.withSystem((p.system(s) ?: r).copy(spent = (p.system(s) ?: r).spent + price)) } } }
+                shared.onShipPurchased(bought, goal.system)
                 return bought
             }
             return null
@@ -152,6 +154,10 @@ class BehaviourScope(
     }
 
     companion object {
+        /** A goal is bought at a yard in its own system, anywhere when it names none, or at any yard when its system has no yard to buy at. */
+        fun plan.FleetGoal.buyableAt(yardSystem: String, plan: Plan): Boolean =
+            system == null || system == yardSystem || plan.system(system!!)?.let { it.yard == null && it.stage != Stage.CASCADE } == true
+
         /** The shipyard type a ship was bought as, read back from its frame and fittings. */
         fun shipTypeOf(ship: Ship): model.ship.ShipType? = when (ship.frame.symbol) {
             "FRAME_PROBE" -> model.ship.ShipType.SHIP_PROBE
@@ -185,9 +191,9 @@ class SharedState {
     @Volatile
     var plan: Plan = Plan()
 
-    /** Set by the supervisor: gives a newly bought ship an assignment. */
+    /** Set by the supervisor: gives a newly bought ship an assignment, for the system it was bought for. */
     @Volatile
-    var onShipPurchased: (Ship) -> Unit = {}
+    var onShipPurchased: (Ship, String?) -> Unit = { _, _ -> }
 
     /** Set by the supervisor: moves the plan to a new phase and saves it. */
     @Volatile

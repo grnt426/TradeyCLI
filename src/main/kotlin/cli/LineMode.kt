@@ -163,6 +163,7 @@ class LineMode(
             "phase" -> return phase(args)
             "summary" -> summary()
             "neighbours" -> neighbours()
+            "systems" -> systems()
             "idle" -> idle()
             "race" -> race(args)
             "gate" -> gate(args)
@@ -667,6 +668,32 @@ class LineMode(
         out.println("factions on the server: " + all.groupBy { it.startingFaction }.entries.sortedByDescending { it.value.size }.joinToString(", ") { "${it.key} ${it.value.size}" })
     }
 
+    /** Every system of the boom: stage, gate, yard, ships, charting and market coverage, income since arrival, kit spent. */
+    private fun systems() {
+        val snap = engine.snapshot
+        val plan = snap.plan ?: return err.println("no plan")
+        out.println("phase ${plan.phase}; frontier: " + (plan.frontier.joinToString(", ") { "${it.gate} via ${it.via}" }.ifEmpty { "empty" }))
+        table(
+            listOf("system", "stage", "gate", "yard", "ships here", "charted", "markets read", "income since arrival", "kit spent", "pioneer", "note"),
+            plan.systems.values.sortedBy { it.symbol }.map { r ->
+                val wps = snap.waypointsIn(r.symbol)
+                val ships = snap.ships.values.filter { it.nav.systemSymbol == r.symbol }
+                val byType = ships.groupingBy { behaviour.BehaviourScope.shipTypeOf(it)?.name?.removePrefix("SHIP_") ?: "?" }.eachCount().entries.joinToString(" ") { "${it.value} ${it.key}" }
+                val since = r.arrivedAt?.let { java.time.Instant.parse(it) }
+                val income = snap.taggedTransactions.filter { it.transaction.waypointSymbol.substringBeforeLast('-') == r.symbol && (since == null || java.time.Instant.parse(it.transaction.timestamp) >= since) }
+                    .sumOf { if (it.transaction.type == model.market.TransactionType.SELL) it.transaction.totalPrice.toLong() else -it.transaction.totalPrice.toLong() }
+                val charts = snap.ledger.filter { it.kind == "chart" && it.note.startsWith(r.symbol) }.sumOf { it.credits }
+                listOf(
+                    r.symbol, r.stage.name, (r.gate ?: "-") + if (r.gateBuilt) "" else " (unbuilt)", r.yard ?: "none",
+                    byType.ifEmpty { "-" },
+                    "${wps.count { !it.hasTrait(model.WaypointTraitSymbol.UNCHARTED) }}/${wps.size}",
+                    "${snap.pricedMarketsIn(r.symbol).size}/${wps.count { it.hasMarket }}",
+                    Intentions.format(income + charts), Intentions.format(r.spent), r.pioneer ?: "-", r.note,
+                )
+            },
+        )
+    }
+
     /** Idle time per ship and per behaviour over the last day, from the phase log. */
     private fun idle() {
         val snap = engine.snapshot
@@ -801,8 +828,9 @@ class LineMode(
                 val type = args.getOrNull(1)?.let { shipType(it) } ?: run { err.println("goal fleet TYPE COUNT [--reserve CREDITS]"); return 1 }
                 val count = args.getOrNull(2)?.toIntOrNull() ?: run { err.println("goal fleet TYPE COUNT [--reserve CREDITS]"); return 1 }
                 val reserve = option(args, "--reserve")?.toLongOrNull() ?: 100_000
-                Plan.save(file, Plan.load(file).withGoal(FleetGoal(type, count, reserve)))
-                out.println("fleet goal: $count x $type, keeping $reserve credits")
+                val system = option(args, "--system")?.uppercase()
+                Plan.save(file, Plan.load(file).withGoal(FleetGoal(type, count, reserve, system)))
+                out.println("fleet goal: $count x $type, keeping $reserve credits" + (system?.let { " in $it" } ?: ""))
             }
             "clear" -> {
                 val type = args.getOrNull(1)?.let { shipType(it) } ?: run { err.println("goal clear TYPE"); return 1 }
@@ -958,10 +986,12 @@ class LineMode(
         }
         err.println("Running ${plan.assignments.size} assignment(s) for $duration as process ${lease.pid}; Ctrl+C stops early.")
         try {
+            var ticks = 0
             withTimeoutOrNull(duration) {
                 while (supervisor.active.isNotEmpty() && heartbeat.isActive) {
                     engine.clock.sleep(kotlin.time.Duration.parse("5s"))
                     supervisor.reloadIfChanged().forEach { err.println("${time(engine.clock.now())} plan.json: $it") }
+                    if (++ticks % 12 == 0) runCatching { supervisor.tick() }.onFailure { err.println("${time(engine.clock.now())} boom tick failed: ${it.message}") }
                 }
             }
         } finally {
@@ -1115,6 +1145,7 @@ class LineMode(
               summary                    the dashboard's summary as text: phase progress, fleet, spending, revenue, market health
               idle                       idle time per ship and per behaviour over the last day: the opportunity cost the plan leaves
               neighbours                 agents headquartered in our system, and agents whose ships show in the markets we read
+              systems                    the boom, system by system: stage, gate, yard, ships, coverage, income, kit spent (docs/boom.md)
               phase [escape|boom|late]   show or set the plan's phase (docs/phases.md): which weights and default jobs apply
               race [AGENT ...]           every agent's bank over time, fleet, gate progress and phase, side by side
               gate [SITE]                the construction bill, what we delivered and spent, and the cost to finish
@@ -1149,7 +1180,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "reset", "catalog", "race", "summary", "idle", "neighbours", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "reset", "catalog", "race", "summary", "idle", "neighbours", "systems", "extractions",
             "plan", "assign", "unassign", "goal", "chain", "phase", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
