@@ -35,6 +35,24 @@ class StrategyTest {
     }
 
     @Test
+    fun `at a reset the probe charts home before it reads prices, then reads, then buys the fleet`() {
+        val seed = pricedSeed()
+        val snap = SimRun.worldFrom(SimUniverse(seed, VirtualClock(TestCoroutineScheduler(), now))).snapshot(1)
+        val probe = snap.ships.getValue(Fixtures.PROBE)
+        val uncharted = snap.copy(
+            waypoints = snap.waypoints.mapValues { (_, w) -> if (w.symbol == "X1-TH77-B9") w.copy(traits = w.traits + model.WaypointTrait(model.WaypointTraitSymbol.UNCHARTED, "Uncharted", "")) else w },
+            plan = Plan(),
+        )
+        assertEquals("chartSystem", Strategy.defaultAssignment(Phase.ESCAPE, probe, uncharted)?.behaviour)
+        assertEquals("probeMarkets", Strategy.defaultAssignment(Phase.ESCAPE, probe, snap.copy(plan = Plan()))?.behaviour, "nothing to chart: read prices")
+        assertEquals("probeMarkets", Strategy.afterFinished(Phase.ESCAPE, probe, "chartSystem", uncharted)?.behaviour)
+        val fresh = Strategy.freshPlan(Phase.ESCAPE, uncharted)
+        assertEquals("chartSystem", fresh.assignmentFor(Fixtures.PROBE)?.behaviour)
+        assertEquals("trade", fresh.assignmentFor(Fixtures.COMMAND_SHIP)?.behaviour)
+        assertTrue(fresh.goals.fleet.isNotEmpty())
+    }
+
+    @Test
     fun `the plan carries its phase through json and starts in escape`() {
         val file = File.createTempFile("plan", ".json").also { it.deleteOnExit() }
         Plan.save(file, Plan().withPhase(Phase.BOOM))

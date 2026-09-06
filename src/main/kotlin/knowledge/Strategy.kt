@@ -127,6 +127,11 @@ object Strategy {
         return when (phase) {
             Phase.ESCAPE -> when {
                 isHauler && site != null && ship.nav.systemSymbol == home -> Assignment(ship.symbol, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000"))
+                // At a reset the home system is uncharted and each chart paid ~28k on 2026-09-05: the probe charts
+                // before it reads prices. That is the fastest money there is in the first hours, and it funds the gate.
+                !ship.usesFuel && home != null && snapshot.waypointsIn(home).any { it.hasTrait(model.WaypointTraitSymbol.UNCHARTED) } &&
+                    snapshot.plan?.assignments?.none { it.behaviour == "chartSystem" && it.ship != ship.symbol } != false ->
+                    Assignment(ship.symbol, "chartSystem")
                 // A second probe watches the producers that matter; the first one roams (and buys the fleet).
                 !ship.usesFuel && snapshot.plan?.assignments?.any { it.behaviour == "probeMarkets" || it.behaviour == "expand" } == true -> {
                     val watched = snapshot.plan.assignments.mapNotNull { it.params["markets"] }.flatMap { it.split(',') }.toSet()
@@ -176,6 +181,8 @@ object Strategy {
     fun afterFinished(phase: Phase, ship: Ship, behaviour: String, snapshot: Snapshot): Assignment? = when {
         // The gate is done: its haulers become the boom's traders.
         behaviour == "supplyGate" && ship.cargo.capacity > 0 -> Assignment(ship.symbol, "trade")
+        // Home charted: now read every market once.
+        !ship.usesFuel && behaviour == "chartSystem" -> Assignment(ship.symbol, "probeMarkets")
         // The probe has read every market: park it at a yard and buy the fleet the goals ask for, if any is still unmet.
         !ship.usesFuel && behaviour == "probeMarkets" && goalsUnmet(snapshot) -> Assignment(ship.symbol, "expand")
         // Otherwise, and when an explorer runs out of map, keep the prices fresh where it stands.
