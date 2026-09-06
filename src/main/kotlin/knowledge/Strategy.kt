@@ -165,6 +165,13 @@ object Strategy {
         return next
     }
 
+    /** The plan a just-registered agent starts with: every ship's default job for [phase], the phase's goals. */
+    fun freshPlan(phase: Phase, snapshot: Snapshot): Plan = Plan(
+        assignments = snapshot.ships.values.sortedBy { it.symbol }.mapNotNull { defaultAssignment(phase, it, snapshot) },
+        goals = goals(phase),
+        phase = phase,
+    )
+
     /** What a ship does once its behaviour has run to completion; null leaves it finished. */
     fun afterFinished(phase: Phase, ship: Ship, behaviour: String, snapshot: Snapshot): Assignment? = when {
         // The gate is done: its haulers become the boom's traders.

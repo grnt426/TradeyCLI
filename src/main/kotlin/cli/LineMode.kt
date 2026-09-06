@@ -28,6 +28,7 @@ import plan.Assignment
 import plan.Chain
 import plan.FleetGoal
 import plan.Leg
+import plan.Phase
 import plan.Plan
 import plan.RunLock
 import plan.Supervisor
@@ -101,6 +102,7 @@ class LineMode(
 
         if (command == "sim") return runBlocking { simulate(positional.drop(1)) }
         if (command == "register") return runBlocking { register(positional.drop(1)) }
+        if (command == "reset") return runBlocking { awaitReset(positional.drop(1)) }
         if (command == "catalog") return runBlocking { catalog(positional.drop(1)) }
 
         return runBlocking {
@@ -438,6 +440,77 @@ class LineMode(
             table(listOf("part", "market", "type", "buy", "sell", "supply", "seen by"), parts.distinctBy { it[0] + it[1] }.sortedWith(compareBy({ it[0] }, { it[1] })))
         }
         return 0
+    }
+
+    /**
+     * `reset --symbol S --faction F [--run 12h] [--poll 60]`: wait for the server's weekly reset,
+     * then register S with F, write the ESCAPE plan for its starting ships, and run it. Meant to be
+     * left going overnight: it polls the status endpoint (no token needed) until the reset date
+     * changes, survives the outage in between, kills the old run of the same symbol (its token is
+     * dead anyway), backs up the old plan, and retries registration until the server accepts it.
+     */
+    private suspend fun awaitReset(args: List<String>): Int {
+        val symbol = (option(args, "--symbol") ?: "TRIPLEHAT").uppercase()
+        val faction = option(args, "--faction")?.uppercase()?.let { runCatching { model.faction.FactionSymbol.valueOf(it) }.getOrNull() }
+            ?: run { err.println("reset --symbol S --faction F; factions: ${model.faction.FactionSymbol.entries.joinToString(",")}"); return 1 }
+        val runFor = option(args, "--run") ?: "12h"
+        val poll = (option(args, "--poll")?.toLongOrNull() ?: 60).coerceAtLeast(15)
+        val api = api.SpaceTradersApi(api.ApiClient("", App.engine.pacer))
+        val initial = runCatching { api.getStatus() }.getOrNull()
+        val startingReset = initial?.resetDate
+        err.println("${time(java.time.Instant.now())} reset watch: current reset ${startingReset ?: "unknown (server unreachable)"}; next ${initial?.serverResets?.next ?: "?"}; polling every ${poll}s")
+        var outages = 0
+        while (true) {
+            delay(poll * 1000)
+            val status = runCatching { api.getStatus() }.getOrNull()
+            if (status == null) {
+                outages++
+                if (outages % 10 == 1) err.println("${time(java.time.Instant.now())} server unreachable (${outages}x); the reset may be in progress")
+                continue
+            }
+            if (startingReset == null || status.resetDate == startingReset) {
+                if (outages > 0) { err.println("${time(java.time.Instant.now())} server is back on reset ${status.resetDate}; not reset yet"); outages = 0 }
+                continue
+            }
+            err.println("${time(java.time.Instant.now())} RESET: ${startingReset} -> ${status.resetDate}; status '${status.status}'")
+            break
+        }
+        // The old run of this symbol holds a dead token and the lease; stop it.
+        Layout.listAgents().forEach { agent ->
+            val lease = RunLock.read(Layout.runLockFile(agent)) ?: return@forEach
+            if (RunLock.processAlive(lease.pid) && lease.pid != RunLock.currentPid()) {
+                err.println("stopping the old run of $agent (process ${lease.pid})")
+                ProcessHandle.of(lease.pid).ifPresent { it.destroy() }
+            }
+        }
+        delay(5_000)
+        Layout.planFile(symbol).let { plan -> if (plan.isFile) plan.renameTo(File(plan.parentFile, "plan-${startingReset ?: "previous"}.json")) }
+        // Register, patiently: the server may accept status calls before registrations, and the old symbol may take a moment to free.
+        var assigned: String? = null
+        var attempts = 0
+        while (assigned == null) {
+            attempts++
+            try {
+                assigned = BootManager.registerOnly(symbol, faction)
+                err.println("${time(java.time.Instant.now())} registered $assigned with $faction")
+            } catch (e: BootFailure) {
+                err.println("${time(java.time.Instant.now())} registration attempt $attempts: ${e.message}")
+                if (attempts >= 30) { err.println("giving up on $symbol; register by hand"); return 2 }
+                delay(poll * 1000)
+            }
+        }
+        agentOption = assigned
+        engine = engineFactory(null)
+        try {
+            boot(engine, null, assigned) { step -> err.println("  $step") }
+        } catch (e: BootFailure) {
+            err.println("Boot failed after registration: ${e.message}"); return 2
+        }
+        engine.awaitSystem(engine.snapshot.hqSystem ?: return 2)
+        val fresh = knowledge.Strategy.freshPlan(Phase.ESCAPE, engine.snapshot)
+        Plan.save(planFile(), fresh)
+        err.println("${time(java.time.Instant.now())} plan for $assigned: " + fresh.assignments.joinToString(", ") { "${it.ship} ${it.behaviour}" } + "; goals " + fresh.goals.fleet.joinToString(", ") { "${it.count}x${it.type.name.removePrefix("SHIP_")}" })
+        return runPlan(listOf("--for", runFor))
     }
 
     /** A gate's connections and whether it is finished. */
@@ -967,6 +1040,7 @@ class LineMode(
               jumpgate [GATE]            a gate's connections
               jump SHIP GATE             jump a ship through the gate it is at to a connected gate (buys antimatter)
               register SYMBOL FACTION    register a new agent on this account (needs profile/accounttoken.secret)
+              reset --symbol S --faction F [--run 12h]   wait for the weekly reset, register S with F, write the escape plan, run it
               catalog [ships|parts]      every ship listing and part for sale seen by any agent on this account; no network
               extractions                every extraction made this reset
               plan                       the plan: which ship runs which behaviour
@@ -994,7 +1068,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "catalog", "race", "summary", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "reset", "catalog", "race", "summary", "extractions",
             "plan", "assign", "unassign", "goal", "chain", "phase", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")
