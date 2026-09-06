@@ -17,8 +17,7 @@ repositories {
 }
 
 dependencies {
-    // Terminal UI: Kotter for the old dashboard; Mordant is the terminal layer under `bridge` (docs/console-redesign.md)
-    implementation("com.varabyte.kotter:kotter-jvm:1.4.0")
+    // Terminal UI: Mordant is the terminal layer under the console (docs/console-redesign.md)
     implementation("com.github.ajalt.mordant:mordant:3.1.0")
     implementation("com.github.ajalt.mordant:mordant-jvm-jna:3.1.0")
 

@@ -1,7 +1,7 @@
 # TradeyCLI
 
 A terminal client and bot for [SpaceTraders](https://spacetraders.io), the game that is just an
-API. Kotlin, Kotter for the screen, SQLite for the bits worth keeping, and a simulator so the bot
+API. Kotlin, a console of our own on Mordant, SQLite for the bits worth keeping, and a simulator so the bot
 can be tested without spending requests.
 
 ## Running it
@@ -12,8 +12,8 @@ You need a JDK (17 or newer to launch Gradle; the build fetches its own toolchai
 2. Paste the token into `profile/agents/<SYMBOL>/authtoken.secret` (make the folder; `SYMBOL` is
    the agent's callsign) and put that symbol in `name` in `profile/profile.settings.json`. A token
    left at the old spot, `profile/authtoken.secret`, gets moved into place on the first start.
-3. `run.bat`, or `gradlew installDist` and run `build/install/TradeyCLI/bin/TradeyCLI`.
-4. Type `Start`.
+3. `run.bat`, or `gradlew installDist` and run `build/install/TradeyCLI/bin/TradeyCLI`. The console
+   boots the agent and opens on the bridge.
 
 Want the client to do the registering? Put an account token (account settings on the portal) in
 `profile/accounttoken.secret`, set `name` and `faction` in `profile/profile.settings.json`, and type
@@ -22,49 +22,38 @@ Want the client to do the registering? Put an account token (account settings on
 Esc quits. Everything the app has to say ends up in `log.txt`, so look there first when something
 is off.
 
-## The dashboard and the bot
+## The console and the bot
 
-`TradeyCLI run` in a terminal does the work; the dashboard (no arguments) watches it. They share
+`TradeyCLI run` in a terminal does the work; the console (no arguments) watches it. They share
 the agent's SQLite store: the run writes every phase, sale, purchase and the bank after each
-change, and the dashboard re-reads them every five seconds without spending a request. The
-console screen is a summary: the phase and how far it has got (in ESCAPE, the gate's bill, what
-finishing costs against the bank, and whether the rush is on), the bank over the last hour with
-the trend projected ahead in yellow, market health per system, the fleet one line per ship, where
-credits went by purpose (gate, market health, trading, mining, contracts, exploring, ships) with
-each purpose's fuel charged to it, where they came from by source (arbitrage, mining, contracts,
-charting, market health), and the plan's notes. Every panel prints a bounded number of lines.
-`summary` in line mode prints the same as tables; `intentions` the older per-ship view.
+change, and the console re-reads them every five seconds without spending a request. The console
+only watches; it starts no behaviours and takes no commands.
 
-## The new console
+Its screens, on the number keys or a click on the bottom bar: the bridge (the phase and how far
+it has got, the bank over the last hours with the trend a quarter hour ahead, market health per
+system, the fleet, the selected ship, the event feed, the plan's notes, where credits went and came
+from); the system map (zoom, pan, orbitals on rings when close, ships in flight with their trails);
+a waypoint up close with its portrait, traits and market with price trends; a ship up close with
+its silhouette, parts, route, hold and trades; the markets (a goods-by-markets price grid, price
+history across markets, the trader's ranked routes, starving producers); the economy (the bank
+over the reset, the race between the account's agents, the ledger, contracts, the gate); the
+galaxy (every known system, our home and the leaderboard homes named, the most-credits and
+most-charts boards with our place, the server's numbers; the whole galaxy and our rank among every
+agent arrive over time on the pacer's idle lane, which only spends requests nobody else wanted);
+and a terminal diagnostics screen. Tab moves focus; arrows and clicks pick rows; Enter or a double
+click opens or centres; `q` quits. `summary`, `race` and `gate` in line mode print the bridge's
+numbers as tables.
 
-A second console is being built beside the dashboard (`docs/console-redesign.md`). `bridge.bat`
-builds it into its own folder, `build/install-bridge/`, so rebuilding it never disturbs a `run`
-started from `build/install/`, and launches `TradeyCLI bridge`. It only watches: boot, then follow
-the store. Screens: the bridge (the old console's panels), the system map, a waypoint up close
-with its portrait and market, a ship up close, the markets (a goods-by-markets price grid, price
-history, ranked routes, starving producers), the economy (the bank over the reset, the race
-between the account's agents, the ledger, contracts, the gate), the galaxy (known systems as a map,
-the leaderboards with our place, the server's numbers; every system and our rank among every agent
-arrive over time on the pacer's idle lane, which only spends requests nobody else wanted), and a
-terminal diagnostics screen. `q` quits;
-number keys, F-keys or a click on the bottom bar switch screens; Tab moves focus; arrows and
-clicks pick rows; Enter or a double click opens or centres. `TradeyCLI bridge --frame --no-boot --size 160x45` prints one
-frame as text without a terminal, which is how it is checked from a shell; `--wait` boots first,
-`--ansi` keeps the colours, `--sim` renders from the simulator, `--view NAME` picks the screen, and
-`--bench 200` reports bytes and milliseconds per frame.
-
-## Surviving the weekly reset
-
-`TradeyCLI reset --symbol S --faction F [--run 12h] [--poll 60]` is meant to be left running
-overnight. It polls the status endpoint (no token needed) until the reset date changes, riding out
-the outage in between; then it stops any run still holding a lease (their tokens are dead), moves
-the old `plan.json` aside as `plan-<old reset>.json`, registers S with F (retrying while the server
-warms up), boots the new agent, writes the escape-phase plan for its starting ships from
-`knowledge/Strategy.freshPlan`, and runs it. Stores are per reset date, so the old data stays.
+`docs/console-redesign.md` is the design. `bridge.bat` builds into `build/install-bridge/`, a
+second install folder, so rebuilding the console never disturbs a `run` started from
+`build/install/`. `TradeyCLI bridge --frame --no-boot --size 160x45` prints one frame as text
+without a terminal, which is how it is checked from a shell; `--wait` boots first, `--ansi` keeps
+the colours, `--sim` renders from the simulator, `--view NAME` picks the screen, `--select SYMBOL`
+the ship or waypoint, and `--bench 200` reports bytes and milliseconds per frame.
 
 ## Line mode
 
-Give it arguments and there is no dashboard, just an answer:
+Give it arguments and there is no console, just an answer:
 
 ```
 TradeyCLI status
@@ -113,7 +102,7 @@ TradeyCLI buy MINING_DRONE X1-TH77-H51                 # a ship of yours must be
 ```
 
 Only one `run` may drive an agent at a time: it holds `profile/agents/<SYMBOL>/run.lock` with a
-heartbeat, a second `run` refuses, and the dashboard's Intentions panel says who is driving.
+heartbeat, a second `run` refuses, and the console's header says who is driving.
 
 Rebuilding while a `run` is alive replaces the jars under it; the next class it has not loaded
 yet fails, usually when it finishes or stops. Stop runs before `installDist`, then start them again.
@@ -178,7 +167,7 @@ script, a CI job, or an assistant driving a terminal. The rules it plays by:
 
   A blank line, `quit`, or end of input ends it. `--refresh` on a line re-fetches for that command.
 - **It counts against the real rate limit.** Every command talks to the live API through the
-  same per-account pacer as the dashboard, two requests a second. A `status` is two calls plus a
+  same per-account pacer as the console, two requests a second. A `status` is two calls plus a
   fleet fetch; the first `waypoints` on a system is a few more, then it is served from the store.
   Do not loop it; use `sim` or `--sim` for anything repetitive.
 - **Everything ends up in the store.** `profile/agents/<SYMBOL>/data-<reset>.db` is plain SQLite;
@@ -194,7 +183,7 @@ server and the real client, so the two cannot drift apart.
 
 ## Where things stand
 
-The dashboard renders and talks to the API; line mode runs behaviours and the simulator. The
+The console renders and talks to the API; line mode runs behaviours and the simulator. The
 strategy is survey (the probe reads every market's prices), then trade (buy exports, sell to
 importers, best route by credits per hour every load, loads sized to the observed price impact),
 expanding the fleet from the profits; mining is ranked too but pays an order of magnitude less
@@ -213,10 +202,9 @@ in this reset.
 - `src/main/kotlin/knowledge/` - what the game does not tell us: deposit traits to goods, price guesses.
 - `src/main/kotlin/storage/` - one SQLite file per agent and server reset.
 - `src/main/kotlin/cli/` - line mode.
-- `src/main/kotlin/screen/` - the Kotter screens.
-- `src/main/kotlin/bridge/` - the new console: `tty` (the terminal, over Mordant), `canvas` (cells, frames, diffing, dot plots), `scene`, `fx`, `glyphs`, `views`.
+- `src/main/kotlin/bridge/` - the console: `tty` (the terminal, over Mordant), `canvas` (cells, frames, diffing, dot plots), `scene`, `fx`, `glyphs`, `views`.
 - `src/main/kotlin/model/` - the API models.
 - `profile/` - settings and the account token; `profile/agents/<SYMBOL>/` holds each agent's
   token, `plan.json` and its `data-<reset>.db` (git-ignored). Older resets end up in `archive/`.
 
-Weekly server resets wipe the universe. Tokens die with it; mint a new one and `Start` again.
+Weekly server resets wipe the universe. Tokens die with it; mint a new one and start again.

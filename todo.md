@@ -81,10 +81,12 @@ simulator. Milestones from the design:
 
 ## 5. TUI polish
 
-- [ ] Terminal width from the terminal, not the 160-column constant.
-- [ ] Real waypoint art, or drop the placeholder planet.
+- [x] Terminal width from the terminal, not the 160-column constant.
+- [x] Real waypoint art, or drop the placeholder planet.
+- [x] Retire the Kotter dashboard (`screen/`, `notification/`, the Kotter dependency); the console is
+      `TradeyCLI` with no arguments.
 - [ ] Turn the remaining `println` calls into log lines; sane log level and rotation.
 - [x] Decide the terminal library: Mordant as the thin layer with our own canvas above it, JLine
       the fallback; Kotter and Mosaic rejected (no mouse). `docs/console-redesign.md` has the
-      evaluation, the architecture and the milestones. The new console is built beside the Kotter
-      dashboard as `TradeyCLI bridge` with its own install folder, and replaces it at parity.
+      evaluation, the architecture and the milestones. The console was built beside the Kotter
+      dashboard as `TradeyCLI bridge` with its own install folder and replaced it on 2026-09-06.

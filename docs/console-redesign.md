@@ -1,10 +1,14 @@
-# Console redesign
+# The console
 
-A second terminal front end, built beside the Kotter dashboard so the working one keeps working.
-This is the library decision and the plan. Status of the codebase as of 2026-09-05: the engine is
-headless (`engine.Engine`, snapshots out as a `StateFlow`, happenings as a `SharedFlow`), the
-dashboard is a reader of it, and `screen/` is about 1,100 lines of Kotter that render an
-eight-column grid at a fixed 160 columns with keyboard-only, mostly unfinished, controls.
+TradeyCLI's terminal front end: `bridge/`, opened by `TradeyCLI` with no arguments. This document
+is its design: the goals, the library decision, the architecture, and a log of what landed and
+why (section 12). It was written on 2026-09-05 as the plan for a second front end built beside
+the Kotter dashboard so the working one kept working; the dashboard was retired on 2026-09-06
+once the console had passed it, so sections 2 and 3 now describe history and the rest describes
+the console as it is. When it was written: the engine was headless (`engine.Engine`, snapshots
+out as a `StateFlow`, happenings as a `SharedFlow`), the dashboard was a reader of it, and
+`screen/` was about 1,100 lines of Kotter that rendered an eight-column grid at a fixed 160
+columns with keyboard-only, mostly unfinished, controls.
 
 ## 1. Goals, in order
 
@@ -258,9 +262,9 @@ half-block plotting, and each procedural renderer's determinism from its seed.
 
 ## 9. Build and run
 
-The Kotter dashboard and `run` keep starting from `build/install/TradeyCLI` via `run.bat`.
-Rebuilding into that folder while a `run` is alive replaces the jars under it, so the new console
-gets its own install folder and script:
+`run.bat` builds the stable install, `build/install/TradeyCLI`, and opens the console from it;
+`TradeyCLI run` is started from the same folder. Rebuilding into that folder while a `run` is
+alive replaces the jars under it, so console development uses its own install folder and script:
 
 ```kotlin
 // build.gradle.kts
@@ -480,3 +484,7 @@ Still assumed:
   Pacers are per process and the limit is per account, so a `run` in another window is invisible
   to the console's pacer; a 429 is the one signal that crosses, and on one the idle lane stands
   down for thirty seconds (`RequestPacer.noteThrottled`, called by the client).
+- 2026-09-06, the Kotter dashboard is retired at Grant's word: `screen/`, `notification/` and the
+  Kotter dependency (and with it JLine) are gone, `WaypointType` no longer carries AWT colours,
+  and `TradeyCLI` with no arguments is the console. `run.bat` builds the stable install and opens
+  it; `bridge.bat` keeps building the development install beside it.
