@@ -41,12 +41,26 @@ A second console is being built beside the dashboard (`docs/console-redesign.md`
 builds it into its own folder, `build/install-bridge/`, so rebuilding it never disturbs a `run`
 started from `build/install/`, and launches `TradeyCLI bridge`. It only watches: boot, then follow
 the store. Screens: the bridge (the old console's panels), the system map, a waypoint up close
-with its portrait and market, a ship up close, and a terminal diagnostics screen. `q` quits;
+with its portrait and market, a ship up close, the markets (a goods-by-markets price grid, price
+history, ranked routes, starving producers), the economy (the bank over the reset, the race
+between the account's agents, the ledger, contracts, the gate), the galaxy (known systems as a map,
+the leaderboards with our place, the server's numbers; every system and our rank among every agent
+arrive over time on the pacer's idle lane, which only spends requests nobody else wanted), and a
+terminal diagnostics screen. `q` quits;
 number keys, F-keys or a click on the bottom bar switch screens; Tab moves focus; arrows and
 clicks pick rows; Enter or a double click opens or centres. `TradeyCLI bridge --frame --no-boot --size 160x45` prints one
 frame as text without a terminal, which is how it is checked from a shell; `--wait` boots first,
 `--ansi` keeps the colours, `--sim` renders from the simulator, `--view NAME` picks the screen, and
 `--bench 200` reports bytes and milliseconds per frame.
+
+## Surviving the weekly reset
+
+`TradeyCLI reset --symbol S --faction F [--run 12h] [--poll 60]` is meant to be left running
+overnight. It polls the status endpoint (no token needed) until the reset date changes, riding out
+the outage in between; then it stops any run still holding a lease (their tokens are dead), moves
+the old `plan.json` aside as `plan-<old reset>.json`, registers S with F (retrying while the server
+warms up), boots the new agent, writes the escape-phase plan for its starting ships from
+`knowledge/Strategy.freshPlan`, and runs it. Stores are per reset date, so the old data stays.
 
 ## Line mode
 
@@ -62,6 +76,7 @@ TradeyCLI shipyards
 TradeyCLI asteroids            # every asteroid ranked by credits per hour for the mining ship
 TradeyCLI trades               # buy-here-sell-there routes ranked by credits per hour weighted by market health (score)
 TradeyCLI phase [escape|boom|late]   # show or set the plan's phase; race [AGENT ...] compares agents' banks, fleets and gate progress
+TradeyCLI reset --symbol TRIPLEHAT --faction ECHO --run 12h   # wait for the weekly reset, register afresh, write the escape plan, run it
 TradeyCLI intentions           # what the bot is doing and saving for, and the credits trend
 TradeyCLI contracts            # every contract seen: payment, our cost, dates
 TradeyCLI gate                 # the construction bill, what we delivered and spent, cost to finish
