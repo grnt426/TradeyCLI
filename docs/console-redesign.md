@@ -488,3 +488,15 @@ Still assumed:
   Kotter dependency (and with it JLine) are gone, `WaypointType` no longer carries AWT colours,
   and `TradeyCLI` with no arguments is the console. `run.bat` builds the stable install and opens
   it; `bridge.bat` keeps building the development install beside it.
+- 2026-09-06, the interface catches up with the scripting work done alongside it. Idle time
+  (`behaviour.decisions.Idle` over the phase log the engine now keeps): the fleet table has an
+  idle column and turns a row amber past half a day idle; the phase panel carries the fleet's
+  idle line; a new home panel lists idle by behaviour, worst first; the ship screen has a time
+  panel with the last day as a strip (green worked, amber waited), the busy and idle totals and
+  what the ship waited on most, and its log now merges phase changes with trades. The money
+  panels on the home screen cover the last day as the summary's do (`Summary.WINDOW`); the
+  economy screen keeps the whole reset. Minable waypoints show their valid surveys and the goods
+  they promise, and the system list says "ore surveyed". The galaxy screen has a neighbours
+  panel: agents headquartered in our system with their faction, bank and fleet, and every agent
+  whose ships appear in the transaction history of the markets we have read, from the same
+  ranking pass that already pages every agent.

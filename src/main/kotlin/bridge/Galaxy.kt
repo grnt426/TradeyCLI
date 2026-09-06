@@ -38,8 +38,11 @@ class Galaxy(private val engine: Engine) {
     private var galaxyJob: Job? = null
     private var rankJob: Job? = null
 
-    /** Our place among every agent, once `R` has paged them; null until then. */
+    /** Our place among every agent, once the ranking pass has paged them; null until then. */
     @Volatile var rank: Rank? = null; private set
+
+    /** Every agent on the server as of the last ranking pass, richest first. */
+    @Volatile var allAgents: List<PublicAgent> = emptyList(); private set
     data class Rank(val position: Int, val of: Int, val credits: Long)
 
     fun systems(): Map<String, System> {
@@ -155,6 +158,7 @@ class Galaxy(private val engine: Engine) {
                     items.forEach { all += ApiJson.decodeFromJsonElement<PublicAgent>(it) }
                 }
                 val sorted = all.sortedByDescending { it.credits }
+                allAgents = sorted
                 val position = sorted.indexOfFirst { it.symbol == ours }
                 rank = if (position >= 0) Rank(position + 1, sorted.size, sorted[position].credits) else null
                 rankedAt = java.lang.System.nanoTime()

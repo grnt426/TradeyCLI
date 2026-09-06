@@ -1,6 +1,7 @@
 package bridge.views
 
 import behaviour.decisions.CreditsTrend
+import behaviour.decisions.Idle
 import behaviour.decisions.Intent
 import behaviour.decisions.Intentions
 import behaviour.decisions.Summary
@@ -49,6 +50,7 @@ class HomeView : WidgetView() {
             Table.Column("where", 16),
             Table.Column("fuel", 7, alignRight = true),
             Table.Column("hold", 7, alignRight = true),
+            Table.Column("idle", 5, alignRight = true),
         ),
         onSelect = { row -> selectedShip = row?.key; model?.selectedShip = row?.key },
         onActivate = { model?.navigateTo("Ship") },
@@ -68,8 +70,9 @@ class HomeView : WidgetView() {
     private val progress = TextBlock(lines = { progressLines() })
     private val credits = CreditsChart(history = { snap().creditsHistory }, now = { now() }, dots = { model!!.dots })
     private val plan = TextBlock(lines = { planLines() }, empty = "no plan")
-    private val spent = Bars(bars = { flows(Summary.spending(snap()), Palette.warn) }, empty = "nothing spent yet")
-    private val earned = Bars(bars = { flows(Summary.revenue(snap()), Palette.good) }, empty = "nothing earned yet")
+    private val idle = TextBlock(lines = { idleLines() }, empty = "no phase history yet; it fills as the run goes")
+    private val spent = Bars(bars = { flows(Summary.spending(snap(), now().minus(Summary.WINDOW)), Palette.warn) }, empty = "nothing spent in the last day")
+    private val earned = Bars(bars = { flows(Summary.revenue(snap(), now().minus(Summary.WINDOW)), Palette.good) }, empty = "nothing earned in the last day")
 
     override fun paint(p: Painter, model: BridgeModel, t: Double) {
         this.model = model
@@ -104,10 +107,11 @@ class HomeView : WidgetView() {
         place(feed, p.panel(feedRect, "Events", hint = "wheel"), t)
 
         if (bottomH > 0) {
-            val (planRect, spentRect, earnedRect) = bottom.cols(Len.weight(3), Len.weight(2), Len.weight(2))
+            val (planRect, idleRect, spentRect, earnedRect) = bottom.cols(Len.weight(3), Len.weight(2), Len.weight(2), Len.weight(2))
             place(plan, p.panel(planRect, "Plan"), t)
-            place(spent, p.panel(spentRect, "Spent on"), t)
-            place(earned, p.panel(earnedRect, "Earned from"), t)
+            place(idle, p.panel(idleRect, "Idle · last day", hint = "by behaviour"), t)
+            place(spent, p.panel(spentRect, "Spent on · last day"), t)
+            place(earned, p.panel(earnedRect, "Earned from · last day"), t)
         }
         endFrame(listOfNotNull(fleet, if (topH > 0) health else null))
     }
@@ -146,8 +150,10 @@ class HomeView : WidgetView() {
     private fun fleetRows(snap: engine.Snapshot, now: java.time.Instant) {
         // Summary names ships by their number; the table keys on the full symbol.
         val bySuffix = snap.ships.values.associateBy { it.symbol.substringAfterLast('-') }
+        val idleByShip = Idle.perShip(snap.phases, now).associateBy { it.ship }
         fleet.setRows(Summary.fleet(snap, now).map { r ->
             val ship = bySuffix[r.ship]
+            val share = ship?.let { idleByShip[it.symbol]?.share }
             Table.Row(
                 key = ship?.symbol ?: r.ship,
                 cells = listOf(
@@ -155,8 +161,9 @@ class HomeView : WidgetView() {
                     r.where,
                     ship?.let { if (it.fuel.capacity > 0) "${it.fuel.current}/${it.fuel.capacity}" else "-" } ?: "",
                     ship?.let { "${it.cargo.units}/${it.cargo.capacity}" } ?: "",
+                    share?.let { "${(it * 100).toInt()}%" } ?: "",
                 ),
-                tone = tone(r.tone),
+                tone = if (share != null && share > 0.5) Palette.warn else tone(r.tone),
             )
         })
     }
@@ -186,6 +193,26 @@ class HomeView : WidgetView() {
             lines += Line("  ${m.tradeSymbol.name.padEnd(18)} ${gaugeText(m.fulfilled, m.required)} ${m.fulfilled}/${m.required}", if (done) Palette.good else Palette.text)
         }
         progress.lines.forEach { lines += Line(it.text, tone(it.tone)) }
+        Summary.idleLine(snap, now)?.let { lines += Line(it, if (it.contains("worst")) Palette.warn else Palette.text) }
+        return lines
+    }
+
+    /** The fleet's idle share, then the behaviours that left ships waiting, worst first. */
+    private fun idleLines(): List<Line> {
+        val snap = snap()
+        val now = now()
+        val ships = Idle.perShip(snap.phases, now)
+        if (ships.isEmpty()) return emptyList()
+        val lines = mutableListOf(Line("fleet idle ${(Idle.fleetShare(ships) * 100).toInt()}% of recorded time", Palette.textBright, bold = true))
+        Idle.perBehaviour(snap.phases, now).entries
+            .map { (b, t) -> Triple(b, t.first, t.second) }
+            .filter { (_, busy, idle) -> (busy + idle).seconds > 0 }
+            .sortedByDescending { (_, busy, idle) -> idle.seconds.toDouble() / (busy + idle).seconds }
+            .forEach { (b, busy, idle) ->
+                val total = (busy + idle).seconds
+                val share = idle.seconds * 100 / total
+                lines += Line("${b.padEnd(12)} ${"%4.1fh".format(idle.toMinutes() / 60.0)} idle of ${"%4.1fh".format(total / 3600.0)}  ${share.toString().padStart(3)}%", when { share >= 50 -> Palette.warn; share >= 25 -> Palette.text; else -> Palette.textDim })
+            }
         return lines
     }
 

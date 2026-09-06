@@ -76,7 +76,7 @@ class SystemView : WidgetView() {
                 if (wp.hasMarket) add("market")
                 if (wp.hasShipyard) add("shipyard")
                 if (wp.isUnderConstruction) add("gate site")
-                if (wp.isMineable) add("ore")
+                if (wp.isMineable) add(if (snap.validSurveysFor(wp.symbol, now).isNotEmpty()) "ore surveyed" else "ore")
                 if (wp.isSiphonable) add("gas")
                 if (wp.orbits != null) add("orbits ${wp.orbits.substringAfterLast('-')}")
             }.joinToString(" ")

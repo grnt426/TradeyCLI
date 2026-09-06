@@ -1,5 +1,6 @@
 package bridge.views
 
+import behaviour.decisions.Idle
 import bridge.BridgeModel
 import bridge.Format
 import bridge.canvas.Attr
@@ -44,7 +45,7 @@ class ShipView : View {
         val artW = (p.width / 2).coerceIn(34, 60)
         val (left, right) = Rect(0, 0, p.width, p.height).cols(Len.fixed(artW), Len.weight())
         val (artRect, partsRect) = left.rows(Len.weight(), Len.fixed(12))
-        val (factsRect, routeRect, cargoRect, logRect) = right.rows(Len.fixed(8), Len.fixed(6), Len.weight(1), Len.weight(1))
+        val (factsRect, routeRect, timeRect, cargoRect, logRect) = right.rows(Len.fixed(8), Len.fixed(6), Len.fixed(8), Len.weight(2), Len.weight(3))
 
         val role = Atlas.role(ship.registration.role)
         val inFlight = ship.nav.inTransitAt(now)
@@ -61,8 +62,47 @@ class ShipView : View {
         parts(p.panel(partsRect, "Parts"), ship)
         facts(p.panel(factsRect, ship.frame.name.removePrefix("Frame ")), ship, now)
         route(p.panel(routeRect, "Route"), ship, now)
+        time(p.panel(timeRect, "Time · last day", hint = "busy ■ idle ■"), ship, model)
         cargo(p.panel(cargoRect, "Hold ${ship.cargo.units}/${ship.cargo.capacity}"), ship)
-        log(p.panel(logRect, "Trades"), ship, model)
+        log(p.panel(logRect, "Log · phases and trades"), ship, model)
+    }
+
+    /**
+     * The last day as a strip, one cell per slice, green where the ship worked and amber where it
+     * waited, then the numbers and what it was waiting on most.
+     */
+    private fun time(p: Painter, ship: Ship, model: BridgeModel) {
+        val now = model.now()
+        val records = model.snapshot().phases.filter { it.ship == ship.symbol }.sortedBy { it.at }
+        if (records.isEmpty()) {
+            p.text(0, 0, "no phase history yet", Palette.textDim)
+            return
+        }
+        val start = now.minus(Duration.ofHours(24))
+        val slices = p.width.coerceAtLeast(1)
+        val sliceMillis = Duration.ofHours(24).toMillis() / slices
+        for (i in 0 until slices) {
+            val from = start.plusMillis(i * sliceMillis)
+            val to = from.plusMillis(sliceMillis)
+            // The phase in force through the slice is the last change before its end.
+            val inForce = records.lastOrNull { !it.at.isAfter(to) }
+            val colour = when {
+                inForce == null || records.first().at.isAfter(to) -> Palette.track
+                inForce.phase in Idle.IDLE_PHASES -> Palette.warn
+                else -> Palette.good
+            }
+            p.put(i, 0, '▀', colour, Palette.track)
+        }
+        p.text(0, 1, "-24h", Palette.textDim)
+        p.textRight(p.width, 1, "now", Palette.textDim)
+        val idle = Idle.perShip(records, now).firstOrNull() ?: return
+        var y = 2
+        fun span(d: Duration) = if (d.isZero) "0m" else Format.span(d)
+        p.text(0, y++, "busy ${span(idle.busy)} · idle ${span(idle.idle)} · ${(idle.share * 100).toInt()}% idle", if (idle.share > 0.5) Palette.warn else Palette.text)
+        idle.reasons.entries.take(p.height - y).forEach { (reason, span) ->
+            p.text(0, y, Format.span(span).padStart(5), Palette.textDim)
+            p.text(6, y++, reason.take(p.width - 6), Palette.text)
+        }
     }
 
     private fun facts(p: Painter, ship: Ship, now: Instant) {
@@ -152,19 +192,30 @@ class ShipView : View {
         }
     }
 
+    /** One line of the ship's day: a phase change or a trade. */
+    private class Entry(val at: Instant, val text: String, val tone: bridge.canvas.Rgb, val amount: String = "")
+
+    /** Phase changes and trades in one list, newest first, so the trades sit inside the phases that made them. */
     private fun log(p: Painter, ship: Ship, model: BridgeModel) {
         val now = model.now()
-        val ours = model.snapshot().recentTransactions.filter { it.shipSymbol == ship.symbol }.sortedByDescending { it.timestamp }
-        if (ours.isEmpty()) {
-            p.text(0, 0, "no trades in the last hours", Palette.textDim)
+        val snap = model.snapshot()
+        val entries = ArrayList<Entry>()
+        snap.recentTransactions.filter { it.shipSymbol == ship.symbol }.forEach { tx ->
+            val at = runCatching { Instant.parse(tx.timestamp) }.getOrNull() ?: return@forEach
+            val sale = tx.type.name == "SELL"
+            entries += Entry(at, "${if (sale) "sold" else "bought"} ${tx.units} ${tx.tradeSymbol.name} at ${tx.waypointSymbol.substringAfterLast('-')}", if (sale) Palette.good else Palette.warn, (if (sale) "+" else "-") + Format.credits(tx.totalPrice.toLong()))
+        }
+        snap.phases.filter { it.ship == ship.symbol }.forEach { r ->
+            entries += Entry(r.at, "${r.behaviour}: ${r.phase} ${r.detail}".trim(), if (r.phase in Idle.IDLE_PHASES) Palette.textDim else Palette.text)
+        }
+        if (entries.isEmpty()) {
+            p.text(0, 0, "nothing recorded yet", Palette.textDim)
             return
         }
-        ours.take(p.height).forEachIndexed { i, tx ->
-            val at = runCatching { Instant.parse(tx.timestamp) }.getOrNull()
-            val sale = tx.type.name == "SELL"
-            p.text(0, i, (at?.let { Format.age(it, now) } ?: "").padStart(4), Palette.textDim)
-            p.text(5, i, "${if (sale) "sold" else "bought"} ${tx.units} ${tx.tradeSymbol.name} at ${tx.waypointSymbol.substringAfterLast('-')}".take(p.width - 16), if (sale) Palette.good else Palette.warn)
-            p.textRight(p.width, i, (if (sale) "+" else "-") + Format.credits(tx.totalPrice.toLong()), if (sale) Palette.good else Palette.warn)
+        entries.sortedByDescending { it.at }.take(p.height).forEachIndexed { i, e ->
+            p.text(0, i, Format.age(e.at, now).padStart(4), Palette.textDim)
+            p.text(5, i, e.text.take(p.width - 5 - e.amount.length - 1), e.tone)
+            if (e.amount.isNotEmpty()) p.textRight(p.width, i, e.amount, e.tone)
         }
     }
 

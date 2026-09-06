@@ -120,6 +120,15 @@ class WaypointView : WidgetView() {
             if (!wp.isCharted) add("uncharted")
         }
         if (flags.isNotEmpty()) p.text(0, y++, flags.joinToString(" · "), Palette.info)
+        if (wp.isMineable) {
+            val surveys = snap.validSurveysFor(wp.symbol, now)
+            if (surveys.isEmpty()) p.text(0, y++, "no valid survey", Palette.textDim)
+            else {
+                val soonest = surveys.minOf { it.expiration }
+                val goods = surveys.flatMap { it.deposits.map { d -> d.symbol.name } }.groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(4).joinToString(", ") { it.key }
+                p.text(0, y++, "${surveys.size} valid survey${if (surveys.size == 1) "" else "s"}, next expires in ${Format.span(java.time.Duration.between(now, soonest))}: $goods".take(p.width), Palette.good)
+            }
+        }
         snap.shipyards[wp.symbol]?.let { yard ->
             p.text(0, y++, "shipyard sells: ${yard.shipTypes.joinToString(", ") { it.type.name.removePrefix("SHIP_").lowercase().replace('_', ' ') }}".take(p.width), Palette.text)
         }

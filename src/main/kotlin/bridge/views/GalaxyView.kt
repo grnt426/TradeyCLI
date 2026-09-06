@@ -48,6 +48,15 @@ class GalaxyView : WidgetView() {
     private val charts = Table(
         columns = listOf(Table.Column("#", 3, alignRight = true), Table.Column("agent", 14), Table.Column("charts", 7, alignRight = true)),
     )
+    private val neighbours = Table(
+        columns = listOf(
+            Table.Column("agent", 14),
+            Table.Column("faction", 8),
+            Table.Column("credits", 9, alignRight = true),
+            Table.Column("ships", 5, alignRight = true),
+            Table.Column("seen trading"),
+        ),
+    )
     private val facts = TextBlock(lines = { factLines() }, empty = "waiting for the server status")
 
     override fun paint(p: Painter, model: BridgeModel, t: Double) {
@@ -61,7 +70,8 @@ class GalaxyView : WidgetView() {
 
         val sideW = (p.width * 0.36).toInt().coerceIn(46, 70)
         val (mapRect, side) = Rect(0, 0, p.width, p.height).cols(Len.weight(), Len.fixed(sideW))
-        val (leadersRect, chartsRect, factsRect) = side.rows(Len.fixed(19), Len.fixed(8), Len.weight())
+        val tall = p.height >= 44
+        val (leadersRect, neighboursRect, chartsRect, factsRect) = side.rows(Len.fixed(19), Len.fixed(if (p.height >= 36) 9 else 0), Len.fixed(if (tall) 8 else 0), Len.weight())
 
         place(map, p.panel(mapRect, "Known galaxy · ${galaxy.systems().size} systems" + (status?.stats?.systems?.let { " of $it" } ?: ""), focus === map), t)
 
@@ -89,9 +99,43 @@ class GalaxyView : WidgetView() {
         charts.setRows((status?.leaderboards?.mostSubmittedCharts ?: emptyList()).mapIndexed { i, e ->
             Table.Row(e.agentSymbol, listOf((i + 1).toString(), e.agentSymbol, e.chartCount.toString()), if (e.agentSymbol == ours) Palette.accent else Palette.text)
         })
-        place(charts, p.panel(chartsRect, "Most charts"), t)
+        if (neighboursRect.h > 0) {
+            neighbours.setRows(neighbourRows(model))
+            val home = snap.hqSystem ?: "?"
+            place(neighbours, p.panel(neighboursRect, "Neighbours · headquartered in $home", hint = if (galaxy.allAgents.isEmpty()) "after the ranking pass" else ""), t)
+        }
+        if (chartsRect.h > 0) place(charts, p.panel(chartsRect, "Most charts"), t)
         place(facts, p.panel(factsRect, "Galaxy" + (status?.version?.let { " · $it" } ?: "")), t)
         endFrame(listOf(map, leaders))
+    }
+
+    /**
+     * Agents whose headquarters is our home system, from the last ranking pass, with how often
+     * their ships show up in the transaction history of the markets we have read.
+     */
+    private fun neighbourRows(model: BridgeModel): List<Table.Row> {
+        val snap = model.snapshot()
+        val home = snap.hqSystem ?: return emptyList()
+        val ours = snap.agent?.symbol
+        val seen = HashMap<String, Pair<Int, String>>()
+        snap.marketsIn(home).forEach { m ->
+            m.transactions.forEach { tx ->
+                val agent = tx.shipSymbol.substringBeforeLast('-')
+                val (n, last) = seen[agent] ?: (0 to "")
+                seen[agent] = (n + 1) to maxOf(last, tx.timestamp)
+            }
+        }
+        val here = model.galaxy.allAgents.filter { OrbitalNames.getSectorSystem(it.headquarters) == home }.associateBy { it.symbol }.toMutableMap()
+        val rows = ArrayList<Table.Row>()
+        for (a in here.values.sortedByDescending { it.credits }) {
+            val s = seen[a.symbol]
+            rows += Table.Row(a.symbol, listOf(a.symbol, a.startingFaction, Format.compact(a.credits), a.shipCount.toString(), s?.let { "${it.first} trades, last ${it.second.take(16).replace('T', ' ')}" } ?: ""), if (a.symbol == ours) Palette.accent else Palette.text)
+        }
+        // Ships trading here whose owners are headquartered elsewhere.
+        seen.filterKeys { it != ours && it !in here }.entries.sortedByDescending { it.value.first }.forEach { (agent, v) ->
+            rows += Table.Row(agent, listOf(agent, "", "", "", "visitor · ${v.first} trades, last ${v.second.take(16).replace('T', ' ')}"), Palette.textDim)
+        }
+        return rows
     }
 
     private fun factLines(): List<Line> {
