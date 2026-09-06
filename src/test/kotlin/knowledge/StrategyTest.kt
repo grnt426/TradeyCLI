@@ -78,6 +78,29 @@ class StrategyTest {
     }
 
     @Test
+    fun `in escape a LIMITED chain export goes only to another gate producer, never to an ordinary buyer`() {
+        // H50 refines iron for F47 (fab mats). With H50's iron LIMITED, the E-row importers may not have it; F47 still may.
+        val seed = pricedSeed().let { s ->
+            s.copy(markets = s.markets.map { m ->
+                if (m.symbol == "X1-TH77-H50") m.copy(tradeGoods = m.tradeGoods.map { g -> if (g.symbol == TradeSymbol.IRON) g.copy(supply = SupplyLevel.LIMITED) else g }).also { it.lastRead = m.lastRead } else m
+            })
+        }
+        val snap = SimRun.worldFrom(SimUniverse(seed, VirtualClock(TestCoroutineScheduler(), now))).snapshot(1).let { s ->
+            s.copy(
+                markets = seed.markets.associateBy { it.symbol }.mapValues { (_, m) -> m.also { it.lastRead = now } },
+                constructionBill = listOf(model.ConstructionMaterial(TradeSymbol.FAB_MATS, 1600, 0)),
+            )
+        }
+        assertTrue("X1-TH77-H50/IRON" in Strategy.chainSources(snap), Strategy.chainSources(snap).toString())
+        val ship = snap.ships.getValue(Fixtures.COMMAND_SHIP)
+        val escape = behaviour.decisions.Trading.rank(snap, ship, now, Strategy.trading(Phase.ESCAPE, snapshot = snap))
+        val plain = behaviour.decisions.Trading.rank(snap, ship, now)
+        assertTrue(plain.any { it.good == TradeSymbol.IRON && it.source.symbol == "X1-TH77-H50" && it.destination.symbol != "X1-TH77-F47" }, "unweighted, iron goes to the E-row")
+        val iron = escape.filter { it.good == TradeSymbol.IRON && it.source.symbol == "X1-TH77-H50" }
+        assertTrue(iron.all { it.destination.symbol == "X1-TH77-F47" && it.feeds }, "in escape only the fab-mats producer may have H50's iron: ${iron.map { it.destination.symbol }}")
+    }
+
+    @Test
     fun `the plan carries its phase through json and starts in escape`() {
         val file = File.createTempFile("plan", ".json").also { it.deleteOnExit() }
         Plan.save(file, Plan().withPhase(Phase.BOOM))

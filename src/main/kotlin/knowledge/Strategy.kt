@@ -110,7 +110,18 @@ object Strategy {
         market = market(phase),
         chainTargets = if (phase == Phase.ESCAPE && snapshot != null) chainTargets(snapshot) else emptySet(),
         protectedSources = if (phase == Phase.ESCAPE && snapshot != null) protectedChainSources(snapshot) else emptySet(),
+        chainSources = if (phase == Phase.ESCAPE && snapshot != null) chainSources(snapshot) else emptySet(),
     )
+
+    /** "market/good" for every export of a gate-chain good in the home system, healthy or not. */
+    fun chainSources(snapshot: Snapshot): Set<String> {
+        val home = snapshot.hqSystem ?: return emptySet()
+        val roots = snapshot.constructionBill?.filter { it.fulfilled < it.required }?.map { it.tradeSymbol } ?: return emptySet()
+        val goods = linkedSetOf<model.market.TradeSymbol>()
+        fun walk(g: model.market.TradeSymbol, depth: Int) { if (goods.add(g) && depth < 4) ImportMap.inputs[g].orEmpty().forEach { walk(it, depth + 1) } }
+        roots.forEach { walk(it, 0) }
+        return snapshot.marketsIn(home).flatMap { m -> goods.filter { m.typeOf(it) == model.market.TradeGoodType.EXPORT }.map { "${m.symbol}/${it.name}" } }.toSet()
+    }
 
     /** "market/good" for every export of a gate-chain producer that has a LIMITED-or-worse input: draining it only raises the bill. */
     fun protectedChainSources(snapshot: Snapshot): Set<String> {

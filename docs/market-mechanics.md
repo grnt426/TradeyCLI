@@ -64,6 +64,9 @@ The community wiki's `Market-Export-&-Import-Map.md` lists what every export is 
 | `nurseMinSellRatio` [0.5] | a nursing leg may lose up to half its cost; the goal is the producer's price |
 | `nurseVolumesPerVisit` [2] | how much input to deliver per nursing visit |
 | `importRecoveryHours` [6] | how long a drained import takes to pay again |
+| `chainFeedBonus` [2.5] | in ESCAPE, a load that fills a gate producer's short input scores this much more, at a break-even floor |
+| `protectStarvedChains` [true] | in ESCAPE, a gate producer whose inputs are LIMITED is fed, never drawn on |
+| `reserveChainExportsBelow` [LIMITED] | in ESCAPE, a gate-chain export at this level or worse goes only to another gate producer's short input, never to an ordinary buyer (H57's iron went to the E-row while F55 sat short, 2026-09-06) |
 
 Who uses them:
 

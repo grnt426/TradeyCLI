@@ -68,6 +68,8 @@ data class TradingAssumptions(
     val chainTargets: Set<String> = emptySet(),
     /** "market/good" exports of gate-chain producers whose inputs are short: not a source while [MarketAssumptions.protectStarvedChains]. */
     val protectedSources: Set<String> = emptySet(),
+    /** "market/good" exports of gate-chain producers: at [MarketAssumptions.reserveChainExportsBelow] or worse they go only to [chainTargets]. */
+    val chainSources: Set<String> = emptySet(),
 ) {
     /** The smallest margin worth having on a unit bought at [buyPrice]. */
     fun floor(buyPrice: Double): Double = maxOf(minMarginPerUnit.toDouble(), buyPrice * minMarginRatio)
@@ -104,6 +106,7 @@ object Trading {
                     val destinationWeight = MarketHealth.destinationWeight(bid, assumptions.market)
                     if (destinationWeight <= 0.0) continue
                     val feeds = "${destination.symbol}/${offer.symbol.name}" in assumptions.chainTargets
+                    if (!feeds && offer.supply <= assumptions.market.reserveChainExportsBelow && "${source.symbol}/${offer.symbol.name}" in assumptions.chainSources) continue
                     val rules = if (feeds) assumptions.forFeeding() else assumptions
                     if (bid.sellPrice - offer.purchasePrice < rules.floor(offer.purchasePrice.toDouble())) continue
                     val destinationWaypoint = snapshot.waypoints[destination.symbol] ?: continue

@@ -82,6 +82,13 @@ data class MarketAssumptions(
     val chainFeedBonus: Double = 2.5,
     /** In ESCAPE, a gate-chain producer whose inputs read LIMITED or worse is not drawn on at all: taking from it raises the gate's price while nothing replaces the stock. */
     val protectStarvedChains: Boolean = true,
+    /**
+     * In ESCAPE, an export of a gate-chain producer whose own stock is at this level or worse is
+     * reserved for the chain: a trader may carry it only to another gate producer's short input,
+     * never to an ordinary buyer. On 2026-09-06 traders sold 280 iron from H57 (LIMITED) to the
+     * E-row importers while F55, the fab-mats producer, sat short of iron.
+     */
+    val reserveChainExportsBelow: SupplyLevel = LIMITED,
     /** A nursing leg may sell an input for less than it cost, down to this share of the buy price, because the goal is the producer's price, not the leg's. */
     val nurseMinSellRatio: Double = 0.5,
     /** Trade volumes of an input to deliver per nursing visit; the docs say consumption grows as we supply, so a few volumes is enough to move it. */
