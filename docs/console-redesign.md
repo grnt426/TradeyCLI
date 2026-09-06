@@ -440,3 +440,43 @@ Still assumed:
   fills the width; the engine loads six hours of bank history instead of two (transactions stay
   at two); the projection is a fixed quarter hour, Grant's call: ninety minutes of a line that
   predicts nothing cost density for no information.
+- 2026-09-05, M5 landed: screens 5 and 6. `scene/Grid` is a cursor grid with row and column
+  labels, scrolling both ways; `scene/LineChart` draws several timestamped series on one braille
+  canvas with a legend. `views/MarketsView`: every good against every market in the home system,
+  cells showing the export's buy price or the import's sell price, coloured by supply (scarce red
+  to abundant bright) with a red ground for restricted activity; the selected good's price
+  history across the markets that trade it; the routes `Trading.rank` would give the biggest
+  hauler now (recomputed every quarter minute, Enter on a route moves the grid to its good); and
+  the starving producers with the inputs that would feed them and the cheapest healthy source
+  (`knowledge.MarketHealth`). `views/EconomyView`: the bank over the whole reset (a second
+  `CreditsChart` without projection, from a cached whole-history read), the race across the
+  account's agents from their stores on disk (cached five minutes, ours from the snapshot), the
+  ledger as totals and bars, every contract seen with payment, our cost and net from the store's
+  records, and the gate: cost to finish at today's prices, rush verdict, per-material gauges with
+  the cheapest price, and the summary's progress lines. Headless frames now paint twice with a
+  two-second pause after boot so the cached reads show.
+- 2026-09-05, Grant asked for the leaderboard and the galaxy before diagnostics: screen 7,
+  `views/GalaxyView` over `bridge/Galaxy`. `ServerStatus` now carries the server's stats, health,
+  leaderboards and announcements (all optional, so older stores still decode) and the snapshot
+  exposes it. The galaxy fetches, on the background lane and cached: the status every five
+  minutes; the public record of every agent on the leaderboards and the system each calls home
+  (one request each, once); and on request only, because each costs hundreds of requests against
+  the account's shared budget, the whole galaxy (`L`, paged into the store) and our rank among
+  every agent (`R`). The map shows every known system as a star by type, our home and the
+  leaderboard homes named with their rank; pan, zoom, click, and Enter or a double click opens a
+  system whose waypoints are loaded on the system screen. The side has the most-credits board
+  with our row appended when we are below it (with the gap to the last place, or our rank once
+  `R` has run), the most-charts board, and the server's numbers, reset timer, market update age
+  and announcements.
+- 2026-09-05, Grant asked for lazy requests: nice-to-have reads should wait for spare capacity
+  instead of competing with ships. `Priority.IDLE` in `api.RequestPacer`: an idle request only
+  ever takes a static point when the static pool is full (so one point is always left for real
+  work), never touches the burst pool, and only after 300 ms without a real grant. That gives idle
+  work about one request a second when the account is quiet and nothing when it is busy. The
+  pacer counts `idleGranted`. Everything the galaxy screen fetches is idle now, and it no longer
+  waits to be asked: the first status starts the galaxy crawl (one request per twenty systems,
+  into the store, so once per reset) and the ranking (refreshed every half hour); `R` re-ranks at
+  once. The other lanes are unchanged; classifying the rest of the client's reads is for later.
+  Pacers are per process and the limit is per account, so a `run` in another window is invisible
+  to the console's pacer; a 429 is the one signal that crosses, and on one the idle lane stands
+  down for thirty seconds (`RequestPacer.noteThrottled`, called by the client).

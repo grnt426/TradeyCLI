@@ -35,6 +35,56 @@ class RequestPacerTest {
     }
 
     @Test
+    fun `idle requests only take a static point nobody else wanted, after a quiet moment`() = runTest {
+        val pacer = RequestPacer(backgroundScope, smallLimits, testScheduler.timeSource)
+        val order = mutableListOf<String>()
+        launch { pacer.acquire(Priority.IDLE); order += "idle1" }
+        launch { pacer.acquire(Priority.IDLE); order += "idle2" }
+        runCurrent()
+        assertEquals(listOf("idle1"), order, "a full static pool gives idle work one point at once when nothing real has run")
+        advanceTimeBy(500)
+        runCurrent()
+        assertEquals(listOf("idle1"), order, "the second point is kept for real work; idle waits for the refill")
+
+        launch { pacer.acquire(Priority.BACKGROUND); order += "bg" }
+        runCurrent()
+        assertEquals(listOf("idle1", "bg"), order, "real work takes the point idle left behind, at once")
+
+        advanceTimeBy(1000)
+        runCurrent()
+        assertEquals(listOf("idle1", "bg", "idle2"), order, "after the refill and a quiet moment, idle gets its point")
+
+        launch { pacer.acquire(Priority.BACKGROUND); order += "bg2" }
+        launch { pacer.acquire(Priority.IDLE); order += "idle3" }
+        runCurrent()
+        assertEquals(listOf("idle1", "bg", "idle2", "bg2"), order, "real work first; idle must wait for quiet")
+        advanceTimeBy(299)
+        runCurrent()
+        assertEquals(4, order.size, "still inside the quiet gap")
+        advanceTimeBy(1000)
+        runCurrent()
+        assertEquals(listOf("idle1", "bg", "idle2", "bg2", "idle3"), order)
+        assertEquals(3, pacer.idleGranted)
+    }
+
+    @Test
+    fun `a throttle from the server stands idle work down for a while`() = runTest {
+        val pacer = RequestPacer(backgroundScope, smallLimits, testScheduler.timeSource)
+        val order = mutableListOf<String>()
+        pacer.noteThrottled()
+        launch { pacer.acquire(Priority.IDLE); order += "idle" }
+        launch { pacer.acquire(Priority.BACKGROUND); order += "bg" }
+        runCurrent()
+        assertEquals(listOf("bg"), order, "real work is unaffected; idle waits out the backoff")
+        advanceTimeBy(29_000)
+        runCurrent()
+        assertEquals(listOf("bg"), order)
+        advanceTimeBy(2_000)
+        runCurrent()
+        assertEquals(listOf("bg", "idle"), order)
+    }
+
+    @Test
     fun `interactive requests jump ahead of background ones`() = runTest {
         val limits = RateLimits(staticPoints = 1, staticWindow = 1.seconds, burstPoints = 1, burstWindow = 60.seconds)
         val pacer = RequestPacer(backgroundScope, limits, testScheduler.timeSource)

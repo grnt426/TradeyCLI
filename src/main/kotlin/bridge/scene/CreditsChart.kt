@@ -18,6 +18,8 @@ class CreditsChart(
     private val history: () -> List<CreditPoint>,
     private val now: () -> Instant,
     private val dots: () -> DotCanvas.Mode,
+    /** Whether the trend is drawn ahead; the whole-reset chart shows only what happened. */
+    private val projection: Boolean = true,
 ) : Widget() {
     override fun paint(p: Painter, focused: Boolean, t: Double) {
         val points = history()
@@ -34,9 +36,10 @@ class CreditsChart(
         // Buckets sized so the history held fills the width, then a short projection: a quarter hour.
         val at = now()
         val held = Duration.between(points.first().at, at).coerceAtLeast(Duration.ofMinutes(30))
-        val bucketSeconds = ((held.seconds + PROJECTION.seconds) / canvas.dotsW).coerceAtLeast(15)
+        val ahead = if (projection) PROJECTION else Duration.ZERO
+        val bucketSeconds = ((held.seconds + ahead.seconds) / canvas.dotsW).coerceAtLeast(15)
         val bucket = Duration.ofSeconds(bucketSeconds)
-        val projection = Math.ceil(PROJECTION.seconds.toDouble() / bucketSeconds).toInt().coerceIn(2, canvas.dotsW / 2)
+        val projection = if (this.projection) Math.ceil(PROJECTION.seconds.toDouble() / bucketSeconds).toInt().coerceIn(2, canvas.dotsW / 2) else 0
         val graph = CreditsTrend.graph(points, at, bucket = bucket, historyColumns = canvas.dotsW - projection, projectionColumns = projection)
         // Anchored at zero with a round ceiling, so the scale only moves when the bank crosses a round number.
         val ceiling = niceCeiling(graph.max)
@@ -58,21 +61,26 @@ class CreditsChart(
         p.textRight(labelWidth, 0, Format.compact(ceiling), Palette.textDim)
         if (chartH >= 5) p.textRight(labelWidth, chartH / 2, Format.compact(ceiling / 2), Palette.textDim)
         if (chartH > 2) p.textRight(labelWidth, chartH - 1, "0", Palette.textDim)
-        // The split between what happened and what is projected.
-        val splitX = labelWidth + 1 + (canvas.dotsW - projection) / mode.dotsX
-        p.vline(splitX, 0, chartH, '┆', Palette.track)
-
-        val ahead = graph.projectionSpan.toMinutes()
         p.text(labelWidth + 1, chartH, "-${Format.span(graph.historySpan)}", Palette.textDim)
-        p.textRight(splitX + 1, chartH, "now", Palette.textDim)
-        if (p.width - splitX > 6) p.textRight(p.width, chartH, "+${ahead}m", Palette.textDim)
-
         val trend = graph.trend
         val rate = (if (trend.perHour >= 0) "+" else "") + Format.compact(trend.perHour.toLong()) + "/h"
         var x = 0
         x += p.text(x, chartH + 1, Format.credits(trend.nowValue.toLong()), Palette.textBright) + 2
         x += p.text(x, chartH + 1, rate, if (trend.perHour >= 0) Palette.good else Palette.bad) + 2
-        p.text(x, chartH + 1, "→ ~${Format.compact(graph.projectedEnd.toLong())} in ${ahead}m", Palette.warn)
+        if (projection > 0) {
+            // The split between what happened and what is projected.
+            val splitX = labelWidth + 1 + (canvas.dotsW - projection) / mode.dotsX
+            p.vline(splitX, 0, chartH, '┆', Palette.track)
+            val aheadMinutes = graph.projectionSpan.toMinutes()
+            p.textRight(splitX + 1, chartH, "now", Palette.textDim)
+            if (p.width - splitX > 6) p.textRight(p.width, chartH, "+${aheadMinutes}m", Palette.textDim)
+            p.text(x, chartH + 1, "→ ~${Format.compact(graph.projectedEnd.toLong())} in ${aheadMinutes}m", Palette.warn)
+        } else {
+            p.textRight(p.width, chartH, "now", Palette.textDim)
+            val first = points.first()
+            val delta = trend.nowValue.toLong() - first.credits
+            p.text(x, chartH + 1, "${if (delta >= 0) "+" else ""}${Format.credits(delta)} since ${Format.age(first.at, at)} ago", if (delta >= 0) Palette.good else Palette.bad)
+        }
     }
 
     companion object {

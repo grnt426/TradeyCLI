@@ -170,6 +170,7 @@ class ApiClient(
 
                 status == 429 -> {
                     stats.throttled.incrementAndGet()
+                    pacer.noteThrottled()
                     if (attempt >= retry.maxAttempts) throw apiErrorFrom(status, path, body)
                     val wait = retryAfter(response) ?: retry.backoff(attempt)
                     logger.warn { "$path throttled (attempt $attempt); waiting $wait" }

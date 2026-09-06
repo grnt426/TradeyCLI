@@ -15,8 +15,12 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
-/** Order in which queued requests get the next slot. Earlier entries win. */
-enum class Priority { INTERACTIVE, ACTION, BACKGROUND }
+/**
+ * Order in which queued requests get the next slot. Earlier entries win. [IDLE] is different in
+ * kind: it only ever spends a static point the others left unused, never the burst pool, and only
+ * after a quiet moment, so a leaderboard refresh or a galaxy crawl can never slow a ship down.
+ */
+enum class Priority { INTERACTIVE, ACTION, BACKGROUND, IDLE }
 
 /** Coarse view of how backed up the pacer is, for the dashboard. */
 enum class JobPressure { LOW, OK, HIGH }
@@ -79,6 +83,16 @@ class RequestPacer(
         /** Time until this pool refills. Only meaningful once it has been consumed from. */
         fun untilRefill(): Duration =
             windowStart?.let { (window - it.elapsedNow()).coerceAtLeast(Duration.ZERO) } ?: Duration.ZERO
+
+        /** Points left right now, refilling first if the window has passed. */
+        fun available(): Int {
+            val start = windowStart
+            if (start != null && start.elapsedNow() >= window) {
+                points = capacity
+                windowStart = null
+            }
+            return points
+        }
     }
 
     private val staticPool = Pool(limits.staticPoints, limits.staticWindow)
@@ -87,6 +101,22 @@ class RequestPacer(
     private val lock = Mutex()
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val history = IntArray(HISTORY_LENGTH)
+    private var lastRealGrant: TimeMark? = null
+    @Volatile private var throttledAt: TimeMark? = null
+
+    /**
+     * The server said 429. Another process of this account is probably spending the budget too,
+     * which this pacer cannot see, so idle work stands down for [IDLE_BACKOFF].
+     */
+    fun noteThrottled() {
+        throttledAt = timeSource.markNow()
+        wake.trySend(Unit)
+    }
+
+    /** Slots handed to idle requests since start: what the quiet moments were worth. */
+    @Volatile
+    var idleGranted: Long = 0
+        private set
 
     /** Requests waiting for a slot right now. */
     @Volatile
@@ -144,14 +174,31 @@ class RequestPacer(
             var grant: CompletableDeferred<Unit>? = null
             var wait: Duration? = null
             lock.withLock {
-                val queue = queues.firstOrNull { it.isNotEmpty() }
-                if (queue != null) {
+                val index = queues.indexOfFirst { it.isNotEmpty() }
+                if (index >= 0 && index < Priority.IDLE.ordinal) {
                     if (staticPool.tryConsume() || burstPool.tryConsume()) {
-                        grant = queue.removeFirst()
+                        grant = queues[index].removeFirst()
                         queued--
                         granted++
+                        lastRealGrant = timeSource.markNow()
                     } else {
                         wait = minOf(staticPool.untilRefill(), burstPool.untilRefill()).coerceAtLeast(1.milliseconds)
+                    }
+                } else if (index == Priority.IDLE.ordinal) {
+                    // Idle work takes one static point only when the pool is full, so a point is
+                    // always left for real work, and only after a pause since the last real grant.
+                    val quietFor = lastRealGrant?.elapsedNow() ?: IDLE_QUIET
+                    val sinceThrottle = throttledAt?.elapsedNow() ?: IDLE_BACKOFF
+                    when {
+                        sinceThrottle < IDLE_BACKOFF -> wait = IDLE_BACKOFF - sinceThrottle
+                        quietFor < IDLE_QUIET -> wait = IDLE_QUIET - quietFor
+                        staticPool.available() >= limits.staticPoints && staticPool.tryConsume() -> {
+                            grant = queues[index].removeFirst()
+                            queued--
+                            granted++
+                            idleGranted++
+                        }
+                        else -> wait = staticPool.untilRefill().coerceAtLeast(1.milliseconds)
                     }
                 }
             }
@@ -167,5 +214,11 @@ class RequestPacer(
 
     companion object {
         const val HISTORY_LENGTH = 20
+
+        /** How long the real lanes must have been quiet before idle work may take a point. */
+        val IDLE_QUIET: Duration = 300.milliseconds
+
+        /** How long idle work stands down after the server throttles anything. */
+        val IDLE_BACKOFF: Duration = 30.seconds
     }
 }

@@ -11,7 +11,10 @@ import bridge.tty.Input
 import bridge.tty.MordantTty
 import bridge.tty.Size
 import bridge.tty.Tty
+import bridge.views.EconomyView
+import bridge.views.GalaxyView
 import bridge.views.HomeView
+import bridge.views.MarketsView
 import bridge.views.ShipView
 import bridge.views.SpikeView
 import bridge.views.SystemView
@@ -47,9 +50,108 @@ class BridgeModel(private val engine: Engine, val mode: String) {
     var selectedWaypoint: String? = null
     var selectedShip: String? = null
 
+    /** A system chosen on the galaxy screen for the system screen to open; consumed when it does. */
+    var selectedSystem: String? = null
+
+    /** Server status, leaderboards, public agents, and the wider galaxy, fetched in the background. */
+    val galaxy = Galaxy(engine)
+
     /** A view asks for another view by name; the shell switches on the next frame. */
     var pendingView: String? = null
     fun navigateTo(name: String) { pendingView = name }
+
+    /** One agent of the account in the race table. */
+    data class RaceRow(val agent: String, val phase: String, val ships: Int, val bank: Long, val perHour: Long?, val lastHour: Long?, val gate: String)
+
+    private var allCreditsAt = 0L
+    @Volatile private var allCreditsCache: List<behaviour.decisions.CreditPoint> = emptyList()
+
+    /** The bank since the reset began, from the store, refreshed in the background every two minutes. */
+    fun allCredits(): List<behaviour.decisions.CreditPoint> {
+        val nowNanos = System.nanoTime()
+        if (nowNanos - allCreditsAt > 120_000_000_000L) {
+            allCreditsAt = nowNanos
+            val store = engine.store
+            if (store != null) engine.scope.launch {
+                runCatching { store.listCredits(Instant.EPOCH) }.onSuccess { allCreditsCache = it }
+            }
+        }
+        return allCreditsCache.ifEmpty { snapshot().creditsHistory }
+    }
+
+    private var contractsAt = 0L
+    @Volatile private var contractsCache: List<storage.ContractRecord> = emptyList()
+
+    /** Every contract this reset with what it cost us, from the store, refreshed every two minutes. */
+    fun contractRecords(): List<storage.ContractRecord> {
+        val nowNanos = System.nanoTime()
+        if (nowNanos - contractsAt > 120_000_000_000L) {
+            contractsAt = nowNanos
+            val store = engine.store
+            if (store != null) engine.scope.launch {
+                runCatching { store.listContractRecords() }.onSuccess { contractsCache = it }
+            }
+        }
+        return contractsCache
+    }
+
+    private var raceAt = 0L
+    @Volatile private var raceCache: List<RaceRow> = emptyList()
+
+    /**
+     * Every agent of the account: ours from the snapshot, the others from their stores on disk,
+     * refreshed in the background every five minutes.
+     */
+    fun race(): List<RaceRow> {
+        val nowNanos = System.nanoTime()
+        if (nowNanos - raceAt > 300_000_000_000L) {
+            raceAt = nowNanos
+            engine.scope.launch { runCatching { raceCache = computeRace() }.onFailure { logger.warn(it) { "race failed" } } }
+        }
+        return raceCache
+    }
+
+    private suspend fun computeRace(): List<RaceRow> {
+        val ours = snapshot().agent?.symbol
+        val rows = ArrayList<RaceRow>()
+        for (symbol in storage.Layout.listAgents()) {
+            if (symbol == ours) {
+                val snap = snapshot()
+                val site = snap.hqSystem?.let { h -> snap.waypointsIn(h).firstOrNull { it.isUnderConstruction } }
+                val gate = when {
+                    site == null -> "none"
+                    snap.constructionBill != null -> "${snap.constructionBill!!.sumOf { it.fulfilled }}/${snap.constructionBill!!.sumOf { it.required }} at ${site.symbol.substringAfterLast('-')}"
+                    else -> site.symbol.substringAfterLast('-')
+                }
+                rows += raceRow(symbol, snap.plan?.phase?.name ?: "?", snap.ships.size, snap.agent?.credits ?: 0, allCredits(), gate)
+                continue
+            }
+            val db = storage.Layout.latestDatabase(symbol) ?: continue
+            storage.AgentStore.open(storage.Layout.agentDir(symbol), symbol, storage.Layout.resetDateOf(db)).use { store ->
+                val agent = store.getAgent() ?: return@use
+                val credits = store.listCredits(Instant.EPOCH)
+                val hq = agent.headquarters.substringBeforeLast('-')
+                val site = store.listWaypoints(hq).firstOrNull { it.isUnderConstruction }
+                val delivered = site?.let { s -> store.listSupplies(s.symbol).sumOf { it.units } }
+                val phase = runCatching { plan.Plan.load(storage.Layout.planFile(symbol)).phase.name }.getOrDefault("?")
+                rows += raceRow(symbol, phase, store.listShips().size, agent.credits, credits, site?.let { "${delivered ?: 0} delivered at ${it.symbol.substringAfterLast('-')}" } ?: "none")
+            }
+        }
+        return rows.sortedByDescending { it.bank }
+    }
+
+    private fun raceRow(symbol: String, phase: String, ships: Int, bank: Long, credits: List<behaviour.decisions.CreditPoint>, gate: String): RaceRow {
+        val first = credits.firstOrNull()
+        val last = credits.lastOrNull()
+        val hours = if (first != null && last != null) (last.at.toEpochMilli() - first.at.toEpochMilli()) / 3_600_000.0 else 0.0
+        val hourAgo = last?.let { l -> credits.lastOrNull { it.at.isBefore(l.at.minusSeconds(3600)) } }
+        return RaceRow(
+            symbol, phase, ships, bank,
+            if (hours > 0.1 && first != null) ((bank - first.credits) / hours).toLong() else null,
+            if (hourAgo != null && last != null) last.credits - hourAgo.credits else null,
+            gate,
+        )
+    }
 
     private class CachedPrices(val fetchedAt: Long, val observations: List<PriceObservation>)
     private val priceCache = java.util.concurrent.ConcurrentHashMap<String, CachedPrices>()
@@ -164,7 +266,7 @@ object Bridge {
 
         // A ship or waypoint symbol; each screen looks it up in its own table, so one flag serves both.
         select?.let { model.selectedShip = it; model.selectedWaypoint = it }
-        val shell = Shell(listOf(HomeView(), SystemView(), WaypointView(), ShipView(), SpikeView()), model)
+        val shell = Shell(listOf(HomeView(), SystemView(), WaypointView(), ShipView(), MarketsView(), EconomyView(), GalaxyView(), SpikeView()), model)
         if (viewName != null && !shell.show(viewName)) return usage("no view '$viewName'; views: ${shell.views.joinToString { it.title }}")
         return when {
             bench > 0 -> bench(shell, model, size, fps, bench, wait)
@@ -221,6 +323,11 @@ object Bridge {
         model.ttyDescription = "headless ${size.width}x${size.height}"
         model.width = size.width
         model.height = size.height
+        // The first paint starts the background reads the screens rely on; after boot, give them a moment and paint again.
+        if (wait) {
+            shell.paint(Painter(Surface(size.width, size.height), Rect(0, 0, size.width, size.height)), 0.0)
+            Thread.sleep(2000)
+        }
         val surface = Surface(size.width, size.height)
         shell.paint(Painter(surface, Rect(0, 0, size.width, size.height)), 0.0)
         print(if (ansi) surface.toAnsi() else surface.toText())

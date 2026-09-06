@@ -53,6 +53,16 @@ class SystemView : WidgetView() {
         beginFrame()
         val snap = model.snapshot()
         val now = model.now()
+        model.selectedSystem?.let { chosen ->
+            model.selectedSystem = null
+            if (chosen != map.system) {
+                map.system = chosen
+                map.fit()
+                selectedWaypoint = null
+                selectedShip = null
+                selectedStar = false
+            }
+        }
         val sys = map.system ?: snap.hqSystem
         val waypoints = sys?.let { snap.waypointsIn(it) } ?: emptyList()
 

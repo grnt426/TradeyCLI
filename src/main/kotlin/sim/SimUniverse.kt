@@ -120,7 +120,7 @@ class SimUniverse(
 
     // Reads
 
-    fun status(): ServerStatus = counted { ServerStatus("ok", "sim", resetDate, ServerResets("", "weekly")) }
+    fun status(): ServerStatus = counted { ServerStatus(status = "ok", version = "sim", resetDate = resetDate, serverResets = ServerResets("", "weekly")) }
 
     fun agent(): Agent = counted { agent }
 
