@@ -53,6 +53,8 @@ suspend fun BehaviourScope.supplyGate() {
     val only = param("only")?.uppercase()?.let { TradeSymbol.valueOf(it) }
     val nurse = param("nurse") != "off"
     val rules = knowledge.Strategy.market(shared.plan.phase)
+    // Taking from a producer whose inputs are LIMITED only drains it: feed on alternate visits so it grows while we draw.
+    var feedNext = false
     setChain(ship, "gate:$site")
     try {
         while (true) {
@@ -130,7 +132,16 @@ suspend fun BehaviourScope.supplyGate() {
                     clock.sleep(30.seconds)
                     continue
                 }
-                val pick = picks.firstOrNull { it.units > 0 && it.worthwhile }
+                var pick = picks.firstOrNull { it.units > 0 && it.worthwhile }
+                if (pick != null && nurse && feedNext) {
+                    val producer = snapshot().markets[pick.market]
+                    val starved = producer != null && MarketHealth.starvedInputs(producer, pick.material).any { it.supply <= model.market.SupplyLevel.LIMITED }
+                    if (starved) {
+                        val leg = nurseLeg(producer!!, pick.material, spendable, rules)
+                        if (leg != null) { feedNext = false; status(detail = "${pick.material}'s inputs at ${pick.market} are short; feeding before the next take"); nurse(producer, leg); continue }
+                    }
+                }
+                if (pick != null) feedNext = true
                 if (pick == null) {
                     // A stale reading is not a reason to park: go and read the producer before deciding it has nothing.
                     val stale = picks.firstOrNull { p ->

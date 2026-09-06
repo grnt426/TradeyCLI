@@ -2,12 +2,14 @@ package behaviour
 
 import behaviour.decisions.Selling
 import behaviour.decisions.TradePlan
+import behaviour.decisions.Tour
 import behaviour.decisions.Trading
 import behaviour.decisions.TradingAssumptions
 import engine.Travel
 import engine.VerbFailure
 import model.market.Market
 import model.ship.FlightMode
+import java.time.Duration
 import java.time.Instant
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -39,6 +41,7 @@ suspend fun BehaviourScope.trade() {
     val setAside = mutableMapOf<String, Instant>()
 
     if (!me.cargo.isEmpty) phase("sell leftovers") { sellLeftovers() }
+    var lastYardDetour: Instant? = null
     param("system")?.uppercase()?.let { wanted ->
         if (me.nav.systemSymbol != wanted) phase("migrate", "to $wanted") {
             if (!goToSystem(wanted)) {
@@ -129,7 +132,28 @@ suspend fun BehaviourScope.trade() {
         }
 
         if (here.hasShipyard && shared.goals.fleet.isNotEmpty()) phase("expand", "at ${here.symbol}") { maybeExpand() }
+        // A wanted ship the bank can pay for is worth a detour: a hauler earns its price back in an hour on fresh routes,
+        // and the bank sat at a million for an hour on 2026-09-06 because nobody happened to dock at the yard.
+        val detour = affordableGoalYard()
+        if (detour != null && (lastYardDetour == null || Duration.between(lastYardDetour, clock.now()).toMinutes() >= 20)) {
+            lastYardDetour = clock.now()
+            phase("expand", "detour to ${detour.symbol}") { travelTo(detour.symbol); dock(ship); maybeExpand() }
+        }
     }
+}
+
+/** A yard in this system that sells a goal the bank can pay for now, nearest first; null when nothing is both wanted and affordable. */
+private fun BehaviourScope.affordableGoalYard(): model.system.Waypoint? {
+    val snap = snapshot()
+    val credits = snap.agent?.credits ?: return null
+    val fleet = snap.ships.values
+    val wanted = shared.goals.fleet.filter { with(BehaviourScope.Companion) { it.buyableAt(me.nav.systemSymbol, shared.plan) } && it.owned(fleet) < it.count }
+    if (wanted.isEmpty()) return null
+    val yards = snap.waypointsIn(me.nav.systemSymbol).filter { it.hasShipyard }
+    return Tour.nearest(here, yards.filter { y ->
+        val yard = snap.shipyards[y.symbol] ?: return@filter false
+        wanted.any { g -> yard.priceOf(g.type)?.let { price -> credits - price >= g.reserve } == true }
+    })
 }
 
 /** Buys one trade volume at a time while the live price still leaves the margin. Returns units bought. */

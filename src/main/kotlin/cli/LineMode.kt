@@ -164,6 +164,7 @@ class LineMode(
             "summary" -> summary()
             "neighbours" -> neighbours()
             "systems" -> systems()
+            "chains" -> chains()
             "idle" -> idle()
             "race" -> race(args)
             "gate" -> gate(args)
@@ -668,6 +669,42 @@ class LineMode(
         out.println("factions on the server: " + all.groupBy { it.startingFaction }.entries.sortedByDescending { it.value.size }.joinToString(", ") { "${it.key} ${it.value.size}" })
     }
 
+    /**
+     * The gate's production lines as a table: every good from the site's materials down to the ores,
+     * at every market in the home system that lists it, with supply/activity and price now against
+     * two hours ago. The health number in `summary` averages the whole system; this is the part we
+     * are trying to move.
+     */
+    private suspend fun chains() {
+        val store = engine.store ?: return err.println("No store open")
+        val snap = engine.snapshot
+        val home = snap.hqSystem ?: return
+        val bill = snap.constructionBill ?: snap.waypointsIn(home).firstOrNull { it.isUnderConstruction }?.let { site -> runCatching { engine.verbs().construction(site.symbol).materials }.getOrNull() }
+        val roots = bill?.map { it.tradeSymbol } ?: listOf(model.market.TradeSymbol.FAB_MATS, model.market.TradeSymbol.ADVANCED_CIRCUITRY)
+        val goods = linkedSetOf<model.market.TradeSymbol>()
+        fun walk(g: model.market.TradeSymbol, depth: Int) { if (goods.add(g) && depth < 4) knowledge.ImportMap.inputs[g].orEmpty().forEach { walk(it, depth + 1) } }
+        roots.forEach { walk(it, 0) }
+        val now = engine.clock.now()
+        val since = now.minus(java.time.Duration.ofHours(2))
+        val history = store.listPricesSince(since)
+        val rows = mutableListOf<List<String>>()
+        goods.forEach { good ->
+            snap.marketsIn(home).forEach { m ->
+                val g = m.good(good) ?: return@forEach
+                val earlier = history.firstOrNull { it.market == m.symbol && it.good == good }
+                val trend = earlier?.let { e ->
+                    val d = g.purchasePrice - e.purchasePrice
+                    (if (d > 0) "+" else "") + d + (if (e.supply != g.supply.name) " ${e.supply}->${g.supply}" else "")
+                } ?: "-"
+                rows += listOf(good.name, m.symbol, g.type.name.lowercase(), knowledge.MarketHealth.describe(g), g.purchasePrice.toString(), g.sellPrice.toString(), g.tradeVolume.toString(), trend, age(m.lastRead))
+            }
+        }
+        out.println("the gate's chains in $home: " + roots.joinToString(", ") { it.name } + "; trend is price and supply against two hours ago")
+        table(listOf("good", "market", "type", "supply/activity", "buy", "sell", "vol", "2h trend", "read"), rows)
+        val score = rows.mapNotNull { r -> snap.markets[r[1]]?.good(model.market.TradeSymbol.valueOf(r[0]))?.let { knowledge.MarketHealth.score(it) } }
+        if (score.isNotEmpty()) out.println("chain health ${(score.average() * 100).toInt()}% over ${score.size} listings")
+    }
+
     /** Every system of the boom: stage, gate, yard, ships, charting and market coverage, income since arrival, kit spent. */
     private fun systems() {
         val snap = engine.snapshot
@@ -1146,6 +1183,7 @@ class LineMode(
               idle                       idle time per ship and per behaviour over the last day: the opportunity cost the plan leaves
               neighbours                 agents headquartered in our system, and agents whose ships show in the markets we read
               systems                    the boom, system by system: stage, gate, yard, ships, coverage, income, kit spent (docs/boom.md)
+              chains                     the gate's production lines: every input down to the ores, health and price with a two-hour trend
               phase [escape|boom|late]   show or set the plan's phase (docs/phases.md): which weights and default jobs apply
               race [AGENT ...]           every agent's bank over time, fleet, gate progress and phase, side by side
               gate [SITE]                the construction bill, what we delivered and spent, and the cost to finish
@@ -1180,7 +1218,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "reset", "catalog", "race", "summary", "idle", "neighbours", "systems", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "reset", "catalog", "race", "summary", "idle", "neighbours", "systems", "chains", "extractions",
             "plan", "assign", "unassign", "goal", "chain", "phase", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")

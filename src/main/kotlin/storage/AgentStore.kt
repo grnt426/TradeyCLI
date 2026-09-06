@@ -49,6 +49,9 @@ private val logger = KotlinLogging.logger {}
 
 data class PriceObservation(val good: MarketTradeGood, val observedAt: Instant)
 
+/** One row of `request_log`: an attempt at the API, with its status (0 when nothing came back) and how long it took. */
+data class RequestLogEntry(val at: Instant, val path: String, val priority: String, val status: Int, val durationMs: Long, val attempt: Int)
+
 data class ContractRecord(val contract: Contract, val cost: Long, val acceptedAt: Instant?, val fulfilledAt: Instant?, val seenAt: Instant) {
     val payment: Long get() = contract.terms.payment.onAccepted + contract.terms.payment.onFulfilled
     val profit: Long get() = payment - cost
@@ -58,6 +61,9 @@ data class SupplyRecord(val ship: String, val site: String, val good: TradeSymbo
 
 /** A market transaction with the tag the ship carried when it made it: a behaviour name, a chain id, `gate:SITE` or `nurse:SITE`. */
 data class TaggedTransaction(val transaction: MarketTransaction, val tag: String?)
+
+/** One historical reading of a listing. */
+data class PriceReading(val market: String, val good: TradeSymbol, val supply: String, val activity: String?, val purchasePrice: Int, val sellPrice: Int, val tradeVolume: Int, val at: Instant)
 
 /** One timed activity of one ship: kind is cruise, drift, burn, extract, siphon, survey or jump. */
 data class ActivityRecord(val at: Instant, val ship: String, val behaviour: String, val kind: String, val detail: String, val seconds: Long)
@@ -240,6 +246,13 @@ class AgentStore private constructor(
         }
     }
 
+    /** The earliest reading of every listing at or after [since]: the "before" of a trend. */
+    suspend fun listPricesSince(since: Instant): List<PriceReading> = tx {
+        PriceTable.selectAll().where { PriceTable.observedAt greaterEq since.toEpochMilli() }.orderBy(PriceTable.observedAt, SortOrder.ASC)
+            .map { row -> PriceReading(row[PriceTable.marketSymbol], TradeSymbol.valueOf(row[PriceTable.tradeSymbol]), row[PriceTable.supply], row[PriceTable.activity], row[PriceTable.purchasePrice], row[PriceTable.sellPrice], row[PriceTable.tradeVolume], Instant.ofEpochMilli(row[PriceTable.observedAt])) }
+            .distinctBy { it.market to it.good }
+    }
+
     suspend fun putActivity(record: ActivityRecord) = tx {
         ActivityTable.insert {
             it[at] = record.at.toEpochMilli()
@@ -337,6 +350,12 @@ class AgentStore private constructor(
                 at = Instant.ofEpochMilli(row[ExtractionTable.at]),
             )
         }
+    }
+
+    /** Every request logged since [since], by any process of this agent, oldest first. */
+    suspend fun listRequests(since: Instant): List<RequestLogEntry> = tx {
+        RequestLogTable.selectAll().where { RequestLogTable.at greaterEq since.toEpochMilli() }.orderBy(RequestLogTable.at, SortOrder.ASC)
+            .map { RequestLogEntry(Instant.ofEpochMilli(it[RequestLogTable.at]), it[RequestLogTable.path], it[RequestLogTable.priority], it[RequestLogTable.status], it[RequestLogTable.durationMs], it[RequestLogTable.attempt]) }
     }
 
     suspend fun logRequest(record: RequestRecord) = tx {

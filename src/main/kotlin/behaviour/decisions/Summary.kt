@@ -178,6 +178,7 @@ object Summary {
                     }
                     lines += if (ratePerHour > 0) Intent("Delivering ${ratePerHour.toInt()} units/h; about ${"%.1f".format(remainingUnits / ratePerHour)} h of hauling left", Intent.Tone.GOOD)
                     else Intent("No deliveries in the last two hours", Intent.Tone.WARN)
+                    chainHealth(snapshot)?.let { h -> lines += Intent("Gate chains' health ${(h * 100).toInt()}% (`chains` for every input down to the ores)", if (h >= 0.6) Intent.Tone.GOOD else Intent.Tone.NEUTRAL) }
                 }
                 Progress(headline, lines)
             }
@@ -192,6 +193,17 @@ object Summary {
             }
             Phase.LATE -> Progress("LATE: profit first; the summary screen is designed for ESCAPE and BOOM so far", lines)
         }
+    }
+
+    /** The gate chains' average listing health in the home system, 0..1, or null without a bill. */
+    fun chainHealth(snapshot: Snapshot, rules: MarketAssumptions = MarketAssumptions()): Double? {
+        val home = snapshot.hqSystem ?: return null
+        val roots = snapshot.constructionBill?.filter { it.fulfilled < it.required }?.map { it.tradeSymbol } ?: return null
+        val goods = linkedSetOf<TradeSymbol>()
+        fun walk(g: TradeSymbol, depth: Int) { if (goods.add(g) && depth < 4) knowledge.ImportMap.inputs[g].orEmpty().forEach { walk(it, depth + 1) } }
+        roots.forEach { walk(it, 0) }
+        val scores = snapshot.marketsIn(home).flatMap { m -> goods.mapNotNull { m.good(it) } }.map { MarketHealth.score(it, rules) }
+        return scores.takeIf { it.isNotEmpty() }?.average()
     }
 
     /** One line on the fleet's idle share, or null before there is any phase history. */
