@@ -117,15 +117,15 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
             }
             cell(colSpan = 2) {
                 val w = columnWidth * 2
-                rgb(HEADER_COLOR.rgb) { makeHeader("Spent on", 2) }
-                val spending = Summary.spending(snap)
+                rgb(HEADER_COLOR.rgb) { makeHeader("Spent on (24h)", 2) }
+                val spending = Summary.spending(snap, now.minus(Summary.WINDOW))
                 if (spending.isEmpty()) line("nothing yet", w)
                 spending.take(7).forEach { f -> line("${f.category.padEnd(14)} ${CreditsTrend.compact(f.credits).padStart(7)} ${(f.share * 100).toInt().toString().padStart(3)}%", w) }
             }
             cell(colSpan = 2) {
                 val w = columnWidth * 2
-                rgb(HEADER_COLOR.rgb) { makeHeader("Earned from", 2) }
-                val revenue = Summary.revenue(snap)
+                rgb(HEADER_COLOR.rgb) { makeHeader("Earned from (24h)", 2) }
+                val revenue = Summary.revenue(snap, now.minus(Summary.WINDOW))
                 if (revenue.isEmpty()) line("nothing yet", w)
                 revenue.take(7).forEach { f -> line("${f.category.padEnd(14)} ${CreditsTrend.compact(f.credits).padStart(7)} ${(f.share * 100).toInt().toString().padStart(3)}%", w) }
             }

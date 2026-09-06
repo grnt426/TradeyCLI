@@ -579,11 +579,12 @@ class LineMode(
             behaviour.decisions.Summary.fleet(snap, now).map { listOf(it.ship, it.type, it.behaviour, it.phase, it.where, it.cargo, it.detail.take(70)) },
         )
         out.println()
-        val spending = behaviour.decisions.Summary.spending(snap)
-        val revenue = behaviour.decisions.Summary.revenue(snap)
-        table(listOf("spent on", "credits", "share"), spending.map { listOf(it.category, Intentions.format(it.credits), "${(it.share * 100).toInt()}%") })
+        val since = now.minus(behaviour.decisions.Summary.WINDOW)
+        val spending = behaviour.decisions.Summary.spending(snap, since)
+        val revenue = behaviour.decisions.Summary.revenue(snap, since)
+        table(listOf("spent on (24h)", "credits", "share"), spending.map { listOf(it.category, Intentions.format(it.credits), "${(it.share * 100).toInt()}%") })
         out.println()
-        table(listOf("earned from", "credits", "share"), revenue.map { listOf(it.category, Intentions.format(it.credits), "${(it.share * 100).toInt()}%") })
+        table(listOf("earned from (24h)", "credits", "share"), revenue.map { listOf(it.category, Intentions.format(it.credits), "${(it.share * 100).toInt()}%") })
         out.println()
         table(
             listOf("system", "markets", "listings", "health", "restricted exports", "scarce", "buried imports", "oldest read"),

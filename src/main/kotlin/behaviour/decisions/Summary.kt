@@ -70,6 +70,9 @@ object Summary {
         else -> HEALTH
     }
 
+    /** The window the screen's money panels cover: transactions before the ledger existed carry no purpose. */
+    val WINDOW: Duration = Duration.ofHours(24)
+
     /** Credits out by purpose since [since], largest first. Purchases and fuel go to the purpose; ship purchases are capex. */
     fun spending(snapshot: Snapshot, since: Instant? = null): List<Flow> {
         val out = mutableMapOf<String, Long>()

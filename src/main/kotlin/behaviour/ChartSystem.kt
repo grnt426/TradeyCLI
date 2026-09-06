@@ -13,13 +13,16 @@ import model.WaypointTraitSymbol
 val chartSystemSpec = BehaviourSpec(
     name = "chartSystem",
     description = "Visit and chart every uncharted waypoint in the ship's current system, nearest first, then stop.",
-    params = listOf(ParamSpec("system", "System to chart; default: the ship's current one")),
+    params = listOf(ParamSpec("system", "System to chart, jumping there through the gate if needed; default: the ship's current one")),
     validate = { _, _, _ -> emptyList() },
     run = { chartSystem() },
 )
 
 suspend fun BehaviourScope.chartSystem() {
-    val system = param("system") ?: me.nav.systemSymbol
+    val system = param("system")?.uppercase() ?: me.nav.systemSymbol
+    if (me.nav.systemSymbol != system) phase("migrate", "to $system") {
+        if (!goToSystem(system)) throw BehaviourFailure("$system cannot be reached: its gate is under construction")
+    }
     var charted = 0
     var earned = 0L
     while (true) {
