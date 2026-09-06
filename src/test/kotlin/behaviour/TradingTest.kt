@@ -102,7 +102,7 @@ class TradingTest {
         assertEquals(2, bought.size, bought.toString())
         bought.forEach { assertTrue(report.trace.phaseNames(it.ship).contains("sell"), "${it.ship} traded: ${report.trace.phaseNames(it.ship).distinct()}") }
         val idle = report.trace.phases.last { it.first == Fixtures.PROBE }.second
-        assertEquals("idle", idle.phase, "the probe stays parked once the goal is met: ${idle.detail}")
+        assertTrue(idle.phase in setOf("idle", "read prices while idle"), "the probe parks or reads prices once the goal is met: ${idle.detail}")
         // No two traders sold the same good at the same market inside the same minute.
         val sales = report.trace.transactions.filter { it.type == TransactionType.SELL }
         val clashes = sales.groupBy { "${it.tradeSymbol}@${it.waypointSymbol}@${it.timestamp.take(16)}" }.filterValues { g -> g.map { it.shipSymbol }.toSet().size > 1 }

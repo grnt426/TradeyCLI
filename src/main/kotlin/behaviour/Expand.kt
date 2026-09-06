@@ -38,6 +38,14 @@ suspend fun BehaviourScope.expand() {
         val fleet = snapshot().ships.values
         val wanted = goals.filter { it.buyableAt(me.nav.systemSymbol, shared.plan) }.firstOrNull { goal -> goal.owned(fleet) < goal.count }
         if (wanted == null) {
+            // Nothing to buy: a probe parked at a yard is a probe not reading prices. One pass over stale markets, then check again.
+            val stale = clock.now().minusSeconds(10 * 60)
+            val next = snapshot().waypointsIn(me.nav.systemSymbol).filter { w -> w.hasMarket && (snapshot().markets[w.symbol]?.let { !it.hasPrices || it.lastRead.isBefore(stale) } ?: true) }
+                .let { Tour.nearest(here, it) }
+            if (next != null && !me.usesFuel) {
+                phase("read prices while idle", next.symbol) { travelTo(next.symbol); refreshMarket(next.symbol) }
+                continue
+            }
             status("idle", if (goals.isEmpty()) "no fleet goal; `goal fleet TYPE N` to set one" else "every fleet goal is met; parked at ${here.symbol}")
             clock.sleep(every * 2)
             continue

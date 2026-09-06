@@ -42,15 +42,20 @@ suspend fun BehaviourScope.survey() {
         }
         val snap = snapshot()
         val fresh = now.plusSeconds(minLeft.inWholeSeconds)
+        // A rock the tank cannot cruise to from a fuel market and back is a drift of an hour each way (both surveyors
+        // drifted to the outer belt on 2026-09-06): only rocks within the tank of some market are on the rounds.
+        val stations = snap.waypointsIn(system).filter { it.hasMarket }
+        fun inReach(rock: model.system.Waypoint): Boolean = !me.usesFuel || stations.any { s -> engine.Travel.fuelCost(engine.Travel.distance(rock.x, rock.y, s.x, s.y), model.ship.FlightMode.CRUISE) <= me.fuel.capacity }
         val rocks = snap.asteroidsIn(system).filter { rock ->
-            !rock.isSiphonable && !rock.hasTrait(WaypointTraitSymbol.STRIPPED) && !rock.hasModifier(WaypointModifiers.STRIPPED) &&
+            !rock.isSiphonable && !rock.hasTrait(WaypointTraitSymbol.STRIPPED) && !rock.hasModifier(WaypointModifiers.STRIPPED) && inReach(rock) &&
                 !shared.claimedByOther(rock.symbol, ship) && snap.validSurveysFor(rock.symbol, now).none { it.expiration.isAfter(fresh) }
         }
         val next = Tour.nearest(here, rocks)
         if (next == null) {
             shared.release(ship)
-            val covered = snap.asteroidsIn(system).count { !it.isSiphonable }
-            status("resting", "$covered rocks covered; $surveyed surveys this shift; checking again in ${minOf(every, 10.minutes)}")
+            val covered = snap.asteroidsIn(system).count { !it.isSiphonable && inReach(it) }
+            val beyond = snap.asteroidsIn(system).count { !it.isSiphonable && !inReach(it) }
+            status("resting", "$covered rocks in reach covered ($beyond beyond the tank); $surveyed surveys this shift; checking again in ${minOf(every, 10.minutes)}")
             clock.sleep(minOf(every, 10.minutes))
             continue
         }
