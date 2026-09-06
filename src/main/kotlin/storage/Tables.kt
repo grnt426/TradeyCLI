@@ -136,15 +136,17 @@ object PhaseLogTable : Table("phase_log") {
     override val primaryKey = PrimaryKey(id)
 }
 
-/** Every drift leg: the ship, the job it was on, the leg, and how long it took. */
-object DriftTable : Table("drift_log") {
+/**
+ * Every timed thing a ship does, by kind: cruise, drift, burn, extract, siphon, survey, jump. With
+ * the phase log's idle time this is the ship's day, so "where does the time go" is a query.
+ */
+object ActivityTable : Table("activity_log") {
     val id = long("id").autoIncrement()
     val at = long("at").index()
     val shipSymbol = varchar("ship_symbol", 64).index()
     val behaviour = varchar("behaviour", 64)
-    val fromSymbol = varchar("from_symbol", 64)
-    val toSymbol = varchar("to_symbol", 64)
-    val distance = double("distance")
+    val kind = varchar("kind", 16).index()
+    val detail = varchar("detail", 120)
     val seconds = long("seconds")
     override val primaryKey = PrimaryKey(id)
 }
@@ -185,5 +187,5 @@ object RequestLogTable : Table("request_log") {
 val ALL_TABLES = listOf(
     PublicAgentTable, GateTable,
     MetaTable, AgentTable, ShipTable, SystemTable, WaypointTable, MarketTable, ShipyardTable,
-    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable, LedgerTable, PhaseLogTable, DriftTable,
+    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable, LedgerTable, PhaseLogTable, ActivityTable,
 )

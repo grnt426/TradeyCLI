@@ -104,10 +104,7 @@ class ShipVerbs(
             throw e
         }
         current = update(current.copy(nav = response.nav, fuel = response.fuel ?: current.fuel))
-        if (mode == FlightMode.DRIFT) {
-            val seconds = java.time.Duration.between(response.nav.route.departureTime, response.nav.route.arrival).seconds
-            sink.event(Event.Drifted(ship, world.shipStatus[ship]?.behaviour ?: "-", from.symbol, waypoint, distance, seconds))
-        }
+        activity(ship, mode.name.lowercase(), "${from.symbol} -> $waypoint (${distance.toInt()})", java.time.Duration.between(response.nav.route.departureTime, response.nav.route.arrival).seconds)
         clock.sleepUntil(response.nav.route.arrival.plusMillis(500))
         return settled(ship)
     }
@@ -150,6 +147,7 @@ class ShipVerbs(
             }
         }
         current = update(current.copy(cargo = response.cargo, cooldown = response.cooldown))
+        activity(ship, "extract", current.nav.waypointSymbol, response.cooldown.totalSeconds)
         val here = waypoint(current.nav.waypointSymbol)
         if (here.modifiers != response.modifiers) {
             world.waypoints[here.symbol] = here.copy(modifiers = response.modifiers)
@@ -168,6 +166,7 @@ class ShipVerbs(
         if (current.isDocked) current = orbit(ship)
         val response = call(retryOnCooldown = true) { api.survey(ship) }
         update(current.copy(cooldown = response.cooldown))
+        activity(ship, "survey", current.nav.waypointSymbol, response.cooldown.totalSeconds)
         response.surveys.forEach { world.surveys[it.signature] = it }
         sink.surveysAdded(response.surveys)
         sink.event(Event.Surveyed(ship, current.nav.waypointSymbol, response.surveys.size))
@@ -299,6 +298,7 @@ class ShipVerbs(
             }
         }
         current = update(current.copy(cargo = response.cargo, cooldown = response.cooldown))
+        activity(ship, "siphon", current.nav.waypointSymbol, response.cooldown.totalSeconds)
         val here = waypoint(current.nav.waypointSymbol)
         val yield = response.siphon.yield
         sink.extraction(ExtractionRecord(ship, here.symbol, yield.symbol, yield.units.toInt(), null, emptyList(), clock.now()))
@@ -331,6 +331,11 @@ class ShipVerbs(
 
     override suspend fun agents(): List<model.PublicAgent> = call { api.listAgents() }
 
+    /** Reports a timed activity to the sink under the ship's current behaviour. */
+    private fun activity(ship: String, kind: String, detail: String, seconds: Long) {
+        if (seconds > 0) sink.event(Event.Activity(ship, world.shipStatus[ship]?.behaviour ?: "-", kind, detail, seconds))
+    }
+
     override suspend fun jumpGate(waypoint: String): JumpGate =
         call { api.getJumpGate(OrbitalNames.getSectorSystem(waypoint), waypoint) }
 
@@ -342,6 +347,7 @@ class ShipVerbs(
         response.transaction?.let { sink.transaction(it, world.chainOf[ship]) }
         response.agent?.let { agentChanged(it) }
         current = update(current.copy(nav = response.nav, cooldown = response.cooldown))
+        activity(ship, "jump", waypoint, response.cooldown.totalSeconds)
         sink.event(Event.Jumped(ship, waypoint, response.transaction?.totalPrice?.toLong() ?: 0))
         return current
     }

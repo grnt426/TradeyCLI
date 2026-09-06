@@ -199,9 +199,10 @@ object Summary {
         val ships = Idle.perShip(snapshot.phases, now)
         if (ships.isEmpty()) return null
         val worst = ships.firstOrNull { it.share > 0.3 }
-        val driftSeconds = snapshot.drifts.sumOf { it.seconds }
+        val drifts = snapshot.activities.filter { it.kind == "drift" }
+        val driftSeconds = drifts.sumOf { it.seconds }
         return "fleet idle ${(Idle.fleetShare(ships) * 100).toInt()}% of the last day" + (worst?.let { "; worst ${it.ship.substringAfterLast('-')} at ${(it.share * 100).toInt()}%" } ?: "") +
-            (if (driftSeconds > 0) "; drifted ${"%.1f".format(driftSeconds / 3600.0)} h on ${snapshot.drifts.size} legs" else "")
+            (if (driftSeconds > 0) "; drifted ${"%.1f".format(driftSeconds / 3600.0)} h on ${drifts.size} legs" else "")
     }
 
     private fun signed(n: Long): String = (if (n >= 0) "+" else "") + Intentions.format(n)

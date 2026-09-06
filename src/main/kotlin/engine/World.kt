@@ -66,9 +66,9 @@ class World {
     @Volatile
     var ledger: List<storage.LedgerEntry> = emptyList()
 
-    /** The last day of drift legs, for the idle report: how often a ship is sent further than its tank. */
+    /** The last day of timed activities, for the time report. */
     @Volatile
-    var drifts: List<storage.DriftRecord> = emptyList()
+    var activities: List<storage.ActivityRecord> = emptyList()
 
     /** The last day of phase changes, for the idle report. */
     @Volatile
@@ -107,7 +107,7 @@ class World {
         ledger = ledger,
         constructionBill = constructionBill,
         phases = phases,
-        drifts = drifts,
+        activities = activities,
         plan = plan,
         runner = runner,
         contracts = contracts.values.sortedBy { it.id },
@@ -136,7 +136,7 @@ data class Snapshot(
     val ledger: List<storage.LedgerEntry> = emptyList(),
     val constructionBill: List<model.ConstructionMaterial>? = null,
     val phases: List<storage.PhaseRecord> = emptyList(),
-    val drifts: List<storage.DriftRecord> = emptyList(),
+    val activities: List<storage.ActivityRecord> = emptyList(),
     val plan: Plan? = null,
     val runner: RunLease? = null,
     val contracts: List<Contract> = emptyList(),
@@ -184,6 +184,6 @@ sealed interface Event {
     data class Supplied(val ship: String, val site: String, val good: String, val units: Int, val remaining: Long) : Event
     data class Jumped(val ship: String, val waypoint: String, val antimatterCost: Long) : Event
     data class PhaseAdvanced(val phase: String, val description: String) : Event
-    /** A leg flown on DRIFT: ten times slower than cruise, so every one is a route planned beyond the tank. */
-    data class Drifted(val ship: String, val behaviour: String, val from: String, val to: String, val distance: Double, val seconds: Long) : Event
+    /** A timed activity: a leg flown (kind cruise/drift/burn), an extraction, a siphon, a survey, a jump; [seconds] is how long it holds the ship. */
+    data class Activity(val ship: String, val behaviour: String, val kind: String, val detail: String, val seconds: Long) : Event
 }

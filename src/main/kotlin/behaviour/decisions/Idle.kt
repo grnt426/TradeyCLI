@@ -45,11 +45,29 @@ object Idle {
         return if (total == 0L) 0.0 else ships.sumOf { it.idle.seconds }.toDouble() / total
     }
 
-    /** Drift time per ship: legs, hours, and the job that sent them. Every drift leg is a route planned past the tank. */
-    data class ShipDrift(val ship: String, val legs: Int, val time: Duration, val byBehaviour: Map<String, Int>, val longest: storage.DriftRecord?)
+    val KINDS = listOf("cruise", "burn", "drift", "extract", "siphon", "survey", "jump")
 
-    fun drifts(records: List<storage.DriftRecord>): List<ShipDrift> =
-        records.groupBy { it.ship }.map { (ship, list) ->
+    /** Where one ship's day went: hours by activity kind, plus idle from the phase log. Everything else is docking, trading and waiting on the API. */
+    data class ShipTime(val ship: String, val byKind: Map<String, Duration>, val idle: Duration, val busy: Duration) {
+        val recorded: Duration get() = busy + idle
+        fun hours(kind: String): Double = (byKind[kind] ?: Duration.ZERO).toMinutes() / 60.0
+    }
+
+    fun time(activities: List<storage.ActivityRecord>, phases: List<storage.PhaseRecord>, now: Instant): List<ShipTime> {
+        val idle = perShip(phases, now).associateBy { it.ship }
+        val ships = (activities.map { it.ship } + idle.keys).toSet()
+        return ships.map { ship ->
+            val mine = activities.filter { it.ship == ship }
+            val byKind = mine.groupBy { it.kind }.mapValues { (_, l) -> Duration.ofSeconds(l.sumOf { it.seconds }) }
+            ShipTime(ship, byKind, idle[ship]?.idle ?: Duration.ZERO, idle[ship]?.busy ?: Duration.ZERO)
+        }.sortedBy { it.ship }
+    }
+
+    /** Drift legs per ship with the job that sent them: every one is a route planned past the tank. */
+    data class ShipDrift(val ship: String, val legs: Int, val time: Duration, val byBehaviour: Map<String, Int>, val longest: storage.ActivityRecord?)
+
+    fun drifts(records: List<storage.ActivityRecord>): List<ShipDrift> =
+        records.filter { it.kind == "drift" }.groupBy { it.ship }.map { (ship, list) ->
             ShipDrift(ship, list.size, Duration.ofSeconds(list.sumOf { it.seconds }), list.groupingBy { it.behaviour }.eachCount(), list.maxByOrNull { it.seconds })
         }.sortedByDescending { it.time }
 

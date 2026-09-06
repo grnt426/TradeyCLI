@@ -59,8 +59,8 @@ data class SupplyRecord(val ship: String, val site: String, val good: TradeSymbo
 /** A market transaction with the tag the ship carried when it made it: a behaviour name, a chain id, `gate:SITE` or `nurse:SITE`. */
 data class TaggedTransaction(val transaction: MarketTransaction, val tag: String?)
 
-/** One drift leg. */
-data class DriftRecord(val at: Instant, val ship: String, val behaviour: String, val from: String, val to: String, val distance: Double, val seconds: Long)
+/** One timed activity of one ship: kind is cruise, drift, burn, extract, siphon, survey or jump. */
+data class ActivityRecord(val at: Instant, val ship: String, val behaviour: String, val kind: String, val detail: String, val seconds: Long)
 
 /** One phase change of one ship. */
 data class PhaseRecord(val at: Instant, val ship: String, val behaviour: String, val phase: String, val detail: String)
@@ -240,23 +240,22 @@ class AgentStore private constructor(
         }
     }
 
-    suspend fun putDrift(record: DriftRecord) = tx {
-        DriftTable.insert {
+    suspend fun putActivity(record: ActivityRecord) = tx {
+        ActivityTable.insert {
             it[at] = record.at.toEpochMilli()
             it[shipSymbol] = record.ship
             it[behaviour] = record.behaviour
-            it[fromSymbol] = record.from
-            it[toSymbol] = record.to
-            it[distance] = record.distance
+            it[kind] = record.kind
+            it[detail] = record.detail.take(120)
             it[seconds] = record.seconds
         }
     }
 
-    suspend fun listDrifts(since: Instant? = null): List<DriftRecord> = tx {
-        val query = DriftTable.selectAll()
-        if (since != null) query.where { DriftTable.at greaterEq since.toEpochMilli() }
-        query.orderBy(DriftTable.id, SortOrder.ASC).map { row ->
-            DriftRecord(Instant.ofEpochMilli(row[DriftTable.at]), row[DriftTable.shipSymbol], row[DriftTable.behaviour], row[DriftTable.fromSymbol], row[DriftTable.toSymbol], row[DriftTable.distance], row[DriftTable.seconds])
+    suspend fun listActivities(since: Instant? = null): List<ActivityRecord> = tx {
+        val query = ActivityTable.selectAll()
+        if (since != null) query.where { ActivityTable.at greaterEq since.toEpochMilli() }
+        query.orderBy(ActivityTable.id, SortOrder.ASC).map { row ->
+            ActivityRecord(Instant.ofEpochMilli(row[ActivityTable.at]), row[ActivityTable.shipSymbol], row[ActivityTable.behaviour], row[ActivityTable.kind], row[ActivityTable.detail], row[ActivityTable.seconds])
         }
     }
 
