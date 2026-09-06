@@ -84,13 +84,14 @@ object Intentions {
             if (price == null) {
                 lines += Intent("Saving for $next: price unknown until a ship docks at $where; keeping ${format(goal.reserve)} in reserve", Intent.Tone.NEUTRAL)
             } else {
-                val needed = price + goal.reserve
+                val reserve = knowledge.Strategy.purchaseReserve(goal.reserve, snapshot)
+                val needed = price + reserve
                 if (credits >= needed) {
                     lines += Intent("Ready to buy $next at ${format(price)}: waiting for a trader to dock at $where", Intent.Tone.GOOD)
                 } else {
                     val short = needed - credits
                     val eta = if (trend.perHour > 0) " about ${minutes(short / trend.perHour)} at the current rate" else ""
-                    lines += Intent("Saving for $next: ${format(credits)} of ${format(needed)} (${format(price)} plus ${format(goal.reserve)} reserve), ${format(short)} short;$eta", Intent.Tone.NEUTRAL)
+                    lines += Intent("Saving for $next: ${format(credits)} of ${format(needed)} (${format(price)} plus ${format(reserve)} kept for the traders), ${format(short)} short;$eta", Intent.Tone.NEUTRAL)
                 }
             }
         }

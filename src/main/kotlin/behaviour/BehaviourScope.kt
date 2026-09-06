@@ -136,10 +136,16 @@ class BehaviourScope(
                 val owned = goal.owned(fleet)
                 if (owned >= goal.count) continue
                 val price = yard.priceOf(goal.type) ?: continue
-                if (agent().credits - price < goal.reserve) {
-                    status(detail = "would buy ${goal.type} at $price but the reserve is ${goal.reserve}")
+                val reserve = knowledge.Strategy.purchaseReserve(goal.reserve, snapshot())
+                if (agent().credits - price < reserve) {
+                    status(detail = "would buy ${goal.type} at $price but the bank must keep $reserve (working capital for the traders)")
                     continue
                 }
+                shared.lastPurchaseAt?.let { last ->
+                    val minutes = java.time.Duration.between(last, clock.now()).toMinutes()
+                    if (minutes < knowledge.Strategy.MINUTES_BETWEEN_PURCHASES) { status(detail = "bought a ship ${minutes} min ago; the next waits"); return null }
+                }
+                shared.lastPurchaseAt = clock.now()
                 if (!me.isDocked) dock(ship)
                 val bought = purchaseShip(goal.type, here.symbol)
                 status(detail = "bought ${bought.symbol} (${goal.type}) for $price; ${owned + 1}/${goal.count}" + (goal.system?.let { " for $it" } ?: ""))
@@ -223,6 +229,10 @@ class SharedState {
 
     /** Gates a jump was refused to because they are still under construction (API 4262): both ends must be built. */
     val unreachableGates: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+    /** When the last ship was bought, so purchases are paced and their effect on income is seen. */
+    @Volatile
+    var lastPurchaseAt: java.time.Instant? = null
 
     /** Drones sitting on rocks (mineInPlace), by ship symbol, for the collector. */
     val parked = ConcurrentHashMap<String, String>()

@@ -80,6 +80,8 @@ data class MarketAssumptions(
      * out of the chains while the producers' silicon, copper, iron and quartz sat LIMITED unfed.
      */
     val chainFeedBonus: Double = 2.5,
+    /** In ESCAPE, a gate-chain producer whose inputs read LIMITED or worse is not drawn on at all: taking from it raises the gate's price while nothing replaces the stock. */
+    val protectStarvedChains: Boolean = true,
     /** A nursing leg may sell an input for less than it cost, down to this share of the buy price, because the goal is the producer's price, not the leg's. */
     val nurseMinSellRatio: Double = 0.5,
     /** Trade volumes of an input to deliver per nursing visit; the docs say consumption grows as we supply, so a few volumes is enough to move it. */

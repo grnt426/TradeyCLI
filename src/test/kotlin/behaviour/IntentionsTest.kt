@@ -112,8 +112,9 @@ class IntentionsTest {
         val poor = base.copy(plan = plan, agent = base.agent!!.copy(credits = 100_000))
         val saving = Intentions.describe(poor, now, behaviour.decisions.Trend(120_000.0, 100_000.0, 5)).first { it.text.startsWith("Saving") }
         assertTrue(saving.text.contains("#1 of 2"), saving.text)
-        assertTrue(saving.text.contains("${Intentions.format(listed + 150_000)}"), saving.text)
-        assertTrue(saving.text.contains("min at the current rate"), saving.text)
+        // The bank must also keep working capital for every trader, so the reserve shown is the larger of the two.
+        assertTrue(saving.text.contains("${Intentions.format(listed + knowledge.Strategy.purchaseReserve(150_000, poor))}"), saving.text)
+        assertTrue(saving.text.contains("at the current rate"), saving.text)
         val rich = base.copy(plan = plan, agent = base.agent!!.copy(credits = 700_000))
         val ready = Intentions.describe(rich, now).first { it.text.startsWith("Ready") }
         assertTrue(ready.text.contains("X1-TH77-A2"), ready.text)

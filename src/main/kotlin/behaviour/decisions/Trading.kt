@@ -66,6 +66,8 @@ data class TradingAssumptions(
     val market: MarketAssumptions = MarketAssumptions(),
     /** "market/good" pairs that are short inputs of the gate's producers: delivering there earns [MarketAssumptions.chainFeedBonus]. */
     val chainTargets: Set<String> = emptySet(),
+    /** "market/good" exports of gate-chain producers whose inputs are short: not a source while [MarketAssumptions.protectStarvedChains]. */
+    val protectedSources: Set<String> = emptySet(),
 ) {
     /** The smallest margin worth having on a unit bought at [buyPrice]. */
     fun floor(buyPrice: Double): Double = maxOf(minMarginPerUnit.toDouble(), buyPrice * minMarginRatio)
@@ -95,6 +97,7 @@ object Trading {
             for (offer in source.tradeGoods) {
                 val sourceWeight = MarketHealth.sourceWeight(offer, assumptions.market)
                 if (sourceWeight <= 0.0) continue
+                if (assumptions.market.protectStarvedChains && "${source.symbol}/${offer.symbol.name}" in assumptions.protectedSources) continue
                 for (destination in markets) {
                     if (destination.symbol == source.symbol) continue
                     val bid = destination.good(offer.symbol) ?: continue

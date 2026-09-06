@@ -46,6 +46,17 @@ object Strategy {
 
     fun comfortableBank(remainingCost: Long): Long = (remainingCost * RUSH_COMFORT).toLong() + POST_GATE_RESERVE
 
+    /** Credits each trading ship needs in hand to fill a hold: a 40-unit load of clothing or fabrics costs 70k. Three haulers bought in one minute on 2026-09-06 left 90k for five traders. */
+    const val WORKING_CAPITAL_PER_TRADER = 120_000L
+    /** Minutes between ship purchases, so each one's effect on income is seen before the next. */
+    const val MINUTES_BETWEEN_PURCHASES = 10L
+
+    /** The bank a purchase must leave: the goal's reserve, or enough working capital for every ship that trades, whichever is more. */
+    fun purchaseReserve(goalReserve: Long, snapshot: Snapshot): Long {
+        val traders = snapshot.ships.values.count { it.usesFuel && it.cargo.capacity >= 40 } + 1 // plus the one being bought
+        return maxOf(goalReserve, traders * WORKING_CAPITAL_PER_TRADER)
+    }
+
     /** The boom (docs/boom.md): what a system's rush may spend, the bank floor no rush goes below, how many pioneers roam, and the share of the bank a far gate may draw. */
     const val RUSH_KIT = 350_000L
     const val GALAXY_RESERVE = 300_000L
@@ -98,7 +109,24 @@ object Strategy {
         minMarginRatio = minMarginRatio ?: marginFloor(phase),
         market = market(phase),
         chainTargets = if (phase == Phase.ESCAPE && snapshot != null) chainTargets(snapshot) else emptySet(),
+        protectedSources = if (phase == Phase.ESCAPE && snapshot != null) protectedChainSources(snapshot) else emptySet(),
     )
+
+    /** "market/good" for every export of a gate-chain producer that has a LIMITED-or-worse input: draining it only raises the bill. */
+    fun protectedChainSources(snapshot: Snapshot): Set<String> {
+        val home = snapshot.hqSystem ?: return emptySet()
+        val roots = snapshot.constructionBill?.filter { it.fulfilled < it.required }?.map { it.tradeSymbol } ?: return emptySet()
+        val goods = linkedSetOf<model.market.TradeSymbol>()
+        fun walk(g: model.market.TradeSymbol, depth: Int) { if (goods.add(g) && depth < 4) ImportMap.inputs[g].orEmpty().forEach { walk(it, depth + 1) } }
+        roots.forEach { walk(it, 0) }
+        val out = mutableSetOf<String>()
+        snapshot.marketsIn(home).forEach { m ->
+            goods.forEach { g ->
+                if (m.typeOf(g) == model.market.TradeGoodType.EXPORT && MarketHealth.starvedInputs(m, g).any { it.supply <= model.market.SupplyLevel.LIMITED }) out += "${m.symbol}/${g.name}"
+            }
+        }
+        return out
+    }
 
     /** "market/good" for every LIMITED-or-worse input of a producer in the gate's chains, down to the ores. */
     fun chainTargets(snapshot: Snapshot): Set<String> {
