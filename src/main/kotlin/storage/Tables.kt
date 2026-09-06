@@ -184,8 +184,18 @@ object RequestLogTable : Table("request_log") {
     override val primaryKey = PrimaryKey(id)
 }
 
+/** The public agent list sampled over time: credits and ship count per agent, so the leaders' rates can be compared with ours. */
+object PublicAgentSampleTable : Table("public_agent_samples") {
+    val id = long("id").autoIncrement()
+    val at = long("at").index()
+    val symbol = varchar("symbol", 64)
+    val credits = long("credits")
+    val ships = integer("ships")
+    override val primaryKey = PrimaryKey(id)
+}
+
 val ALL_TABLES = listOf(
-    PublicAgentTable, GateTable,
+    PublicAgentTable, GateTable, PublicAgentSampleTable,
     MetaTable, AgentTable, ShipTable, SystemTable, WaypointTable, MarketTable, ShipyardTable,
     PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable, LedgerTable, PhaseLogTable, ActivityTable,
 )

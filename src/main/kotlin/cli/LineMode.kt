@@ -163,6 +163,7 @@ class LineMode(
             "phase" -> return phase(args)
             "summary" -> summary()
             "neighbours" -> neighbours()
+            "leaders" -> leaders(args)
             "systems" -> systems()
             "chains" -> chains()
             "idle" -> idle()
@@ -857,6 +858,27 @@ class LineMode(
         table(listOf("agent", "home", "phase", "ships", "bank at first record", "bank now", "hours", "cr/h overall", "last hour", "gate", "we delivered"), rows)
     }
 
+    /** The public agents' credits per hour and per ship over the sampled window (`leaders [--hours N]`, default 6): what their fleets earn against ours. */
+    private suspend fun leaders(args: List<String>) {
+        val store = engine.store ?: return err.println("no store")
+        val hours = option(args, "--hours")?.toDoubleOrNull() ?: 6.0
+        val now = engine.clock.now()
+        val samples = store.listPublicAgentSamples(now.minusSeconds((hours * 3600).toLong()))
+        if (samples.isEmpty()) return err.println("no samples yet: the run records the public agent list every 30 minutes")
+        val rates = behaviour.decisions.Leaders.rates(samples)
+        val mine = engine.snapshot.agent?.symbol
+        out.println("${rates.size} agents with half an hour or more of samples in the last ${"%.1f".format(hours)} h (${samples.map { it.at }.distinct().size} samples); earned is the bank's change, so ships or a gate bought in the window hide income")
+        table(
+            listOf("agent", "ships", "bought", "bank", "earned", "hours", "cr/h", "cr/h per ship"),
+            rates.take(25).map { r ->
+                listOf(
+                    (if (r.symbol == mine) "* " else "") + r.symbol, r.ships.toString(), if (r.shipsBought != 0) "%+d".format(r.shipsBought) else "",
+                    Intentions.format(r.credits), Intentions.format(r.earned), "%.1f".format(r.hours), Intentions.format(r.perHour.toLong()), Intentions.format(r.perShipHour.toLong()),
+                )
+            },
+        )
+    }
+
     /** `goal fleet TYPE COUNT [--reserve N]` adds a fleet goal; `goal clear TYPE` removes one. */
     private fun goal(args: List<String>): Int {
         val file = planFile()
@@ -1024,11 +1046,17 @@ class LineMode(
         err.println("Running ${plan.assignments.size} assignment(s) for $duration as process ${lease.pid}; Ctrl+C stops early.")
         try {
             var ticks = 0
+            // The public agent list every half hour: the leaders' credits and ship counts over time, for `leaders`.
+            suspend fun sampleAgents() = runCatching {
+                val agents = engine.verbs().agents()
+                engine.store?.putPublicAgentSamples(engine.clock.now(), agents)
+            }.onFailure { err.println("${time(engine.clock.now())} sampling the public agents failed: ${it.message}") }
             withTimeoutOrNull(duration) {
                 while (supervisor.active.isNotEmpty() && heartbeat.isActive) {
                     engine.clock.sleep(kotlin.time.Duration.parse("5s"))
                     supervisor.reloadIfChanged().forEach { err.println("${time(engine.clock.now())} plan.json: $it") }
-                    if (++ticks % 12 == 0) runCatching { supervisor.tick() }.onFailure { err.println("${time(engine.clock.now())} boom tick failed: ${it.message}") }
+                    if (++ticks % 12 == 0) runCatching { supervisor.tick() }.onFailure { err.println("${time(engine.clock.now())} tick failed: ${it.message}") }
+                    if (ticks % 360 == 1) sampleAgents()
                 }
             }
         } finally {
@@ -1218,7 +1246,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "reset", "catalog", "race", "summary", "idle", "neighbours", "systems", "chains", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "reset", "catalog", "race", "summary", "idle", "neighbours", "leaders", "systems", "chains", "extractions",
             "plan", "assign", "unassign", "goal", "chain", "phase", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")

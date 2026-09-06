@@ -449,6 +449,20 @@ class AgentStore private constructor(
 
     suspend fun listPublicAgents(): List<PublicAgent> = tx { PublicAgentTable.selectAll().map { decode<PublicAgent>(it[PublicAgentTable.json]) } }
 
+    suspend fun putPublicAgentSamples(at: Instant, agents: List<PublicAgent>) = tx {
+        PublicAgentSampleTable.batchInsert(agents) { a ->
+            this[PublicAgentSampleTable.at] = at.toEpochMilli()
+            this[PublicAgentSampleTable.symbol] = a.symbol
+            this[PublicAgentSampleTable.credits] = a.credits
+            this[PublicAgentSampleTable.ships] = a.shipCount.toInt()
+        }
+    }
+
+    suspend fun listPublicAgentSamples(since: Instant): List<behaviour.decisions.AgentSample> = tx {
+        PublicAgentSampleTable.selectAll().where { PublicAgentSampleTable.at greaterEq since.toEpochMilli() }.orderBy(PublicAgentSampleTable.at, SortOrder.ASC)
+            .map { behaviour.decisions.AgentSample(it[PublicAgentSampleTable.symbol], Instant.ofEpochMilli(it[PublicAgentSampleTable.at]), it[PublicAgentSampleTable.credits], it[PublicAgentSampleTable.ships]) }
+    }
+
     suspend fun putGate(gate: JumpGate) = tx {
         GateTable.upsert {
             it[symbol] = gate.symbol
