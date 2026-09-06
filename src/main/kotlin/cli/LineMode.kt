@@ -162,6 +162,7 @@ class LineMode(
             "chain" -> return chain(args)
             "phase" -> return phase(args)
             "summary" -> summary()
+            "idle" -> idle()
             "race" -> race(args)
             "gate" -> gate(args)
             "jumpgate" -> jumpgate(args)
@@ -634,6 +635,29 @@ class LineMode(
         return 0
     }
 
+    /** Idle time per ship and per behaviour over the last day, from the phase log. */
+    private fun idle() {
+        val snap = engine.snapshot
+        val now = engine.clock.now()
+        val ships = behaviour.decisions.Idle.perShip(snap.phases, now)
+        if (ships.isEmpty()) return err.println("No phase history yet; it fills as the run goes.")
+        out.println("fleet idle ${(behaviour.decisions.Idle.fleetShare(ships) * 100).toInt()}% of recorded time over the last day")
+        table(
+            listOf("ship", "busy", "idle", "idle %", "mostly because"),
+            ships.map { s -> listOf(s.ship, hours(s.busy), hours(s.idle), "${(s.share * 100).toInt()}%", s.reasons.entries.firstOrNull()?.let { "${it.key} (${hours(it.value)})" } ?: "-") },
+        )
+        out.println()
+        table(
+            listOf("behaviour", "busy", "idle", "idle %"),
+            behaviour.decisions.Idle.perBehaviour(snap.phases, now).entries.sortedByDescending { it.value.second }.map { (b, t) ->
+                val total = (t.first + t.second).seconds
+                listOf(b, hours(t.first), hours(t.second), if (total == 0L) "-" else "${t.second.seconds * 100 / total}%")
+            },
+        )
+    }
+
+    private fun hours(d: java.time.Duration): String = "%.1f h".format(d.toMinutes() / 60.0)
+
     /** The dashboard's summary screen as text: phase progress, fleet, spending, revenue, market health. */
     private suspend fun summary() {
         // A one-shot process has not read the site yet; one request gives the progress panel its bill.
@@ -646,6 +670,9 @@ class LineMode(
         val progress = behaviour.decisions.Summary.progress(snap, now, trend)
         out.println(progress.headline)
         progress.lines.forEach { out.println("  [${it.tone.name.lowercase()}] ${it.text}") }
+        behaviour.decisions.Idle.perShip(snap.phases, now).takeIf { it.isNotEmpty() }?.let { ships ->
+            out.println("  [neutral] Fleet idle ${(behaviour.decisions.Idle.fleetShare(ships) * 100).toInt()}% of the last day; `idle` for the breakdown")
+        }
         out.println()
         table(
             listOf("ship", "type", "behaviour", "phase", "where", "cargo", "detail"),
@@ -1034,6 +1061,7 @@ class LineMode(
               intentions                 what the bot is doing and saving for, and the credits trend
               contracts                  every contract seen with its payment, our cost and the dates
               summary                    the dashboard's summary as text: phase progress, fleet, spending, revenue, market health
+              idle                       idle time per ship and per behaviour over the last day: the opportunity cost the plan leaves
               phase [escape|boom|late]   show or set the plan's phase (docs/phases.md): which weights and default jobs apply
               race [AGENT ...]           every agent's bank over time, fleet, gate progress and phase, side by side
               gate [SITE]                the construction bill, what we delivered and spent, and the cost to finish
@@ -1068,7 +1096,7 @@ class LineMode(
 
     companion object {
         val COMMANDS = listOf(
-            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "reset", "catalog", "race", "summary", "extractions",
+            "status", "agent", "ships", "waypoints", "markets", "market", "shipyards", "asteroids", "trades", "intentions", "contracts", "gate", "jumpgate", "jump", "register", "reset", "catalog", "race", "summary", "idle", "extractions",
             "plan", "assign", "unassign", "goal", "chain", "phase", "run", "buy", "sim", "repl",
         )
         private val TIME: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss")

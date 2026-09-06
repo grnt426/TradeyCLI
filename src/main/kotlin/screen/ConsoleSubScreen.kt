@@ -81,6 +81,7 @@ class ConsoleSubScreen(private val parent: Screen) : SubScreen<SelectedScreen>(p
                 rgb(HEADER_COLOR.rgb) { makeHeader("${snap.agent?.symbol ?: "?"}  ${phase.name}", 3) }
                 wrapped(progress.headline, w, Intent.Tone.GOOD, 2)
                 progress.lines.take(4).forEach { wrapped(it.text, w, it.tone, 2) }
+                Summary.idleLine(snap, now)?.let { line(it, w) }
                 val runner = snap.runner
                 val driver = when {
                     runner == null -> Intent("nobody is running the plan; start `TradeyCLI run`", Intent.Tone.WARN)

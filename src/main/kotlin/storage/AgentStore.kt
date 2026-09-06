@@ -57,6 +57,9 @@ data class SupplyRecord(val ship: String, val site: String, val good: TradeSymbo
 /** A market transaction with the tag the ship carried when it made it: a behaviour name, a chain id, `gate:SITE` or `nurse:SITE`. */
 data class TaggedTransaction(val transaction: MarketTransaction, val tag: String?)
 
+/** One phase change of one ship. */
+data class PhaseRecord(val at: Instant, val ship: String, val behaviour: String, val phase: String, val detail: String)
+
 /** Credits that moved outside a market: `ships` (negative), `chart`, `contract` (positive). */
 data class LedgerEntry(val at: Instant, val ship: String, val kind: String, val credits: Long, val note: String = "")
 
@@ -229,6 +232,24 @@ class AgentStore private constructor(
                 ),
                 row[TransactionTable.chain],
             )
+        }
+    }
+
+    suspend fun putPhase(record: PhaseRecord) = tx {
+        PhaseLogTable.insert {
+            it[at] = record.at.toEpochMilli()
+            it[shipSymbol] = record.ship
+            it[behaviour] = record.behaviour
+            it[phase] = record.phase
+            it[detail] = record.detail.take(200)
+        }
+    }
+
+    suspend fun listPhases(since: Instant? = null): List<PhaseRecord> = tx {
+        val query = PhaseLogTable.selectAll()
+        if (since != null) query.where { PhaseLogTable.at greaterEq since.toEpochMilli() }
+        query.orderBy(PhaseLogTable.id, SortOrder.ASC).map { row ->
+            PhaseRecord(Instant.ofEpochMilli(row[PhaseLogTable.at]), row[PhaseLogTable.shipSymbol], row[PhaseLogTable.behaviour], row[PhaseLogTable.phase], row[PhaseLogTable.detail])
         }
     }
 

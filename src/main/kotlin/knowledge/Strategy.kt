@@ -92,10 +92,10 @@ object Strategy {
 
     /** What a new agent should want in each phase, as fleet goals. */
     fun goals(phase: Phase): Goals = when (phase) {
+        // Light shuttles are a trap: a small hold, no faster, less fuel, not much cheaper. Haulers, and drones for ore.
         Phase.ESCAPE -> Goals(fleet = listOf(
-            FleetGoal(ShipType.SHIP_LIGHT_SHUTTLE, 2, reserve = 120_000),
+            FleetGoal(ShipType.SHIP_LIGHT_HAULER, 3, reserve = 200_000),
             FleetGoal(ShipType.SHIP_MINING_DRONE, 2, reserve = 150_000),
-            FleetGoal(ShipType.SHIP_LIGHT_HAULER, 1, reserve = 250_000),
         ))
         Phase.BOOM -> Goals(fleet = listOf(FleetGoal(ShipType.SHIP_LIGHT_HAULER, 2, reserve = 300_000), FleetGoal(ShipType.SHIP_PROBE, 2, reserve = 100_000)))
         Phase.LATE -> Goals()
@@ -126,7 +126,16 @@ object Strategy {
         val isHauler = ship.usesFuel && ship.cargo.capacity >= 60 && !ship.canMine
         return when (phase) {
             Phase.ESCAPE -> when {
-                isHauler && site != null && ship.nav.systemSymbol == home -> Assignment(ship.symbol, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000"))
+                // Haulers by order of arrival: the first supplies the gate (nursing its producers), the second keeps the
+                // contract drip going, the third trades and gardens, and every further one goes to the gate.
+                isHauler && site != null && ship.nav.systemSymbol == home -> {
+                    val haulersBefore = snapshot.ships.values.count { it.symbol != ship.symbol && it.symbol < ship.symbol && it.usesFuel && it.cargo.capacity >= 60 && !it.canMine }
+                    when (haulersBefore) {
+                        1 -> Assignment(ship.symbol, "runContract")
+                        2 -> Assignment(ship.symbol, "trade")
+                        else -> Assignment(ship.symbol, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000"))
+                    }
+                }
                 // At a reset the home system is uncharted and each chart paid ~28k on 2026-09-05: the probe charts
                 // before it reads prices. That is the fastest money there is in the first hours, and it funds the gate.
                 !ship.usesFuel && home != null && snapshot.waypointsIn(home).any { it.hasTrait(model.WaypointTraitSymbol.UNCHARTED) } &&

@@ -66,6 +66,10 @@ class World {
     @Volatile
     var ledger: List<storage.LedgerEntry> = emptyList()
 
+    /** The last day of phase changes, for the idle report. */
+    @Volatile
+    var phases: List<storage.PhaseRecord> = emptyList()
+
     /** The home construction site's bill as last read, for the summary's progress. */
     @Volatile
     var constructionBill: List<model.ConstructionMaterial>? = null
@@ -98,10 +102,12 @@ class World {
         taggedTransactions = taggedTransactions,
         ledger = ledger,
         constructionBill = constructionBill,
+        phases = phases,
         plan = plan,
         runner = runner,
         contracts = contracts.values.sortedBy { it.id },
         extractions = extractions,
+        serverStatus = serverStatus,
     )
 }
 
@@ -124,10 +130,13 @@ data class Snapshot(
     val taggedTransactions: List<storage.TaggedTransaction> = emptyList(),
     val ledger: List<storage.LedgerEntry> = emptyList(),
     val constructionBill: List<model.ConstructionMaterial>? = null,
+    val phases: List<storage.PhaseRecord> = emptyList(),
     val plan: Plan? = null,
     val runner: RunLease? = null,
     val contracts: List<Contract> = emptyList(),
     val extractions: List<ExtractionRecord> = emptyList(),
+    /** `GET /` as read at boot: the reset, the server's numbers, the leaderboards. */
+    val serverStatus: ServerStatus? = null,
 ) {
     fun gasGiantsIn(system: String): List<Waypoint> = waypointsIn(system).filter { it.isSiphonable }
     fun waypointsIn(system: String): List<Waypoint> = waypoints.values.filter { it.systemSymbol == system }.sortedBy { it.symbol }

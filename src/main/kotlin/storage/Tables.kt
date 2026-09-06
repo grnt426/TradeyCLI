@@ -119,6 +119,17 @@ object LedgerTable : Table("ledger") {
     override val primaryKey = PrimaryKey(id)
 }
 
+/** Every phase change of every ship, so idle time can be measured: a ship with nothing to do is a plan that failed to find something. */
+object PhaseLogTable : Table("phase_log") {
+    val id = long("id").autoIncrement()
+    val at = long("at").index()
+    val shipSymbol = varchar("ship_symbol", 64).index()
+    val behaviour = varchar("behaviour", 64)
+    val phase = varchar("phase", 64)
+    val detail = varchar("detail", 200)
+    override val primaryKey = PrimaryKey(id)
+}
+
 /** The bank after every change we caused: the credits graph and its trend. */
 object CreditsTable : Table("credits_history") {
     val id = long("id").autoIncrement()
@@ -154,5 +165,5 @@ object RequestLogTable : Table("request_log") {
 
 val ALL_TABLES = listOf(
     MetaTable, AgentTable, ShipTable, SystemTable, WaypointTable, MarketTable, ShipyardTable,
-    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable, LedgerTable,
+    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable, LedgerTable, PhaseLogTable,
 )

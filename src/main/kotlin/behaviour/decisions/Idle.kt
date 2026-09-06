@@ -1,0 +1,63 @@
+package behaviour.decisions
+
+import storage.PhaseRecord
+import java.time.Duration
+import java.time.Instant
+
+/** How one ship spent its time: busy, idle, and why it was idle. */
+data class ShipIdle(val ship: String, val busy: Duration, val idle: Duration, val reasons: Map<String, Duration>) {
+    val share: Double get() = (busy + idle).seconds.let { if (it == 0L) 0.0 else idle.seconds.toDouble() / it }
+}
+
+/**
+ * Idle time from the phase log. "Ship has nothing to do" usually means the plan failed to find
+ * something worth doing, so this is the opportunity cost the plan is leaving on the table: the
+ * first thing to measure before deciding which behaviours saturate and which keep failing to
+ * find work. A phase counts as idle when it is one of [IDLE_PHASES]; everything else is work,
+ * including flying.
+ */
+object Idle {
+    val IDLE_PHASES = setOf("waiting", "idle", "done", "failed", "skip")
+
+    fun perShip(records: List<PhaseRecord>, now: Instant, since: Instant? = null): List<ShipIdle> =
+        records.groupBy { it.ship }.map { (ship, list) ->
+            val sorted = list.sortedBy { it.at }
+            var busy = Duration.ZERO
+            var idle = Duration.ZERO
+            val reasons = mutableMapOf<String, Duration>()
+            sorted.forEachIndexed { i, r ->
+                val start = if (since != null && r.at.isBefore(since)) since else r.at
+                val end = sorted.getOrNull(i + 1)?.at ?: now
+                if (!end.isAfter(start)) return@forEachIndexed
+                val span = Duration.between(start, end)
+                if (r.phase in IDLE_PHASES) {
+                    idle += span
+                    val reason = "${r.behaviour}: ${r.phase} ${r.detail.substringBefore(';').take(60)}".trim()
+                    reasons.merge(reason, span) { a, b -> a + b }
+                } else busy += span
+            }
+            ShipIdle(ship, busy, idle, reasons.toList().sortedByDescending { it.second }.toMap())
+        }.sortedByDescending { it.share }
+
+    /** Idle share of the whole fleet's recorded time. */
+    fun fleetShare(ships: List<ShipIdle>): Double {
+        val total = ships.sumOf { (it.busy + it.idle).seconds }
+        return if (total == 0L) 0.0 else ships.sumOf { it.idle.seconds }.toDouble() / total
+    }
+
+    /** Idle time by behaviour: which plans keep failing to find work. */
+    fun perBehaviour(records: List<PhaseRecord>, now: Instant): Map<String, Pair<Duration, Duration>> {
+        val out = mutableMapOf<String, Pair<Duration, Duration>>()
+        records.groupBy { it.ship }.forEach { (_, list) ->
+            val sorted = list.sortedBy { it.at }
+            sorted.forEachIndexed { i, r ->
+                val end = sorted.getOrNull(i + 1)?.at ?: now
+                if (!end.isAfter(r.at)) return@forEachIndexed
+                val span = Duration.between(r.at, end)
+                val (b, idle) = out[r.behaviour] ?: (Duration.ZERO to Duration.ZERO)
+                out[r.behaviour] = if (r.phase in IDLE_PHASES) b to (idle + span) else (b + span) to idle
+            }
+        }
+        return out
+    }
+}

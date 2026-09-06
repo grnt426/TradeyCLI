@@ -269,6 +269,7 @@ class Engine(
         world.recentTransactions = store.listTransactions(since)
         world.taggedTransactions = store.listTaggedTransactions()
         world.ledger = store.listLedger()
+        world.phases = store.listPhases(clock.now().minus(java.time.Duration.ofHours(24)))
         world.extractions = store.listExtractions().takeLast(2000)
         world.plan = runCatching { Plan.load(Layout.planFile(agentSymbol)) }.getOrNull()
         world.runner = RunLock.read(Layout.runLockFile(agentSymbol))
@@ -398,11 +399,17 @@ class Engine(
             publish()
         }
 
+        private val lastPhase = java.util.concurrent.ConcurrentHashMap<String, String>()
+
         override suspend fun statusChanged(ship: String, status: ShipStatus?, params: String) {
             if (status == null) {
                 store?.deleteCheckpoint(ship)
+                lastPhase.remove(ship)
             } else {
                 store?.putCheckpoint(ship, status.behaviour, ship, status.phase, params, status.detail, status.since)
+                // One row per phase change, not per status line, so the idle report reads the ship's day.
+                val key = "${status.behaviour}/${status.phase}"
+                if (lastPhase.put(ship, key) != key) store?.putPhase(storage.PhaseRecord(clock.now(), ship, status.behaviour, status.phase, status.detail))
             }
             publish()
         }

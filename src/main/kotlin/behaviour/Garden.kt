@@ -33,8 +33,10 @@ fun BehaviourScope.gardenLeg(spendable: Long, rules: MarketAssumptions): GardenL
             if (units <= 0) null else GardenLeg(target, input, source, offer, units, input.sellPrice - offer.purchasePrice)
         }
     }
-    // The hungriest importer first; among equals, the leg that loses least.
-    return candidates.sortedWith(compareBy({ it.input.supply.ordinal }, { -it.marginPerUnit })).firstOrNull()
+    // The gate's chains first (the producers of what the site needs and of their inputs), then the hungriest importer,
+    // then the leg that loses least.
+    val gateMarkets = knowledge.Strategy.watchMarkets(snapshot()).toSet()
+    return candidates.sortedWith(compareBy({ if (it.target.symbol in gateMarkets) 0 else 1 }, { it.input.supply.ordinal }, { -it.marginPerUnit })).firstOrNull()
 }
 
 /** One gardening trip: buy the input, sell it to the starved importer, refuel. Tagged as market health. Returns false when there is nothing to feed. */

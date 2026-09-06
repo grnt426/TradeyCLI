@@ -194,5 +194,13 @@ object Summary {
         }
     }
 
+    /** One line on the fleet's idle share, or null before there is any phase history. */
+    fun idleLine(snapshot: Snapshot, now: Instant): String? {
+        val ships = Idle.perShip(snapshot.phases, now)
+        if (ships.isEmpty()) return null
+        val worst = ships.firstOrNull { it.share > 0.3 }
+        return "fleet idle ${(Idle.fleetShare(ships) * 100).toInt()}% of the last day" + (worst?.let { "; worst ${it.ship.substringAfterLast('-')} at ${(it.share * 100).toInt()}%" } ?: "")
+    }
+
     private fun signed(n: Long): String = (if (n >= 0) "+" else "") + Intentions.format(n)
 }
