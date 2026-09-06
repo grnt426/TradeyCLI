@@ -83,6 +83,22 @@ class BehaviourScope(
         if (me.fuel.current >= needed) return navigateTo(ship, waypoint, mode)
         val route = fuelRoute(waypoint)
         if (route == null) {
+            // Stranded: nothing is within the tank. Drift to the nearest fuel station rather than all the way to the
+            // target, refuel, and cruise the rest; a surveyor restarted in deep space on 2026-09-06 faced a four-hour drift.
+            val from = here
+            val to = verbs.waypoint(waypoint)
+            val snap = snapshot()
+            val stops = snap.waypointsIn(from.systemSymbol).filter { it.hasMarket && snap.markets[it.symbol]?.trades(model.market.TradeSymbol.FUEL) != false }
+            val station = stops.filter { it.symbol != from.symbol && it.symbol != waypoint }.minByOrNull { Travel.distance(from.x, from.y, it.x, it.y) }
+            // Worth it only when the rest can be cruised from there: drift is ten times slower, so a detour must save more drift than it adds.
+            val worth = station != null && engine.FuelRoute.plan(station, to, stops, s.fuel.capacity.toLong(), s.fuel.capacity.toLong(), true) != null &&
+                10 * Travel.distance(from.x, from.y, station.x, station.y) + Travel.distance(station.x, station.y, to.x, to.y) < 10 * distanceTo(waypoint)
+            if (worth) {
+                status(detail = "no fuel stop within reach; drifting to ${station!!.symbol} to refuel, then cruising on to $waypoint")
+                navigateTo(ship, station.symbol, FlightMode.DRIFT)
+                try { dock(ship); refuel(ship) } catch (e: VerbFailure) { logger.warn { "$ship could not refuel at ${station.symbol}: ${e.message}" } }
+                return travelTo(waypoint, mode)
+            }
             status(detail = "no fuel stop within reach on the way to $waypoint; drifting")
             return navigateTo(ship, waypoint, FlightMode.DRIFT)
         }
