@@ -211,6 +211,9 @@ class SharedState {
     fun reservedByOthers(ship: String, site: String, material: String): Int =
         deliveries.filterKeys { it.startsWith("$site/$material/") && !it.endsWith("/$ship") }.values.sum()
 
+    /** Gates a jump was refused to because they are still under construction (API 4262): both ends must be built. */
+    val unreachableGates: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     /** The producers' take-rate buckets, shared by every ship so three haulers do not each take a full load. */
     val takeBudget = knowledge.TakeBudget()
 

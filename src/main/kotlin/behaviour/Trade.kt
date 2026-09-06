@@ -37,7 +37,15 @@ suspend fun BehaviourScope.trade() {
     val setAside = mutableMapOf<String, Instant>()
 
     if (!me.cargo.isEmpty) phase("sell leftovers") { sellLeftovers() }
-    param("system")?.uppercase()?.let { target -> if (me.nav.systemSymbol != target) phase("migrate", "to $target") { goToSystem(target) } }
+    param("system")?.uppercase()?.let { wanted ->
+        if (me.nav.systemSymbol != wanted) phase("migrate", "to $wanted") {
+            if (!goToSystem(wanted)) {
+                val taken = shared.plan.assignments.filter { it.ship != ship }.mapNotNull { it.params["system"]?.uppercase() }.toSet()
+                val alternative = reachableNeighbours(me.nav.systemSymbol).filter { it != wanted }.sortedBy { if (it in taken) 1 else 0 }.firstOrNull { goToSystem(it) }
+                status(detail = if (alternative != null) "$wanted is unreachable; trading in $alternative instead" else "$wanted is unreachable and so is every other neighbour; trading here")
+            }
+        }
+    }
     var surveyed = false
 
     while (true) {

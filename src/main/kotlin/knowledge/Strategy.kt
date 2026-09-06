@@ -157,7 +157,7 @@ object Strategy {
         probes.forEachIndexed { i, probe ->
             next = next.with(if (i == 0) Assignment(probe.symbol, "probeMarkets", mapOf("maxAge" to "10")) else Assignment(probe.symbol, "explore", mapOf("maxSystems" to "10")))
         }
-        val haulers = ships.filter { it.usesFuel && it.cargo.capacity >= 60 && !it.canMine }
+        val haulers = ships.filter { it.usesFuel && it.cargo.capacity >= 40 && !it.canMine }
         haulers.forEachIndexed { i, hauler ->
             val target = neighbours.getOrNull(i % neighbours.size.coerceAtLeast(1))
             next = next.with(if (target != null) Assignment(hauler.symbol, "trade", mapOf("system" to target)) else Assignment(hauler.symbol, "trade"))
@@ -169,12 +169,15 @@ object Strategy {
     fun afterFinished(phase: Phase, ship: Ship, behaviour: String, snapshot: Snapshot): Assignment? = when {
         // The gate is done: its haulers become the boom's traders.
         behaviour == "supplyGate" && ship.cargo.capacity > 0 -> Assignment(ship.symbol, "trade")
-        // The probe has read every market: park it at a yard and let it buy the fleet the goals ask for.
-        !ship.usesFuel && behaviour == "probeMarkets" && (snapshot.plan?.goals?.fleet?.isNotEmpty() == true) -> Assignment(ship.symbol, "expand")
-        // An explorer that ran out of map goes back to watching prices where it stands.
-        !ship.usesFuel && behaviour == "explore" -> Assignment(ship.symbol, "probeMarkets")
+        // The probe has read every market: park it at a yard and buy the fleet the goals ask for, if any is still unmet.
+        !ship.usesFuel && behaviour == "probeMarkets" && goalsUnmet(snapshot) -> Assignment(ship.symbol, "expand")
+        // Otherwise, and when an explorer runs out of map, keep the prices fresh where it stands.
+        !ship.usesFuel && (behaviour == "probeMarkets" || behaviour == "explore") -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to "10"))
         else -> null
     }
+
+    /** Whether any fleet goal still wants a ship. */
+    fun goalsUnmet(snapshot: Snapshot): Boolean = snapshot.plan?.goals?.fleet?.any { goal -> snapshot.ships.values.count { typeOf(it) == goal.type } < goal.count } == true
 
     fun describe(phase: Phase): String = when (phase) {
         Phase.ESCAPE -> "ESCAPE: market health first; profits fund the logistics that keep producers fed and the gate supplied"

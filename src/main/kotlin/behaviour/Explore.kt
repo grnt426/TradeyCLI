@@ -3,7 +3,6 @@ package behaviour
 import behaviour.decisions.Intentions
 import engine.VerbFailure
 import model.system.WaypointType
-import kotlin.time.Duration.Companion.minutes
 
 /**
  * The scout: in the system it stands in, chart what is uncharted, read every market and
@@ -31,23 +30,33 @@ suspend fun BehaviourScope.explore() {
 
         val gate = snapshot().waypointsIn(system).firstOrNull { it.type == WaypointType.JUMP_GATE }
         if (gate == null) { status("done", "$system has no gate; explored ${visited.size} systems"); return }
-        if (gate.isUnderConstruction) { status("done", "${gate.symbol} is under construction; explored ${visited.size} systems"); return }
+        // The cached waypoint flag goes stale the moment a gate completes; the site itself is the truth.
+        if (gate.isUnderConstruction && !construction(gate.symbol).isComplete) { status("done", "${gate.symbol} is under construction; explored ${visited.size} systems"); return }
         phase("travel to gate", gate.symbol) { travelTo(gate.symbol) }
-        val next = phase("choose next system", gate.symbol) {
-            val connections = jumpGate(gate.symbol).connections
-            connections.firstOrNull { it.substringBeforeLast('-') !in visited && snapshot().waypointsIn(it.substringBeforeLast('-')).isEmpty() }
-                ?: connections.firstOrNull { it.substringBeforeLast('-') !in visited }
+        val candidates = phase("choose next system", gate.symbol) {
+            val connections = jumpGate(gate.symbol).connections.filter { it !in shared.unreachableGates }
+            val fresh = connections.filter { it.substringBeforeLast('-') !in visited && snapshot().waypointsIn(it.substringBeforeLast('-')).isEmpty() }
+            fresh + connections.filter { it.substringBeforeLast('-') !in visited && it !in fresh }
         }
-        if (next == null) { status("done", "every system beyond ${gate.symbol} is already known; explored ${visited.size}"); return }
-        phase("jump", "to $next") {
-            try {
-                jump(ship, next)
-                status(detail = "arrived in ${next.substringBeforeLast('-')}; bank ${Intentions.format(agent().credits)}")
-            } catch (e: VerbFailure) {
-                status(detail = "could not jump to $next: ${e.message}; trying again in 5 minutes")
-                clock.sleep(5.minutes)
+        if (candidates.isEmpty()) { status("done", "every system beyond ${gate.symbol} is known or unreachable; explored ${visited.size}"); return }
+        var arrived = false
+        for (next in candidates) {
+            arrived = phase("jump", "to $next") {
+                try {
+                    jump(ship, next)
+                    status(detail = "arrived in ${next.substringBeforeLast('-')}; bank ${Intentions.format(agent().credits)}")
+                    true
+                } catch (e: VerbFailure.Api) {
+                    if (e.error.code != DESTINATION_UNDER_CONSTRUCTION) throw e
+                    // A gate needs both ends built; remember this one and take the next connection.
+                    shared.unreachableGates += next
+                    status(detail = "$next is under construction; trying the next connection")
+                    false
+                }
             }
+            if (arrived) break
         }
+        if (!arrived) { status("done", "every reachable system beyond ${gate.symbol} is known; explored ${visited.size}"); return }
     }
     status("done", "explored $maxSystems systems: ${visited.joinToString(", ")}")
 }
