@@ -82,8 +82,8 @@ class SummaryTest {
     @Test
     fun `the gate rush starts once the bank covers the bill with room to spare, and the hauler joins the traders after`() {
         assertTrue(!Strategy.gateRush(bank = 2_000_000, remainingCost = 2_500_000))
-        assertTrue(!Strategy.gateRush(bank = 3_700_000, remainingCost = 2_500_000), "1.5x plus the post-gate reserve is 4.25M")
-        assertTrue(Strategy.gateRush(bank = 4_300_000, remainingCost = 2_500_000))
+        assertTrue(!Strategy.gateRush(bank = 3_500_000, remainingCost = 2_500_000), "1.25x plus the post-gate reserve is 3.625M")
+        assertTrue(Strategy.gateRush(bank = 3_700_000, remainingCost = 2_500_000))
         assertTrue(!Strategy.gateRush(bank = 4_300_000, remainingCost = 0), "nothing left to rush")
         val ship = pricedSeed().ships.first { it.symbol == Fixtures.COMMAND_SHIP }
         val snap = SimRun.worldFrom(sim.SimUniverse(pricedSeed(), sim.VirtualClock(kotlinx.coroutines.test.TestCoroutineScheduler(), now))).snapshot(1)

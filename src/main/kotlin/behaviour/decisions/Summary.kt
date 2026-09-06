@@ -164,7 +164,7 @@ object Summary {
                     lines += Intent("Spent ${Intentions.format(spent)} on the gate and on feeding its producers so far", Intent.Tone.NEUTRAL)
                     if (remainingCost != null) {
                         val haulerGoal = snapshot.plan?.goals?.fleet?.firstOrNull { it.type == model.ship.ShipType.SHIP_LIGHT_HAULER }?.count ?: 0
-                        val rushing = haulerGoal >= Strategy.RUSH_HAULERS
+                        val rushing = snapshot.plan?.rushing == true
                         val comfortable = rushing || Strategy.gateRush(credits, remainingCost)
                         lines += Intent(
                             "To finish: about ${Intentions.format(remainingCost)} at today's prices against a bank of ${Intentions.format(credits)}" +

@@ -36,8 +36,8 @@ object Strategy {
 
     /** Haulers on the gate once finishing is comfortable; the rest of the escape fleet stays on health and income. */
     const val RUSH_HAULERS = 3
-    /** The bank must cover this many times the remaining bill at today's prices, plus [POST_GATE_RESERVE], before the rush starts: prices climb as we buy. */
-    const val RUSH_COMFORT = 1.5
+    /** The bank must cover this many times the remaining bill at today's prices, plus [POST_GATE_RESERVE], before the rush starts. Nursed producers held or lowered their prices through the whole bill on 2026-09-05, so the margin is small. */
+    const val RUSH_COMFORT = 1.25
     /** Credits kept back through the rush so the boom starts with working capital and a hull or two. */
     const val POST_GATE_RESERVE = 500_000L
 
@@ -90,12 +90,29 @@ object Strategy {
     /** Mining sells where the sale helps most in ESCAPE; later phases weigh the sale softly and only skip saturated buyers. */
     fun mining(phase: Phase): MiningAssumptions = MiningAssumptions(market = market(phase))
 
+    /** A mining drone's tank (80) cruises both ways only when a rock lies within this of a market that buys its ore. */
+    const val DRONE_REACH = 35.0
+
+    /** Whether this system has a rock a drone can work without drifting home. */
+    fun dronesWorthIt(snapshot: Snapshot): Boolean {
+        val home = snapshot.hqSystem ?: return false
+        val markets = snapshot.waypointsIn(home).filter { it.hasMarket }
+        return snapshot.asteroidsIn(home).any { rock -> !rock.isSiphonable && markets.any { m -> engine.Travel.distance(rock.x, rock.y, m.x, m.y) <= DRONE_REACH } }
+    }
+
+    /** [goals] adjusted to the system: no drones where every rock is a drift away from a buyer. */
+    fun goals(phase: Phase, snapshot: Snapshot): Goals {
+        val base = goals(phase)
+        return if (phase == Phase.ESCAPE && !dronesWorthIt(snapshot)) base.copy(fleet = base.fleet.filter { it.type != ShipType.SHIP_MINING_DRONE }) else base
+    }
+
     /** What a new agent should want in each phase, as fleet goals. */
     fun goals(phase: Phase): Goals = when (phase) {
         // Light shuttles are a trap: a small hold, no faster, less fuel, not much cheaper. Haulers, and drones for ore.
+        // Haulers first: on 2026-09-06 a fresh system paid a trader ~500k an hour, so a 273k hauler earns itself back in about an hour.
         Phase.ESCAPE -> Goals(fleet = listOf(
+            FleetGoal(ShipType.SHIP_LIGHT_HAULER, 5, reserve = 200_000),
             FleetGoal(ShipType.SHIP_SURVEYOR, 2, reserve = 100_000),
-            FleetGoal(ShipType.SHIP_LIGHT_HAULER, 3, reserve = 200_000),
             FleetGoal(ShipType.SHIP_MINING_DRONE, 2, reserve = 150_000),
         ))
         Phase.BOOM -> Goals(fleet = listOf(FleetGoal(ShipType.SHIP_LIGHT_HAULER, 2, reserve = 300_000), FleetGoal(ShipType.SHIP_PROBE, 2, reserve = 100_000)))
@@ -131,10 +148,11 @@ object Strategy {
                 // contract drip going, the third trades and gardens, and every further one goes to the gate.
                 isHauler && site != null && ship.nav.systemSymbol == home -> {
                     val haulersBefore = snapshot.ships.values.count { it.symbol != ship.symbol && it.symbol < ship.symbol && it.usesFuel && it.cargo.capacity >= 60 && !it.canMine }
-                    when (haulersBefore) {
-                        1 -> Assignment(ship.symbol, "runContract")
-                        2 -> Assignment(ship.symbol, "trade")
-                        else -> Assignment(ship.symbol, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000"))
+                    when {
+                        haulersBefore == 0 -> Assignment(ship.symbol, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000"))
+                        haulersBefore == 1 -> Assignment(ship.symbol, "runContract")
+                        snapshot.plan?.rushing == true -> Assignment(ship.symbol, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000"))
+                        else -> Assignment(ship.symbol, "trade")
                     }
                 }
                 // At a reset the home system is uncharted and each chart paid ~28k on 2026-09-05: the probe charts
@@ -183,7 +201,7 @@ object Strategy {
     /** The plan a just-registered agent starts with: every ship's default job for [phase], the phase's goals. */
     fun freshPlan(phase: Phase, snapshot: Snapshot): Plan = Plan(
         assignments = snapshot.ships.values.sortedBy { it.symbol }.mapNotNull { defaultAssignment(phase, it, snapshot) },
-        goals = goals(phase),
+        goals = goals(phase, snapshot),
         phase = phase,
     )
 

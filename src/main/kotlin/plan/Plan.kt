@@ -20,6 +20,8 @@ data class Plan(
     val chains: List<Chain> = emptyList(),
     /** Which stage of the reset the agent is in; `knowledge.Strategy` turns it into weights and default jobs. */
     val phase: Phase = Phase.ESCAPE,
+    /** Set once the gate is comfortably affordable: traders are called to it and new haulers go straight there. */
+    val rushing: Boolean = false,
 ) {
     fun withPhase(phase: Phase): Plan = copy(phase = phase)
     fun withChain(chain: Chain): Plan = copy(chains = chains.filterNot { it.id == chain.id } + chain)

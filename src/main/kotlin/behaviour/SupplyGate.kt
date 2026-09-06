@@ -57,11 +57,21 @@ suspend fun BehaviourScope.supplyGate() {
             shared.constructionBill = construction.materials
             if (shared.plan.phase == plan.Phase.ESCAPE && !construction.isComplete) {
                 val remaining = knowledge.Strategy.remainingCost(construction.materials, snapshot())
-                val haulers = shared.plan.goals.fleet.firstOrNull { it.type == model.ship.ShipType.SHIP_LIGHT_HAULER }?.count ?: 0
-                if (remaining != null && haulers < knowledge.Strategy.RUSH_HAULERS && knowledge.Strategy.gateRush(agent().credits, remaining)) {
-                    status(detail = "finishing costs about ${Intentions.format(remaining)} against ${Intentions.format(agent().credits)}: rushing with ${knowledge.Strategy.RUSH_HAULERS} haulers")
-                    shared.editPlan("gate rush: ${knowledge.Strategy.RUSH_HAULERS} haulers") { p ->
-                        p.withGoal(plan.FleetGoal(model.ship.ShipType.SHIP_LIGHT_HAULER, knowledge.Strategy.RUSH_HAULERS, reserve = knowledge.Strategy.POST_GATE_RESERVE))
+                if (remaining != null && !shared.plan.rushing && knowledge.Strategy.gateRush(agent().credits, remaining)) {
+                    status(detail = "finishing costs about ${Intentions.format(remaining)} against ${Intentions.format(agent().credits)}: the rush is on, traders come to the gate")
+                    val snap = snapshot()
+                    shared.editPlan("gate rush") { p ->
+                        // Every trading hauler up to the rush size joins the gate; the goal makes sure there are that many.
+                        var next = p.copy(rushing = true).withGoal(plan.FleetGoal(model.ship.ShipType.SHIP_LIGHT_HAULER, maxOf(knowledge.Strategy.RUSH_HAULERS, p.goals.fleet.firstOrNull { it.type == model.ship.ShipType.SHIP_LIGHT_HAULER }?.count ?: 0), reserve = knowledge.Strategy.POST_GATE_RESERVE))
+                        var onGate = next.assignments.count { it.behaviour == "supplyGate" }
+                        next.assignments.filter { it.behaviour == "trade" }.forEach { a ->
+                            val hauler = snap.ships[a.ship]
+                            if (onGate < knowledge.Strategy.RUSH_HAULERS && hauler != null && hauler.cargo.capacity >= 60) {
+                                next = next.with(plan.Assignment(a.ship, "supplyGate", mapOf("site" to site, "reserve" to knowledge.Strategy.POST_GATE_RESERVE.toString())))
+                                onGate++
+                            }
+                        }
+                        next
                     }
                 }
             }

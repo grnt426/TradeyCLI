@@ -124,7 +124,10 @@ object Mining {
         val markets = snapshot.marketsIn(system)
         val capacity = ship.cargo.capacity.takeIf { it > 0 } ?: return emptyList()
         val observed = observe(snapshot.extractions, now)
-        val candidates = (if (ship.canMine) snapshot.asteroidsIn(system) else emptyList()) + (if (ship.canSiphon) snapshot.gasGiantsIn(system) else emptyList())
+        val here = snapshot.waypoints[ship.nav.waypointSymbol]
+        val candidates = ((if (ship.canMine) snapshot.asteroidsIn(system) else emptyList()) + (if (ship.canSiphon) snapshot.gasGiantsIn(system) else emptyList()))
+            // Reachable from where the ship stands on a full tank; the first leg is not part of the cycle but it has to be flown.
+            .filter { rock -> !ship.usesFuel || here == null || Travel.fuelCost(Travel.distance(here.x, here.y, rock.x, rock.y), FlightMode.CRUISE) <= ship.fuel.capacity }
 
         return candidates.flatMap { asteroid ->
             val mix = if (asteroid.isSiphonable) Deposits.gasGiant else Deposits.yieldMix(asteroid.traitSymbols)
