@@ -16,13 +16,15 @@ class ParamSpec(val name: String, val description: String, val required: Boolean
 
 /** Every behaviour the plan may name. */
 object Behaviours {
-    val all: Map<String, BehaviourSpec> = listOf(probeMarketsSpec, mineAndSellSpec, tradeSpec, expandSpec, runContractSpec, feedSpec, supplyGateSpec, chartSystemSpec, exploreSpec).associateBy { it.name }
+    val all: Map<String, BehaviourSpec> = listOf(probeMarketsSpec, mineAndSellSpec, tradeSpec, expandSpec, runContractSpec, feedSpec, supplyGateSpec, chartSystemSpec, exploreSpec, surveySpec).associateBy { it.name }
 
     fun get(name: String): BehaviourSpec? = all[name]
 
     /** What a ship does when nobody says: probes read prices, ships with a real hold trade, small miners mine. */
     fun defaultFor(ship: Ship): String? = when {
         !ship.usesFuel -> "probeMarkets"
+        // A surveyor drone has the mount and no hold: its job is the rounds.
+        ship.canSurvey && ship.cargo.capacity == 0 -> "survey"
         ship.cargo.capacity >= 30 -> "trade"
         ship.canMine || ship.canSiphon -> "mineAndSell"
         else -> null

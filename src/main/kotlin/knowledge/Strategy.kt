@@ -94,6 +94,7 @@ object Strategy {
     fun goals(phase: Phase): Goals = when (phase) {
         // Light shuttles are a trap: a small hold, no faster, less fuel, not much cheaper. Haulers, and drones for ore.
         Phase.ESCAPE -> Goals(fleet = listOf(
+            FleetGoal(ShipType.SHIP_SURVEYOR, 2, reserve = 100_000),
             FleetGoal(ShipType.SHIP_LIGHT_HAULER, 3, reserve = 200_000),
             FleetGoal(ShipType.SHIP_MINING_DRONE, 2, reserve = 150_000),
         ))

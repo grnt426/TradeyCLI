@@ -154,7 +154,11 @@ object Mining {
                 }
                 if (prices.isEmpty()) return@mapNotNull null
                 val tradedShare = prices.keys.sumOf { mix.getValue(it) }
-                val valuePerExtractedUnit = prices.entries.sumOf { (good, price) -> mix.getValue(good) * price * weights.getValue(good) }
+                val mixValue = prices.entries.sumOf { (good, price) -> mix.getValue(good) * price * weights.getValue(good) }
+                // A fresh survey says what the rock holds now; extracting with it pays [Surveys.YIELD_BONUS] more of that.
+                val surveyed = snapshot.validSurveysFor(asteroid.symbol, now).maxOfOrNull { s -> s.goods.sumOf { g -> s.chanceOf(g) * (prices[g] ?: 0) * (weights[g] ?: 0.0) } * Surveys.YIELD_BONUS }
+                val valuePerExtractedUnit = maxOf(mixValue, surveyed ?: 0.0)
+                if (surveyed != null && surveyed > mixValue) healthNotes += "surveyed: ${"%.0f".format(surveyed)}/unit"
                 val valuePerUnit = valuePerExtractedUnit / tradedShare
                 val distance = Travel.distance(asteroid.x, asteroid.y, marketWaypoint.x, marketWaypoint.y)
                 val extracts = ceil(capacity / (yieldPerExtract * tradedShare)).toLong()

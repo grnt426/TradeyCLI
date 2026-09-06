@@ -113,7 +113,7 @@ private suspend fun BehaviourScope.extractUntilFull(plan: MiningPlan, useSurveys
     var extracted = 0
     val wanted = plan.prices.keys
     while (!me.cargoFull) {
-        var survey = if (useSurveys && me.canSurvey && !plan.asteroid.isSiphonable) Surveys.pick(surveysFor(plan.asteroid.symbol), plan) else null
+        var survey = if (useSurveys && !plan.asteroid.isSiphonable) Surveys.pick(surveysFor(plan.asteroid.symbol), plan) else null
         if (survey == null && useSurveys && me.canSurvey && !plan.asteroid.isSiphonable && surveysFor(plan.asteroid.symbol).isEmpty()) {
             status(detail = "surveying")
             survey(ship)
