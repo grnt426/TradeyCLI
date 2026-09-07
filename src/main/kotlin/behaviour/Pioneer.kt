@@ -75,14 +75,18 @@ suspend fun BehaviourScope.pioneer() {
             status(detail = "${more.size} new gate(s) beyond $system; frontier ${shared.plan.frontier.size}")
         }
         // Rush: the kit, bought here if there is a yard, else for here at a neighbour's yard while this probe charts.
-        val yard = Tour.nearest(this.here, snapshot().waypointsIn(system).filter { it.hasShipyard })
+        // An uncharted waypoint hides its traits, so a yard shows only once charted: chart first, then look again
+        // (X1-ZK21 read "no shipyard" on 2026-09-07 with a yard at XZ2E the public listing knew about).
         val goals = listOf(FleetGoal(ShipType.SHIP_PROBE, 2, reserve = Strategy.GALAXY_RESERVE, system = system), FleetGoal(ShipType.SHIP_LIGHT_HAULER, 1, reserve = Strategy.GALAXY_RESERVE, system = system))
         shared.editPlan("rush kit for $system") { p -> goals.fold(p) { acc, g -> acc.withGoal(g) } }
+        var yard = Tour.nearest(this.here, snapshot().waypointsIn(system).filter { it.hasShipyard })
         if (yard == null) {
-            shared.editPlan("$system has no yard") { p -> p.withSystem(p.system(system)!!.copy(stage = Stage.RUSH, yard = null, note = "no shipyard; kit bought at a neighbour")) }
-            status(detail = "$system has no shipyard; charting it now while the kit comes from a neighbour")
+            shared.editPlan("$system has no yard yet") { p -> p.withSystem(p.system(system)!!.copy(stage = Stage.RUSH, yard = null, note = "no shipyard seen before charting; kit bought at a neighbour")) }
+            status(detail = "$system shows no shipyard before charting; charting it now")
             phase("chart", system) { chartSystem() }
-            continue
+            yard = Tour.nearest(this.here, snapshot().waypointsIn(system).filter { it.hasShipyard })
+            if (yard == null) continue
+            status(detail = "charting revealed a shipyard at ${yard.symbol}; buying the kit there")
         }
         phase("travel to yard", yard.symbol) { travelTo(yard.symbol) }
         phase("rush", "buying the kit at ${yard.symbol}") {
