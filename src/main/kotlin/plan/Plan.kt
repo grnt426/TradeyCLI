@@ -32,6 +32,8 @@ data class Plan(
     fun system(symbol: String): SystemRecord? = systems[symbol]
     fun withFrontier(gates: List<FrontierGate>): Plan = copy(frontier = (frontier + gates).distinctBy { it.gate }.filter { it.gate.substringBeforeLast('-') !in systems })
     fun withoutFrontier(gate: String): Plan = copy(frontier = frontier.filterNot { it.gate == gate })
+    /** The pioneer heading for [gate]; null releases it. Kept in the plan so a restart does not send two probes through one gate. */
+    fun withFrontierClaim(gate: String, ship: String?): Plan = copy(frontier = frontier.map { if (it.gate == gate) it.copy(claimedBy = ship) else it })
     fun withChain(chain: Chain): Plan = copy(chains = chains.filterNot { it.id == chain.id } + chain)
     fun withoutChain(id: String): Plan = copy(chains = chains.filterNot { it.id == id })
     fun chain(id: String): Chain? = chains.firstOrNull { it.id == id }
@@ -153,6 +155,6 @@ data class SystemRecord(
 
 /** A gate we know of and have not entered, and the system whose gate leads to it. */
 @Serializable
-data class FrontierGate(val gate: String, val via: String) {
+data class FrontierGate(val gate: String, val via: String, val claimedBy: String? = null) {
     val system: String get() = gate.substringBeforeLast('-')
 }

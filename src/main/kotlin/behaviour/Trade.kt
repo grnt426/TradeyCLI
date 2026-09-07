@@ -48,6 +48,9 @@ suspend fun BehaviourScope.trade() {
                 val taken = shared.plan.assignments.filter { it.ship != ship }.mapNotNull { it.params["system"]?.uppercase() }.toSet()
                 val alternative = reachableNeighbours(me.nav.systemSymbol).filter { it != wanted }.sortedBy { if (it in taken) 1 else 0 }.firstOrNull { goToSystem(it) }
                 status(detail = if (alternative != null) "$wanted is unreachable; trading in $alternative instead" else "$wanted is unreachable and so is every other neighbour; trading here")
+                // The choice sticks: A and B bounced four jumps back toward the system they could not reach once a route appeared (2026-09-07).
+                val settled = alternative ?: me.nav.systemSymbol
+                shared.editPlan("$ship trades in $settled instead of $wanted") { p -> p.assignmentFor(ship)?.let { a -> p.with(a.copy(params = a.params + ("system" to settled))) } ?: p }
             }
         }
     }

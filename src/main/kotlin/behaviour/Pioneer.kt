@@ -39,7 +39,7 @@ suspend fun BehaviourScope.pioneer() {
         // take a gate that opened from home, two jumps back).
         val hereGate = snapshot().waypointsIn(here).firstOrNull { it.type == WaypointType.JUMP_GATE }?.symbol
         val entry = plan.frontier
-            .filter { it.gate !in shared.unreachableGates && !shared.claimedByOther(it.gate, ship) }
+            .filter { it.gate !in shared.unreachableGates && !shared.claimedByOther(it.gate, ship) && (it.claimedBy == null || it.claimedBy == ship) }
             .filter { it.via == here || (hereGate != null && knowledge.GateGraph.route(shared.gates, hereGate, it.via, shared.unreachableGates) != null) }
             .sortedBy { if (it.via == here) 0 else 1 }
             .firstOrNull()
@@ -51,7 +51,8 @@ suspend fun BehaviourScope.pioneer() {
             continue
         }
         shared.claim(ship, entry.gate)
-        if (here != entry.via && !goToSystem(entry.via)) { shared.release(ship); continue }
+        shared.editPlan("$ship takes ${entry.gate}") { it.withFrontierClaim(entry.gate, ship) }
+        if (here != entry.via && !goToSystem(entry.via)) { shared.release(ship); shared.editPlan("$ship gives up ${entry.gate}") { it.withFrontierClaim(entry.gate, null) }; continue }
         val fromGate = snapshot().waypointsIn(me.nav.systemSymbol).firstOrNull { it.type == WaypointType.JUMP_GATE } ?: throw BehaviourFailure("${me.nav.systemSymbol} has no gate")
         phase("travel to gate", fromGate.symbol) { travelTo(fromGate.symbol) }
         val arrived = phase("jump", "to ${entry.gate}") {
