@@ -589,23 +589,35 @@ object Strategy {
         fun uncharted(system: String) = snapshot.waypointsIn(system).count { it.hasTrait(model.WaypointTraitSymbol.UNCHARTED) }
         fun target(a: Assignment) = a.params["system"] ?: snapshot.ships[a.ship]?.nav?.systemSymbol
         val charting = plan.assignments.filter { it.behaviour == "chartSystem" && snapshot.ships[it.ship]?.usesFuel == false }
-        val boundTo = charting.groupBy { target(it) }
         // A system whose waypoints we have not loaded is not done, only unread.
         fun done(system: String) = snapshot.waypointsIn(system).isNotEmpty() && uncharted(system) == 0
-        val spare = charting.firstOrNull { a ->
-            val t = target(a) ?: return@firstOrNull true
-            done(t) || (boundTo[t]?.indexOf(a) ?: 0) >= PROBES_PER_CHART
-        } ?: return plan
-        val need = plan.systems.keys
-            .filter { uncharted(it) > 0 && (boundTo[it]?.size ?: 0) < PROBES_PER_CHART }
-            .maxByOrNull { uncharted(it) }
-        val pioneers = plan.assignments.count { it.behaviour == "pioneer" }
-        return when {
-            need != null -> plan.with(Assignment(spare.ship, "chartSystem", mapOf("system" to need)))
-            pioneers < pioneerRoom(plan) -> plan.with(Assignment(spare.ship, "pioneer"))
-            else -> plan.with(Assignment(spare.ship, "probeMarkets", mapOf("maxAge" to "10")))
+        // Idle watchers beyond one per system are spare too: a probe that finished charting sits reading prices.
+        val watching = plan.assignments.filter { it.behaviour == "probeMarkets" && it.params["markets"] == null && snapshot.ships[it.ship]?.usesFuel == false }
+            .groupBy { snapshot.ships[it.ship]?.nav?.systemSymbol }.values.flatMap { it.sortedWith(compareBy({ it.ship.length }, { it.ship })).drop(SETTLE_PROBES) }
+        var next = plan
+        var moves = 0
+        while (moves < PROBE_MOVES_PER_TICK) {
+            val bound = next.assignments.filter { it.behaviour == "chartSystem" }.groupBy { target(it) }
+            val spare = charting.firstOrNull { a ->
+                next.assignmentFor(a.ship) == a && (target(a)?.let { t -> done(t) || (bound[t]?.indexOf(a) ?: 0) >= PROBES_PER_CHART } ?: true)
+            } ?: watching.firstOrNull { next.assignmentFor(it.ship) == it } ?: break
+            val need = next.systems.keys
+                .filter { uncharted(it) > 0 && (bound[it]?.size ?: 0) < PROBES_PER_CHART }
+                .maxByOrNull { uncharted(it) }
+            val pioneers = next.assignments.count { it.behaviour == "pioneer" }
+            next = when {
+                need != null -> next.with(Assignment(spare.ship, "chartSystem", mapOf("system" to need)))
+                pioneers < pioneerRoom(next) -> next.with(Assignment(spare.ship, "pioneer"))
+                spare.behaviour == "probeMarkets" -> break // already watching, nowhere better to be
+                else -> next.with(Assignment(spare.ship, "probeMarkets", mapOf("maxAge" to "10")))
+            }
+            moves++
         }
+        return next
     }
+
+    /** Spare probes re-sent per tick: 33 sat on one system on 2026-09-07, and one a minute was too slow. */
+    const val PROBE_MOVES_PER_TICK = 5
 
     fun describe(phase: Phase): String = when (phase) {
         Phase.ESCAPE -> "ESCAPE: market health first; profits fund the logistics that keep producers fed and the gate supplied"

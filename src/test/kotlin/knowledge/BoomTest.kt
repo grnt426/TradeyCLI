@@ -80,10 +80,9 @@ class BoomTest {
         )
         val once = Strategy.spreadProbes(crowded, uncharted)
         val moved = once.assignments.filter { it.params["system"] == "X1-TH77" }
-        assertEquals(1, moved.size, "one probe per tick leaves the crowd for the system with charts left: ${once.assignments.map { it.params }}")
-        assertEquals("P-5", moved.single().ship, "the fifth probe on MF53 is the first spare")
-        val settled = Strategy.spreadProbes(Strategy.spreadProbes(once, uncharted), uncharted)
-        assertEquals(4, settled.assignments.count { it.params["system"] == "X1-MF53" }, "four stay charting MF53")
+        assertEquals(listOf("P-5", "P-6"), moved.map { it.ship }.sorted(), "the fifth and sixth probes on MF53 are spare and go where charts remain: ${once.assignments.map { it.params }}")
+        assertEquals(4, once.assignments.count { it.params["system"] == "X1-MF53" }, "four stay charting MF53")
+        assertEquals(once, Strategy.spreadProbes(once, uncharted), "settled")
     }
 
     @Test
