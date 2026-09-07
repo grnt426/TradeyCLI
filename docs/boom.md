@@ -79,6 +79,14 @@ in it, so a kit bought at home is not bought again while it jumps out (33 probes
 chart target done or a fifth probe on one system, move to the known system with the most charts
 left (`PROBES_PER_CHART` 4 per system), else pioneer, else watch prices where they stand.
 
+**The request budget.** The API allows about 2.5 requests a second for the whole account, shared with
+the bridge and any command-line query. On 2026-09-07 with 82 ships the run made 9,700 requests an
+hour and 1,900 were refused: 5,800 were chart calls retrying waypoints another agent had charted
+first, because our cached waypoint still said UNCHARTED. The order of worth when the budget is
+short: charts and jumps (the boom's income), then trades, then market and yard reads. A refused
+chart now clears the waypoint with one read; a gate already in the map is not re-read; boom
+watchers re-read every thirty minutes; the `request_log` table says where the budget went.
+
 **Growth.** The probe goal follows the frontier: a watcher plus one pioneer per open gate, up to
 `MAX_PIONEERS` (8), and probes are bought unpaced (only ships at `PACED_PURCHASE_PRICE` or more
 wait ten minutes between purchases). Every gate a pioneer finds is another probe bought at the

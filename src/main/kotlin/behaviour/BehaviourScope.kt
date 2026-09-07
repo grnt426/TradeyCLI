@@ -251,6 +251,9 @@ class SharedState {
     /** Gates a jump was refused to because they are still under construction (API 4262): both ends must be built. */
     val unreachableGates: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
 
+    /** Waypoints the API refused to chart because another agent got there first: never offered to a chart probe again. */
+    val chartedElsewhere: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     /** The gate network as read so far: gate waypoint -> its connections, for [knowledge.GateGraph] routes across several jumps. */
     val gates = ConcurrentHashMap<String, List<String>>()
 

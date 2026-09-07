@@ -19,7 +19,8 @@ suspend fun BehaviourScope.goToSystem(system: String): Boolean {
         ?: throw BehaviourFailure("$from has no jump gate to reach $system through")
     // A neighbour is one jump; anything else is a route over the gates our ships have read, hop by hop.
     val path = phase("find the way", "to $system") {
-        readGate(gate.symbol)
+        // A gate already in the map is not re-read: every migration read its local gate (430 reads an hour on 2026-09-07).
+        if (shared.gates[gate.symbol] == null) readGate(gate.symbol)
         knowledge.GateGraph.route(shared.gates, gate.symbol, system, shared.unreachableGates)
     }
     if (path == null) { status(detail = "no known route from ${gate.symbol} to $system"); return false }

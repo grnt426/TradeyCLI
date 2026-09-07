@@ -27,7 +27,7 @@ suspend fun BehaviourScope.chartSystem() {
     var earned = 0L
     while (true) {
         val snap = snapshot()
-        val candidates = snap.waypointsIn(system).filter { it.hasTrait(WaypointTraitSymbol.UNCHARTED) && !shared.claimedByOther(it.symbol, ship) }
+        val candidates = snap.waypointsIn(system).filter { it.hasTrait(WaypointTraitSymbol.UNCHARTED) && !shared.claimedByOther(it.symbol, ship) && it.symbol !in shared.chartedElsewhere }
         val next = Tour.nearest(here, candidates) ?: break
         shared.claim(ship, next.symbol)
         phase("travel", "to ${next.symbol} (${distanceTo(next.symbol).toInt()} away)") { travelTo(next.symbol) }
@@ -37,11 +37,16 @@ suspend fun BehaviourScope.chartSystem() {
                 charted++
                 earned += reward
                 status(detail = "charted ${next.symbol} for ${Intentions.format(reward)}; $charted so far, ${Intentions.format(earned)} earned")
-                val now = verbs.waypoint(next.symbol)
+                // The chart response carries the waypoint with its traits; no second read needed.
+                val now = snapshot().waypoints[next.symbol] ?: return@phase
                 if (now.hasMarket) refreshMarket(next.symbol)
                 if (now.hasShipyard) refreshShipyard(next.symbol)
             } catch (e: VerbFailure.Api) {
                 status(detail = "${next.symbol} could not be charted: ${e.error.apiMessage}")
+                // Someone else charted it first and our cached waypoint still says UNCHARTED: one read clears the
+                // trait, or the probe retries the same 400 forever (5,800 an hour on 2026-09-07, most of the API budget).
+                runCatching { verbs.waypoint(next.symbol) }
+                shared.chartedElsewhere += next.symbol
             }
         }
     }
