@@ -76,6 +76,11 @@ class MarketHealthBehaviourTest {
         val blind = Plan(listOf(Assignment(Fixtures.COMMAND_SHIP, "supplyGate", mapOf("site" to "X1-TH77-I54", "reserve" to "50000", "only" to "FAB_MATS", "nurse" to "off"))))
         val blindReport = SimRun(seed, blind, hours = 3).run()
         assertTrue(blindReport.trace.events.filterIsInstance<Event.Supplied>().any { it.good == "FAB_MATS" }, "nurse off buys regardless")
+
+        // The final push: with FINAL_PUSH_UNITS or fewer left on the bill, nursing is off whatever the assignment says.
+        val push = SimRun(seed, plan, hours = 3, rules = sim.SimRules(constructionBill = mapOf(TradeSymbol.FAB_MATS to 80L))).run()
+        assertTrue(push.failures.isEmpty(), push.failures.toString())
+        assertTrue(push.trace.events.filterIsInstance<Event.Supplied>().any { it.good == "FAB_MATS" }, "the last 80 units are bought from a LIMITED producer: ${push.trace.phaseNames(Fixtures.COMMAND_SHIP).distinct()}")
     }
 
     @Test

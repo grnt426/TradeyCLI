@@ -33,6 +33,11 @@ escape tick promotes the first trading hauler by symbol to `supplyGate`, one per
 producer whose export is GROWING or STRONG is taken from rather than fed first (`takeWhenGrowing`),
 and nursing, feeding and gardening stop at an import that reads `feedUntil` (HIGH).
 
+**The final push.** With `FINAL_PUSH_UNITS` (100) or fewer left on the whole bill, the gate haulers
+buy regardless of the producers' health: no take budget, no nursing, no feeding first. A drained
+producer recovers in hours, and by the time another gate needs its parts the boom has the whole
+galaxy to buy them in.
+
 **Boom readiness.** With `READY_HOURS` (1) of hauling left at the last two hours' delivery rate,
 the escape tick raises the probe goal to a watcher plus `PIONEERS` and sends every probe but the
 buyer to wait at the gate, reading its market. When the last unit lands and the phase turns, the

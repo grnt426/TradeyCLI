@@ -51,7 +51,7 @@ suspend fun BehaviourScope.supplyGate() {
     // A share-based reserve moves with the bank: the network never draws below that share of what the empire has.
     suspend fun currentReserve(): Long = maxOf(fixedReserve, reserveShare?.let { (agent().credits * it).toLong() } ?: 0L)
     val only = param("only")?.uppercase()?.let { TradeSymbol.valueOf(it) }
-    val nurse = param("nurse") != "off"
+    val nurseWanted = param("nurse") != "off"
     val rules = knowledge.Strategy.market(shared.plan.phase)
     setChain(ship, "gate:$site")
     try {
@@ -95,6 +95,10 @@ suspend fun BehaviourScope.supplyGate() {
             if (carried == null) {
                 val reserve = currentReserve()
                 val spendable = agent().credits - reserve
+                // The final push (Strategy.FINAL_PUSH_UNITS): the last units are bought whatever the producers read.
+                val finalPush = construction.outstanding.sumOf { (it.required - it.fulfilled).coerceAtLeast(0) } <= knowledge.Strategy.FINAL_PUSH_UNITS
+                val nurse = nurseWanted && !finalPush
+                if (finalPush && nurseWanted) status(detail = "final push: ${construction.outstanding.sumOf { it.required - it.fulfilled }} units left; buying regardless of health")
                 val wanted = construction.outstanding
                     .filter { only == null || it.tradeSymbol == only }
                     .sortedByDescending { (it.required - it.fulfilled).toDouble() / it.required }
@@ -158,7 +162,7 @@ suspend fun BehaviourScope.supplyGate() {
                         continue
                     }
                     // Every producer is short or its rate is spent: bring the shortest one what it lacks, two levels deep.
-                    val leg = picks.firstNotNullOfOrNull { p -> snapshot().markets[p.market]?.let { producer -> nurseLeg(producer, p.material, spendable, rules)?.let { producer to it } } }
+                    val leg = if (nurse) picks.firstNotNullOfOrNull { p -> snapshot().markets[p.market]?.let { producer -> nurseLeg(producer, p.material, spendable, rules)?.let { producer to it } } } else null
                     if (leg != null) { nurse(leg.first, leg.second); continue }
                     // Nothing to haul and nothing to feed: earn a load meanwhile rather than park; the rate refills while we are away.
                     val why = picks.joinToString("; ") { p -> "${p.material} at ${p.market} is ${p.listing?.let { MarketHealth.explain(it, rules) } ?: "unread"}" + (if (p.units in 1 until (me.cargo.capacity * rules.minHaulShare).toInt()) " (only ${p.units} this hour)" else "") }

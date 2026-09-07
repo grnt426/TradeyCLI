@@ -128,6 +128,14 @@ object Strategy {
     /** With this much hauling left on the gate at the current rate, the boom's probes are bought and sent to wait at the gate. */
     const val READY_HOURS = 1.0
 
+    /**
+     * The final push: with this many units or fewer left on the whole bill, the gate haulers buy
+     * regardless of the producers' health, no take budget, no nursing. A drained producer recovers
+     * in hours and the boom has the whole galaxy; a gate held open for market health at the end
+     * costs more than the price spike. Grant's call on 2026-09-07 with 92 FAB_MATS to go.
+     */
+    const val FINAL_PUSH_UNITS = 100L
+
     /** Units delivered to the home site per hour over the last two hours, from the gate-tagged purchases. */
     fun gateRate(snapshot: Snapshot, now: java.time.Instant): Double {
         val home = snapshot.hqSystem ?: return 0.0
