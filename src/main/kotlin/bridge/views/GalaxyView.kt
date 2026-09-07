@@ -219,8 +219,11 @@ class GalaxyMap(private val model: () -> BridgeModel) : Widget() {
         val homes = HashMap<String, MutableList<String>>()
         val board = m.galaxy.status()?.leaderboards?.mostCredits?.map { it.agentSymbol } ?: emptyList()
         for ((symbol, agent) in m.galaxy.agents) homes.getOrPut(OrbitalNames.getSectorSystem(agent.headquarters)) { ArrayList() }.add(symbol)
-        // Gate connections first, under the stars: the home's in the accent, the rest dim.
+        // Gate connections first, under the stars: the home's in the accent once our gate is open,
+        // amber while it is under construction (the network is charted, not yet ours to use), the rest dim.
         val lookup = m.galaxy.systems()
+        val homeGate = home?.let { hs -> snap.waypointsIn(hs).firstOrNull { it.type == WaypointType.JUMP_GATE } }
+        val homeOpen = homeGate != null && !homeGate.isUnderConstruction
         val dots = DotCanvas(w, h, m.dots)
         for ((from, tos) in m.galaxy.connections) {
             val a = lookup[from] ?: continue
@@ -237,7 +240,8 @@ class GalaxyMap(private val model: () -> BridgeModel) : Widget() {
                 val touchesSelected = from == selected || to == selected
                 val colour = when {
                     touchesSelected -> Palette.textBright
-                    touchesHome -> Palette.accent.mix(Palette.background, 0.3)
+                    touchesHome && homeOpen -> Palette.accent.mix(Palette.background, 0.3)
+                    touchesHome -> Palette.warn.mix(Palette.background, 0.4)
                     else -> Palette.border.mix(Palette.background, 0.35)
                 }
                 dots.line((ax * m.dots.dotsX).roundToInt(), (ay * m.dots.dotsY).roundToInt(), (bx * m.dots.dotsX).roundToInt(), (by * m.dots.dotsY).roundToInt(), colour)
@@ -289,8 +293,13 @@ class GalaxyMap(private val model: () -> BridgeModel) : Widget() {
                 (if (snap.waypointsIn(sel.symbol).isNotEmpty()) " · Enter opens" else "")
             p.text(1, 0, card.take(w - 2), Palette.text)
         }
-        val idle = "idle lane: ${m.galaxy.galaxyRequests()} req for the galaxy, ${m.galaxy.rankRequests()} to rank, ${m.galaxy.gatesMapped} gates read"
-        val hint = if (focused) "arrows pan · +/- zoom · f fit · R re-rank now · $idle" else "click to focus · $idle"
+        val gateNote = when {
+            homeGate == null -> "no gate at home"
+            homeOpen -> "home gate open: accent links are ours to jump"
+            else -> "home gate unfinished: links are the charted network, not ours yet"
+        }
+        val gates = "${m.galaxy.gatesMapped} gates read" + (if (m.galaxy.gatesUnreadable > 0) ", ${m.galaxy.gatesUnreadable} uncharted" else "")
+        val hint = if (focused) "arrows · +/- · f fit · R re-rank · $gateNote · $gates" else "click to focus · $gateNote · $gates"
         p.text(1, h - 1, hint.take(w - 2), Palette.textDim)
     }
 

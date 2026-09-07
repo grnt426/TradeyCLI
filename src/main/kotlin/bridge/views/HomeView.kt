@@ -21,6 +21,7 @@ import bridge.scene.Feed
 import bridge.scene.Line
 import bridge.scene.Table
 import bridge.scene.TextBlock
+import bridge.GateChain
 import model.BootProgress
 import model.ship.Ship
 import model.ship.ShipNavStatus
@@ -51,6 +52,7 @@ class HomeView : WidgetView() {
             Table.Column("fuel", 7, alignRight = true),
             Table.Column("hold", 7, alignRight = true),
             Table.Column("idle", 5, alignRight = true),
+            Table.Column("drift", 5, alignRight = true),
         ),
         onSelect = { row -> selectedShip = row?.key; model?.selectedShip = row?.key },
         onActivate = { model?.navigateTo("Ship") },
@@ -66,6 +68,7 @@ class HomeView : WidgetView() {
             Table.Column("oldest", 6, alignRight = true),
         ),
     )
+    private val chain = TextBlock(lines = { listOf(GateChain.summaryLine(snap(), model!!)) })
     private val feed = Feed(lines = { model?.feed() ?: emptyList() }, now = { now() })
     private val progress = TextBlock(lines = { progressLines() })
     private val credits = CreditsChart(history = { snap().creditsHistory }, now = { now() }, dots = { model!!.dots })
@@ -95,7 +98,10 @@ class HomeView : WidgetView() {
             place(progress, p.panel(progressRect, "Phase · $phase"), t)
             place(credits, p.panel(creditsRect, "Credits", hint = "last hours, then the trend"), t)
             healthRows(snap, now)
-            place(health, p.panel(healthRect, "Market health", focus === health), t)
+            val healthPanel = p.panel(healthRect, "Market health", focus === health, hint = "gate chain detail on Economy")
+            val (systemsRect, chainRect) = healthPanel.bounds.rows(Len.weight(), Len.fixed(1))
+            place(health, healthPanel.sub(systemsRect), t)
+            place(chain, healthPanel.sub(chainRect), t)
         }
 
         val sideWidth = (p.width / 3).coerceIn(38, 56)
@@ -151,9 +157,15 @@ class HomeView : WidgetView() {
         // Summary names ships by their number; the table keys on the full symbol.
         val bySuffix = snap.ships.values.associateBy { it.symbol.substringAfterLast('-') }
         val idleByShip = Idle.perShip(snap.phases, now).associateBy { it.ship }
+        val timeByShip = Idle.time(snap.activities, snap.phases, now).associateBy { it.ship }
         fleet.setRows(Summary.fleet(snap, now).map { r ->
             val ship = bySuffix[r.ship]
             val share = ship?.let { idleByShip[it.symbol]?.share }
+            // Drift as a share of time spent moving; blank for a ship that has not moved, such as a probe parked on a market.
+            val drift = ship?.let { timeByShip[it.symbol] }?.let { tm ->
+                val moving = tm.hours("cruise") + tm.hours("burn") + tm.hours("drift")
+                if (moving < 0.05) null else tm.hours("drift") / moving
+            }
             Table.Row(
                 key = ship?.symbol ?: r.ship,
                 cells = listOf(
@@ -162,8 +174,9 @@ class HomeView : WidgetView() {
                     ship?.let { if (it.fuel.capacity > 0) "${it.fuel.current}/${it.fuel.capacity}" else "-" } ?: "",
                     ship?.let { "${it.cargo.units}/${it.cargo.capacity}" } ?: "",
                     share?.let { "${(it * 100).toInt()}%" } ?: "",
+                    drift?.let { "${(it * 100).toInt()}%" } ?: "",
                 ),
-                tone = if (share != null && share > 0.5) Palette.warn else tone(r.tone),
+                tone = if ((share != null && share > 0.5) || (drift != null && drift > 0.3)) Palette.warn else tone(r.tone),
             )
         })
     }
@@ -204,6 +217,12 @@ class HomeView : WidgetView() {
         val ships = Idle.perShip(snap.phases, now)
         if (ships.isEmpty()) return emptyList()
         val lines = mutableListOf(Line("fleet idle ${(Idle.fleetShare(ships) * 100).toInt()}% of recorded time", Palette.textBright, bold = true))
+        val times = Idle.time(snap.activities, snap.phases, now)
+        val moving = times.sumOf { it.hours("cruise") + it.hours("burn") + it.hours("drift") }
+        if (moving > 0.05) {
+            val drift = times.sumOf { it.hours("drift") } / moving
+            lines += Line("fleet drifted ${(drift * 100).toInt()}% of its ${"%.1f".format(moving)} h under way", if (drift > 0.3) Palette.warn else Palette.textDim)
+        }
         Idle.perBehaviour(snap.phases, now).entries
             .map { (b, t) -> Triple(b, t.first, t.second) }
             .filter { (_, busy, idle) -> (busy + idle).seconds > 0 }

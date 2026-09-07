@@ -5,15 +5,28 @@
             <PatternLayout pattern="%C{1}.%M %m %ex%n"/>
         </Console>
 
-        <File name="FileLogger" fileName="log.txt" immediateFlush="true">
+        <!--
+          log.txt rolls at 100 MB into log-1.txt .. log-4.txt, the oldest deleted, so the log never
+          holds more than 500 MB. The console reads the tail of log.txt, which is always the current file.
+        -->
+        <RollingFile name="FileLogger" fileName="log.txt" filePattern="log-%i.txt" immediateFlush="true">
             <PatternLayout>
                 <pattern>%d %p %C{1.} [%t] %m%n</pattern>
             </PatternLayout>
-        </File>
+            <Policies>
+                <SizeBasedTriggeringPolicy size="100 MB"/>
+            </Policies>
+            <DefaultRolloverStrategy max="4" fileIndex="min"/>
+        </RollingFile>
     </Appenders>
 
     <Loggers>
-        <Root level="all">
+        <!-- The libraries' traces are what made an 8 GB log; our own packages stay at debug. -->
+        <Logger name="io.ktor" level="warn"/>
+        <Logger name="org.sqlite" level="warn"/>
+        <Logger name="Exposed" level="warn"/>
+        <Logger name="org.jetbrains.exposed" level="warn"/>
+        <Root level="debug">
             <AppenderRef ref="Console" level="error"/>
             <AppenderRef ref="FileLogger"/>
         </Root>

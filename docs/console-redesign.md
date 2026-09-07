@@ -510,3 +510,50 @@ Still assumed:
   each gate's answer naming the next systems to read, at most 120 a run, and the map draws them
   as dim lines with the home's in the accent and the selection's bright; a system's card lists
   what its gate connects to.
+- 2026-09-06, the activity log (cruise, burn, drift, extract, siphon, survey, jump per ship) reaches
+  the console where Grant wanted it: idle stays the fleet-wide metric on the bridge; drift joins it
+  as a share of time under way, blank for ships that have not moved, since a probe parked on a
+  market has nothing to drift; the idle panel adds the fleet's drift share; the ship screen's time
+  panel shows the day by kind as a coloured strip with the hours and the drift legs.
+- 2026-09-06, M6 landed: screen 8, `views/DiagnosticsView`. API: requests a minute over the last
+  hour from `request_log` (a new `AgentStore.listRequests`, which sees every process of the
+  agent), red where a minute had failures, the counters, the pacer's queue and lanes, the server's
+  market update age. Run: the lock holder and heartbeat, the plan's counts, ships unassigned or
+  assigned but not running, ships in `failed`. Console: frame rate, render time, bytes, terminal,
+  galaxy progress. Then failed and slow requests as a table, the engine's failures and warnings
+  kept apart from the feed, markets unread for three hours, ships whose status names the same
+  behaviour and waypoint ("same order"), and the WARN and ERROR lines from the tail of `log.txt`.
+  Its first frame answered the gate question: the four gates past home came back 400, so an
+  uncharted gate refuses to be read rather than answering empty. `Galaxy.mapGates` now remembers a
+  refusal for an hour instead of retrying it on every status refresh, and the galaxy screen's hint
+  counts them as uncharted.
+- 2026-09-06, `bridge.bat` opened and closed at once with nothing said. The failure message was
+  printed before the alternate screen was left, so leaving it wiped the message; it is printed
+  after now. The failure itself: the fleet drift line put a literal `%` into a string handed to
+  `format`, so `% o` was read as a directive and threw on the first frame that had any hours
+  under way, which the headless frames had not yet had. Rule from this: only ever format the
+  number, inside its own `${"%.1f".format(x)}`, never a sentence with a `%` in it.
+- 2026-09-06, the log: `log.txt` had reached 69 million lines and 8 GB because the root logger was
+  at `all` and Ktor and SQLite trace every byte. Libraries are at `warn` now, our packages at
+  `debug`, and the file rolls at 100 MB into four numbered chunks, the oldest deleted, so the log
+  holds 500 MB at most. A ring of chunks, not of lines: the cap costs the oldest hundred megabytes
+  at a time. The console's tail reader is unaffected: `log.txt` is always the current file.
+- 2026-09-06, Grant asked for the gate's chain in the market health panel. Under the systems table
+  it now lists the gate chain's health (`Summary.chainHealth`, the average listing score of every
+  good the bill still needs and its inputs down to the ores) and every producer of those goods in
+  the home system, worst first: the good, the market, supply and activity, and the inputs it is
+  starving for; bill materials carry a diamond, deeper inputs a dot; restricted producers are red,
+  starved ones amber.
+- 2026-09-06, Grant found that too much for the bridge. `bridge/GateChain` now owns the chain: the
+  bridge's market health panel carries one line, the chain's health with an arrow for its move
+  over the past hour (rising or falling past three points, flat inside them) and the move itself,
+  computed by scoring each chain listing as it stood an hour ago from the cached price history;
+  with under an hour of history it measures from the earliest reading once that is a quarter hour
+  old, and says so. The producer list moved to the economy screen beside the gate panel. Headless
+  frames with `--settle N` now repaint once a second through the settle, because a panel that
+  appears late (the bill, five seconds in) starts reads of its own that the frame must outlast.
+- 2026-09-07, Grant asked why the galaxy map shows connections while our gate is unfinished. The
+  jump-gate endpoint answers for any charted gate, ours included while under construction; the
+  400s are uncharted gates. So the walk follows other agents' charting outward and the map shows
+  the charted network, not what we can jump. The home's links are amber until our gate is open,
+  and the map's readout says which it is.

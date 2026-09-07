@@ -11,6 +11,7 @@ import bridge.tty.Input
 import bridge.tty.MordantTty
 import bridge.tty.Size
 import bridge.tty.Tty
+import bridge.views.DiagnosticsView
 import bridge.views.EconomyView
 import bridge.views.GalaxyView
 import bridge.views.HomeView
@@ -180,7 +181,12 @@ class BridgeModel(private val engine: Engine, val mode: String) {
     /** Every engine event so far, oldest first, at most [FEED_LIMIT]. */
     fun feed(): List<FeedLine> = synchronized(feedLines) { feedLines.toList() }
 
-    /** Turns the engine's events into feed lines for as long as the engine runs. */
+    /** A failure or warning the engine reported, kept for the diagnostics screen. */
+    class Problem(val at: Instant, val text: String, val severe: Boolean)
+    private val problemList = ArrayDeque<Problem>()
+    fun problems(): List<Problem> = synchronized(problemList) { problemList.toList() }
+
+    /** Turns the engine's events into feed lines for as long as the engine runs; failures are kept apart as well. */
     fun followEvents() {
         engine.scope.launch {
             engine.events.collect { e ->
@@ -189,8 +195,62 @@ class BridgeModel(private val engine: Engine, val mode: String) {
                     feedLines.addLast(FeedLine(now(), text, tone))
                     while (feedLines.size > FEED_LIMIT) feedLines.removeFirst()
                 }
+                val severe = e is engine.Event.Failure || e is engine.Event.BehaviourFailed
+                if (severe || e is engine.Event.Warning) synchronized(problemList) {
+                    problemList.addLast(Problem(now(), text, severe))
+                    while (problemList.size > 200) problemList.removeFirst()
+                }
             }
         }
+    }
+
+    fun apiStats(): api.ApiStats = engine.apiClient?.stats ?: api.ApiStats()
+    fun pacer(): api.RequestPacer = engine.pacer
+
+    private var requestLogAt = 0L
+    @Volatile private var requestLogCache: List<storage.RequestLogEntry> = emptyList()
+
+    /** The last hour of the request log, every process of this agent included, refreshed every fifteen seconds. */
+    fun requestLog(): List<storage.RequestLogEntry> {
+        val nowNanos = System.nanoTime()
+        if (nowNanos - requestLogAt > 15_000_000_000L) {
+            requestLogAt = nowNanos
+            val store = engine.store
+            if (store != null) engine.scope.launch {
+                runCatching { store.listRequests(now().minus(java.time.Duration.ofHours(1))) }.onSuccess { requestLogCache = it }
+            }
+        }
+        return requestLogCache
+    }
+
+    private var logTailAt = 0L
+    @Volatile private var logTailCache: List<String> = emptyList()
+
+    /** WARN and ERROR lines from the end of log.txt, newest first, re-read every five seconds. */
+    fun logTail(): List<String> {
+        val nowNanos = System.nanoTime()
+        if (nowNanos - logTailAt > 5_000_000_000L) {
+            logTailAt = nowNanos
+            engine.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    val file = java.io.File("log.txt")
+                    if (!file.isFile) return@runCatching emptyList<String>()
+                    java.io.RandomAccessFile(file, "r").use { raf ->
+                        val len = raf.length()
+                        val from = (len - 256_000).coerceAtLeast(0)
+                        raf.seek(from)
+                        val bytes = ByteArray((len - from).toInt())
+                        raf.readFully(bytes)
+                        String(bytes, Charsets.UTF_8).lines()
+                            .filter { " WARN " in it || " ERROR " in it }
+                            .map { it.replace(Regex("^(\\S+ \\S+),\\d+ (WARN|ERROR) \\S+ \\[[^\\]]*\\] "), "$1 $2 ") }
+                            .takeLast(60)
+                            .reversed()
+                    }
+                }.onSuccess { logTailCache = it }
+            }
+        }
+        return logTailCache
     }
 
     val recentInputs = ArrayDeque<Input>()
@@ -234,6 +294,7 @@ object Bridge {
         var bench = 0
         var viewName: String? = null
         var select: String? = null
+        var settle = 2
         var i = 0
         while (i < args.size) {
             val a = args[i]
@@ -252,6 +313,7 @@ object Bridge {
                 a == "--bench" && i + 1 < args.size -> bench = args[++i].toIntOrNull()?.coerceAtLeast(1) ?: return usage("bad --bench")
                 a == "--view" && i + 1 < args.size -> viewName = args[++i]
                 a == "--select" && i + 1 < args.size -> select = args[++i]
+                a == "--settle" && i + 1 < args.size -> settle = args[++i].toIntOrNull()?.coerceIn(0, 60) ?: return usage("bad --settle")
                 a == "--help" || a == "-h" -> return usage(null)
                 else -> return usage("unknown argument $a")
             }
@@ -266,18 +328,18 @@ object Bridge {
 
         // A ship or waypoint symbol; each screen looks it up in its own table, so one flag serves both.
         select?.let { model.selectedShip = it; model.selectedWaypoint = it }
-        val shell = Shell(listOf(HomeView(), SystemView(), WaypointView(), ShipView(), MarketsView(), EconomyView(), GalaxyView(), SpikeView()), model)
+        val shell = Shell(listOf(HomeView(), SystemView(), WaypointView(), ShipView(), MarketsView(), EconomyView(), GalaxyView(), DiagnosticsView(), SpikeView()), model)
         if (viewName != null && !shell.show(viewName)) return usage("no view '$viewName'; views: ${shell.views.joinToString { it.title }}")
         return when {
             bench > 0 -> bench(shell, model, size, fps, bench, wait)
-            frame -> renderOnce(shell, model, size, ansi, wait)
+            frame -> renderOnce(shell, model, size, ansi, wait, settle)
             else -> loop(shell, model, fps)
         }
     }
 
     private fun usage(problem: String?): Int {
         if (problem != null) System.err.println(problem)
-        System.err.println("usage: TradeyCLI bridge [--agent SYMBOL] [--sim[=FACTOR]] [--no-boot] [--fps N] [--view NAME] [--select SYMBOL] [--frame [--size WxH] [--ansi] [--wait]] [--bench FRAMES [--size WxH]]")
+        System.err.println("usage: TradeyCLI bridge [--agent SYMBOL] [--sim[=FACTOR]] [--no-boot] [--fps N] [--view NAME] [--select SYMBOL] [--frame [--size WxH] [--ansi] [--wait [--settle N]]] [--bench FRAMES [--size WxH]]")
         return if (problem == null) 0 else 1
     }
 
@@ -318,15 +380,19 @@ object Bridge {
         }
     }
 
-    private fun renderOnce(shell: Shell, model: BridgeModel, size: Size, ansi: Boolean, wait: Boolean): Int {
+    private fun renderOnce(shell: Shell, model: BridgeModel, size: Size, ansi: Boolean, wait: Boolean, settle: Int): Int {
         if (wait) awaitBoot(model)
         model.ttyDescription = "headless ${size.width}x${size.height}"
         model.width = size.width
         model.height = size.height
         // The first paint starts the background reads the screens rely on; after boot, give them a moment and paint again.
         if (wait) {
-            shell.paint(Painter(Surface(size.width, size.height), Rect(0, 0, size.width, size.height)), 0.0)
-            Thread.sleep(2000)
+            // `--settle N` waits longer, painting once a second so each paint can start the reads the last one revealed;
+            // panels that fill on the store follower's first tick need about five seconds.
+            repeat(settle.coerceAtLeast(1)) {
+                shell.paint(Painter(Surface(size.width, size.height), Rect(0, 0, size.width, size.height)), 0.0)
+                Thread.sleep(1000L)
+            }
         }
         val surface = Surface(size.width, size.height)
         shell.paint(Painter(surface, Rect(0, 0, size.width, size.height)), 0.0)
@@ -368,6 +434,7 @@ object Bridge {
         val tty: Tty = MordantTty()
         val frameNanos = 1_000_000_000L / fps
         val running = AtomicBoolean(true)
+        var failure: Exception? = null
         try {
             tty.enter()
             model.ttyDescription = tty.describe()
@@ -424,11 +491,13 @@ object Bridge {
             return 0
         } catch (e: Exception) {
             logger.error(e) { "bridge failed" }
-            System.err.println("bridge failed: ${e::class.simpleName}: ${e.message}; see log.txt")
+            failure = e
             return 1
         } finally {
             running.set(false)
             tty.close()
+            // Printed after the alternate screen is gone, or leaving it would wipe the message.
+            failure?.let { System.err.println("bridge failed: ${it::class.simpleName}: ${it.message}; see log.txt") }
         }
     }
 

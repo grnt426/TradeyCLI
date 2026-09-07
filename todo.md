@@ -85,7 +85,8 @@ simulator. Milestones from the design:
 - [x] Real waypoint art, or drop the placeholder planet.
 - [x] Retire the Kotter dashboard (`screen/`, `notification/`, the Kotter dependency); the console is
       `TradeyCLI` with no arguments.
-- [ ] Turn the remaining `println` calls into log lines; sane log level and rotation.
+- [x] Sane log level and rotation: libraries at warn, ours at debug, `log.txt` rolled at 100 MB
+      into four chunks, so the log holds 500 MB at most.
 - [x] Decide the terminal library: Mordant as the thin layer with our own canvas above it, JLine
       the fallback; Kotter and Mosaic rejected (no mouse). `docs/console-redesign.md` has the
       evaluation, the architecture and the milestones. The console was built beside the Kotter

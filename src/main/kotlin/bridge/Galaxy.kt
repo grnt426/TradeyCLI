@@ -45,6 +45,9 @@ class Galaxy(private val engine: Engine) {
     val connections = ConcurrentHashMap<String, Set<String>>()
     private val gatesRead = ConcurrentHashMap.newKeySet<String>()
 
+    /** Gates the server refused (400: an uncharted gate has no connections to give), with when; retried after an hour. */
+    private val gatesRefused = ConcurrentHashMap<String, Long>()
+
     @Volatile var progress: String? = null; private set
     private var galaxyJob: Job? = null
     private var rankJob: Job? = null
@@ -195,8 +198,9 @@ class Galaxy(private val engine: Engine) {
         }
     }
 
-    /** Gates read so far. */
+    /** Gates read so far, and gates the server refused this run. */
     val gatesMapped: Int get() = gatesRead.size
+    val gatesUnreadable: Int get() = gatesRefused.size
 
     /**
      * Reads jump gates outward from home, breadth first: each gate's connections name the next
@@ -226,10 +230,13 @@ class Galaxy(private val engine: Engine) {
                     }
                     val gate = system.waypoints.firstOrNull { it.type == WaypointType.JUMP_GATE } ?: continue
                     if (gate.symbol !in gatesRead) {
+                        val refusedAt = gatesRefused[gate.symbol]
+                        if (refusedAt != null && java.lang.System.nanoTime() - refusedAt < 3_600_000_000_000L) continue
                         fetched++
                         progress = "reading gates outward from home: ${gatesRead.size} read, $sys"
                         val read = runCatching { ApiJson.decodeFromJsonElement<JumpGate>(client.get("systems/$sys/waypoints/${gate.symbol}/jump-gate", Priority.IDLE)) }
-                            .onFailure { logger.warn(it) { "gate ${gate.symbol} failed" } }.getOrNull() ?: continue
+                            .onFailure { logger.info { "gate ${gate.symbol} refused: ${it.message}" }; gatesRefused[gate.symbol] = java.lang.System.nanoTime() }
+                            .getOrNull() ?: continue
                         connections[sys] = read.connections.map { OrbitalNames.getSectorSystem(it) }.toSet()
                         gatesRead += gate.symbol
                         engine.store?.putGate(read)

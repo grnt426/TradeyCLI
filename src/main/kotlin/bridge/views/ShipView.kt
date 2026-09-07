@@ -7,6 +7,7 @@ import bridge.canvas.Attr
 import bridge.canvas.Len
 import bridge.canvas.Painter
 import bridge.canvas.Rect
+import bridge.canvas.Rgb
 import bridge.fx.ShipArt
 import bridge.fx.Starfield
 import bridge.glyphs.Atlas
@@ -45,7 +46,7 @@ class ShipView : View {
         val artW = (p.width / 2).coerceIn(34, 60)
         val (left, right) = Rect(0, 0, p.width, p.height).cols(Len.fixed(artW), Len.weight())
         val (artRect, partsRect) = left.rows(Len.weight(), Len.fixed(12))
-        val (factsRect, routeRect, timeRect, cargoRect, logRect) = right.rows(Len.fixed(8), Len.fixed(6), Len.fixed(8), Len.weight(2), Len.weight(3))
+        val (factsRect, routeRect, timeRect, cargoRect, logRect) = right.rows(Len.fixed(8), Len.fixed(6), Len.fixed(10), Len.weight(2), Len.weight(3))
 
         val role = Atlas.role(ship.registration.role)
         val inFlight = ship.nav.inTransitAt(now)
@@ -99,10 +100,42 @@ class ShipView : View {
         var y = 2
         fun span(d: Duration) = if (d.isZero) "0m" else Format.span(d)
         p.text(0, y++, "busy ${span(idle.busy)} · idle ${span(idle.idle)} · ${(idle.share * 100).toInt()}% idle", if (idle.share > 0.5) Palette.warn else Palette.text)
-        idle.reasons.entries.take(p.height - y).forEach { (reason, span) ->
+        // The day by kind of activity: a strip proportional to the hours, then the hours themselves.
+        val time = Idle.time(model.snapshot().activities.filter { it.ship == ship.symbol }, records, now).firstOrNull()
+        if (time != null && time.byKind.isNotEmpty()) {
+            val total = Idle.KINDS.sumOf { time.hours(it) }
+            if (total > 0.01) {
+                var x = 0
+                val parts = Idle.KINDS.filter { time.hours(it) > 0 }
+                parts.forEachIndexed { i, kind ->
+                    val cells = if (i == parts.lastIndex) p.width - x else (time.hours(kind) / total * p.width).toInt()
+                    for (dx in 0 until cells) p.put(x + dx, y, '▀', kindColour(kind), Palette.track)
+                    x += cells
+                }
+                y++
+                p.text(0, y++, parts.joinToString(" · ") { "$it %.1fh".format(time.hours(it)) }.take(p.width), Palette.text)
+                val moving = time.hours("cruise") + time.hours("burn") + time.hours("drift")
+                if (moving > 0.05) {
+                    val drift = time.hours("drift") / moving
+                    val drifts = Idle.drifts(model.snapshot().activities.filter { it.ship == ship.symbol }).firstOrNull()
+                    p.text(0, y++, "drifted ${(drift * 100).toInt()}% of ${"%.1f".format(moving)} h under way" + (drifts?.let { d -> ", ${d.legs} leg${if (d.legs == 1) "" else "s"}" + (d.longest?.let { l -> ", longest ${Format.span(Duration.ofSeconds(l.seconds))} on ${l.behaviour}" } ?: "") } ?: ""), if (drift > 0.3) Palette.warn else Palette.textDim)
+                }
+            }
+        }
+        idle.reasons.entries.take((p.height - y).coerceAtLeast(0)).forEach { (reason, span) ->
             p.text(0, y, Format.span(span).padStart(5), Palette.textDim)
             p.text(6, y++, reason.take(p.width - 6), Palette.text)
         }
+    }
+
+    private fun kindColour(kind: String) = when (kind) {
+        "cruise" -> Palette.info
+        "burn" -> Palette.accent
+        "drift" -> Palette.warn
+        "extract", "siphon" -> Rgb(196, 140, 80)
+        "survey" -> Rgb(200, 128, 240)
+        "jump" -> Palette.textBright
+        else -> Palette.text
     }
 
     private fun facts(p: Painter, ship: Ship, now: Instant) {

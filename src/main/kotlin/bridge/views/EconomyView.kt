@@ -4,6 +4,7 @@ import behaviour.decisions.CreditsTrend
 import behaviour.decisions.Summary
 import bridge.BridgeModel
 import bridge.Format
+import bridge.GateChain
 import bridge.canvas.Attr
 import bridge.canvas.Len
 import bridge.canvas.Painter
@@ -14,6 +15,7 @@ import bridge.scene.Bar
 import bridge.scene.Bars
 import bridge.scene.CreditsChart
 import bridge.scene.Table
+import bridge.scene.TextBlock
 import knowledge.Strategy
 import java.time.Duration
 import java.time.Instant
@@ -42,6 +44,7 @@ class EconomyView : WidgetView() {
     )
     private val spent = Bars(bars = { flows(Summary.spending(model!!.snapshot()), Palette.warn) }, empty = "nothing spent yet")
     private val earned = Bars(bars = { flows(Summary.revenue(model!!.snapshot()), Palette.good) }, empty = "nothing earned yet")
+    private val chain = TextBlock(lines = { GateChain.lines(model!!.snapshot(), model!!) }, empty = "no home system")
     private val contracts = Table(
         columns = listOf(
             Table.Column("contract", 10),
@@ -62,7 +65,7 @@ class EconomyView : WidgetView() {
         val snap = model.snapshot()
         val now = model.now()
 
-        val (top, middle, bottom) = Rect(0, 0, p.width, p.height).rows(Len.fixed(12), Len.weight(), Len.fixed(if (p.height >= 34) 10 else 0))
+        val (top, middle, bottom) = Rect(0, 0, p.width, p.height).rows(Len.fixed(12), Len.weight(), Len.fixed(if (p.height >= 34) 12 else 0))
         val (bankRect, raceRect) = top.cols(Len.weight(), Len.fixed((p.width * 0.4).toInt().coerceIn(56, 80)))
         place(bank, p.panel(bankRect, "Bank over the reset"), t)
         race.setRows(model.race().map { r ->
@@ -104,7 +107,11 @@ class EconomyView : WidgetView() {
         val profit = records.filter { it.fulfilledAt != null }.sumOf { it.profit }
         place(contracts, p.panel(contractsRect, "Contracts (${records.size})", focus === contracts, hint = "fulfilled net ${if (profit >= 0) "+" else ""}${Format.compact(profit)}"), t)
 
-        if (bottom.h > 0) gate(p.panel(bottom, "Gate"), model)
+        if (bottom.h > 0) {
+            val (gateRect, chainRect) = bottom.cols(Len.weight(3), Len.weight(2))
+            gate(p.panel(gateRect, "Gate"), model)
+            place(chain, p.panel(chainRect, "Gate chain · the markets that feed it", hint = "worst first"), t)
+        }
         endFrame(listOf(race, contracts))
     }
 

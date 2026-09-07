@@ -19,7 +19,8 @@ Want the client to do the registering? Put an account token (account settings on
 `profile/accounttoken.secret`, set `name` and `faction` in `profile/profile.settings.json`, and type
 `New` twice.
 
-Esc quits. Everything the app has to say ends up in `log.txt`, so look there first when something
+`q` quits. Everything the app has to say ends up in `log.txt` (rolled at 100 MB into `log-1.txt` to
+`log-4.txt`, never more than 500 MB in all), so look there first when something
 is off.
 
 ## The console and the bot
@@ -40,7 +41,8 @@ over the reset, the race between the account's agents, the ledger, contracts, th
 galaxy (every known system, our home and the leaderboard homes named, the most-credits and
 most-charts boards with our place, the server's numbers; the whole galaxy and our rank among every
 agent arrive over time on the pacer's idle lane, which only spends requests nobody else wanted);
-and a terminal diagnostics screen. Tab moves focus; arrows and clicks pick rows; Enter or a double
+and a diagnostics screen (API rate and failures from the request log, the pacer, the run lock, failures and
+warnings, stale markets, ships on the same order, the log's warnings), and a terminal test screen. Tab moves focus; arrows and clicks pick rows; Enter or a double
 click opens or centres; `q` quits. `summary`, `race` and `gate` in line mode print the bridge's
 numbers as tables.
 
@@ -49,7 +51,8 @@ second install folder, so rebuilding the console never disturbs a `run` started 
 `build/install/`. `TradeyCLI bridge --frame --no-boot --size 160x45` prints one frame as text
 without a terminal, which is how it is checked from a shell; `--wait` boots first, `--ansi` keeps
 the colours, `--sim` renders from the simulator, `--view NAME` picks the screen, `--select SYMBOL`
-the ship or waypoint, and `--bench 200` reports bytes and milliseconds per frame.
+the ship or waypoint, `--settle N` waits N seconds after boot for the background reads, and
+`--bench 200` reports bytes and milliseconds per frame.
 
 ## Line mode
 

@@ -51,5 +51,6 @@ bin/
 
 ### Mac OS ###
 .DS_Store
-# log4j2 file appender output (see src/main/resources/log4j2.xml)
+# log4j2 file appender output (see src/main/resources/log4j2.xml): the current file and its rolled chunks
 log.txt
+log-*.txt
