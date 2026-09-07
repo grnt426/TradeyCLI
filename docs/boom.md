@@ -66,6 +66,12 @@ home gate and makes two probes pioneers; the `systems` command. Knobs: `Strategy
 (350k), `GALAXY_RESERVE` (300k), `PIONEERS` (2), `NETWORK_SHARE` (0.25), `SETTLE_HAULERS`,
 `SETTLE_PROBES`.
 
+**Routes.** Every gate a ship reads is remembered (gate waypoint to its connections, seeded from the
+store at start), and a ship bound for a system that is not a neighbour takes the shortest known
+path hop by hop, growing the map as it passes. Home's yard therefore buys for the whole connected
+network: a kit probe bought at A2 for a system two jumps out jumps twice. A pioneer only takes a
+frontier gate whose entry system it can route to.
+
 **Growth.** The probe goal follows the frontier: a watcher plus one pioneer per open gate, up to
 `MAX_PIONEERS` (8), and probes are bought unpaced (only ships at `PACED_PURCHASE_PRICE` or more
 wait ten minutes between purchases). Every gate a pioneer finds is another probe bought at the

@@ -76,6 +76,9 @@ class Supervisor(
         change(edit(base), what)
     }
 
+    /** The gate network as the store remembers it from earlier runs, so routes across several jumps are known from the start. */
+    fun seedGates(gates: List<model.responsebody.JumpGate>) { gates.forEach { shared.gates[it.symbol] = it.connections } }
+
     /** Once a minute: in the escape the gate chains and their teams, in the boom stage transitions per system (docs/boom.md). */
     fun tick() {
         if (plan.phase == Phase.ESCAPE) {

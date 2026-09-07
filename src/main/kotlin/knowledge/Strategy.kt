@@ -481,7 +481,8 @@ object Strategy {
         probes.forEachIndexed { i, probe ->
             next = next.with(
                 when {
-                    i == 0 -> Assignment(probe.symbol, "probeMarkets", mapOf("maxAge" to "10"))
+                    // The home watcher expands the fleet: it sits at the yard buying kits and pioneers, and reads prices while it waits.
+                    i == 0 -> Assignment(probe.symbol, "expand")
                     i <= PIONEERS -> Assignment(probe.symbol, "pioneer")
                     else -> Assignment(probe.symbol, "chartSystem")
                 },

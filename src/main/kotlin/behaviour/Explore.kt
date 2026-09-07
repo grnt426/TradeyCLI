@@ -34,7 +34,7 @@ suspend fun BehaviourScope.explore() {
         if (gate.isUnderConstruction && !construction(gate.symbol).isComplete) { status("done", "${gate.symbol} is under construction; explored ${visited.size} systems"); return }
         phase("travel to gate", gate.symbol) { travelTo(gate.symbol) }
         val candidates = phase("choose next system", gate.symbol) {
-            val connections = jumpGate(gate.symbol).connections.filter { it !in shared.unreachableGates }
+            val connections = readGate(gate.symbol).connections.filter { it !in shared.unreachableGates }
             val fresh = connections.filter { it.substringBeforeLast('-') !in visited && snapshot().waypointsIn(it.substringBeforeLast('-')).isEmpty() }
             fresh + connections.filter { it.substringBeforeLast('-') !in visited && it !in fresh }
         }

@@ -34,9 +34,13 @@ suspend fun BehaviourScope.pioneer() {
         clock.sleep(1.minutes.div(6))
         val plan = shared.plan
         val here = me.nav.systemSymbol
-        // The nearest frontier gate nobody else has claimed: reachable from where the ship stands first.
+        // The nearest frontier gate nobody else has claimed: one from this system first, else one whose
+        // entry system has a known route from here (E spun for ten minutes in ZN49 on 2026-09-07 trying to
+        // take a gate that opened from home, two jumps back).
+        val hereGate = snapshot().waypointsIn(here).firstOrNull { it.type == WaypointType.JUMP_GATE }?.symbol
         val entry = plan.frontier
             .filter { it.gate !in shared.unreachableGates && !shared.claimedByOther(it.gate, ship) }
+            .filter { it.via == here || (hereGate != null && knowledge.GateGraph.route(shared.gates, hereGate, it.via, shared.unreachableGates) != null) }
             .sortedBy { if (it.via == here) 0 else 1 }
             .firstOrNull()
         if (entry == null) {
@@ -70,7 +74,7 @@ suspend fun BehaviourScope.pioneer() {
         // Cascade: the gate on this side leads on to gates we may not know.
         phase("read gate", entry.gate) {
             val known = shared.plan.systems.keys + shared.plan.frontier.map { it.system } + system
-            val more = jumpGate(entry.gate).connections.filter { it.substringBeforeLast('-') !in known && it !in shared.unreachableGates }.map { FrontierGate(it, system) }
+            val more = readGate(entry.gate).connections.filter { it.substringBeforeLast('-') !in known && it !in shared.unreachableGates }.map { FrontierGate(it, system) }
             if (more.isNotEmpty()) shared.editPlan("frontier from $system: ${more.size} more") { it.withFrontier(more) }
             status(detail = "${more.size} new gate(s) beyond $system; frontier ${shared.plan.frontier.size}")
         }

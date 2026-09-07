@@ -56,7 +56,7 @@ class BoomTest {
         val next = Strategy.rebalance(Phase.BOOM, plan, s, listOf("X1-MF53-I57", "X1-XX21-Z25C"))
         assertEquals(Stage.SETTLE, next.system("X1-TH77")?.stage)
         assertEquals(listOf(FrontierGate("X1-MF53-I57", "X1-TH77"), FrontierGate("X1-XX21-Z25C", "X1-TH77")), next.frontier)
-        assertEquals("probeMarkets", next.assignmentFor(Fixtures.PROBE)?.behaviour, "the only probe keeps watching home")
+        assertEquals("expand", next.assignmentFor(Fixtures.PROBE)?.behaviour, "the only probe buys the boom's ships at home, reading prices while it waits")
         assertEquals("trade", next.assignmentFor(Fixtures.COMMAND_SHIP)?.behaviour)
         assertTrue(next.withFrontier(listOf(FrontierGate("X1-TH77-I54", "X1-XX21"))).frontier.none { it.system == "X1-TH77" }, "a known system never re-enters the frontier")
     }

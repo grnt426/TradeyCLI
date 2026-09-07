@@ -17,30 +17,39 @@ suspend fun BehaviourScope.goToSystem(system: String): Boolean {
     val from = me.nav.systemSymbol
     val gate = snapshot().waypointsIn(from).firstOrNull { it.type == WaypointType.JUMP_GATE }
         ?: throw BehaviourFailure("$from has no jump gate to reach $system through")
-    val target = phase("find the way", "to $system") {
-        jumpGate(gate.symbol).connections.firstOrNull { it.substringBeforeLast('-') == system }
+    // A neighbour is one jump; anything else is a route over the gates our ships have read, hop by hop.
+    val path = phase("find the way", "to $system") {
+        readGate(gate.symbol)
+        knowledge.GateGraph.route(shared.gates, gate.symbol, system, shared.unreachableGates)
     }
-    // Not a neighbour of where the ship is now (it may have been diverted already): the caller picks another.
-    if (target == null) { status(detail = "${gate.symbol} does not connect to $system"); return false }
-    if (target in shared.unreachableGates) { status(detail = "$target is under construction; $system cannot be reached yet"); return false }
+    if (path == null) { status(detail = "no known route from ${gate.symbol} to $system"); return false }
     phase("travel to gate", gate.symbol) { travelVia(gate.symbol) }
-    val jumped = phase("jump", "to $target") {
-        try {
-            jump(ship, target); true
-        } catch (e: VerbFailure.Api) {
-            if (e.error.code != DESTINATION_UNDER_CONSTRUCTION) throw e
-            shared.unreachableGates += target
-            status(detail = "$target is under construction; $system cannot be reached yet")
-            false
+    path.forEachIndexed { i, target ->
+        val jumped = phase("jump", "to $target" + (if (path.size > 1) " (${i + 1} of ${path.size})" else "")) {
+            try {
+                jump(ship, target); true
+            } catch (e: VerbFailure.Api) {
+                if (e.error.code != DESTINATION_UNDER_CONSTRUCTION) throw e
+                shared.unreachableGates += target
+                status(detail = "$target is under construction; $system cannot be reached this way")
+                false
+            }
         }
+        if (!jumped) return false
+        val here = target.substringBeforeLast('-')
+        if (snapshot().waypointsIn(here).isEmpty()) phase("map", here) { loadSystem(here) }
+        // Every gate passed through grows the map for the ships behind.
+        if (here != system) runCatching { readGate(target) }
     }
-    if (!jumped) return false
-    if (snapshot().waypointsIn(system).isEmpty()) phase("map", system) { loadSystem(system) }
     return true
 }
+
+/** Reads a gate and remembers its connections for [knowledge.GateGraph] routes. */
+suspend fun BehaviourScope.readGate(symbol: String): model.responsebody.JumpGate =
+    jumpGate(symbol).also { shared.gates[it.symbol] = it.connections }
 
 /** The systems beyond the gate of [from] that no ship of ours has been refused at, nearest listed first. */
 suspend fun BehaviourScope.reachableNeighbours(from: String): List<String> {
     val gate = snapshot().waypointsIn(from).firstOrNull { it.type == WaypointType.JUMP_GATE } ?: return emptyList()
-    return jumpGate(gate.symbol).connections.filter { it !in shared.unreachableGates }.map { it.substringBeforeLast('-') }
+    return readGate(gate.symbol).connections.filter { it !in shared.unreachableGates }.map { it.substringBeforeLast('-') }
 }

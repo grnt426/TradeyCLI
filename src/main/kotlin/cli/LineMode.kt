@@ -1010,6 +1010,7 @@ class LineMode(
             }
         }
         val supervisor = Supervisor(engine.scope, engine.verbs(), engine.clock, engine::emit, savePlan = { Plan.save(planFile(), it) }, loadPlan = { runCatching { Plan.load(planFile()) }.getOrNull() })
+        engine.store?.let { s -> runCatching { supervisor.seedGates(s.listGates()) } }
         val problems = supervisor.apply(plan)
         if (problems.isNotEmpty()) { problems.forEach { err.println(it) }; heartbeat.cancel(); RunLock.release(lockFile); return 1 }
         val startCredits = engine.snapshot.agent?.credits ?: 0
