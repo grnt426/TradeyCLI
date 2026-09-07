@@ -42,6 +42,8 @@ interface VerbSink {
     suspend fun contractChanged(contract: Contract, cost: Long = 0, accepted: Boolean = false, fulfilled: Boolean = false)
     suspend fun supplied(record: SupplyRecord)
     suspend fun systemLoaded(system: model.system.System, waypoints: List<Waypoint>)
+    /** A gate's connections were read: remembered so routes across several jumps survive a restart. */
+    suspend fun gateRead(gate: JumpGate) {}
     fun event(event: Event)
 }
 
@@ -355,7 +357,7 @@ class ShipVerbs(
     }
 
     override suspend fun jumpGate(waypoint: String): JumpGate =
-        call { api.getJumpGate(OrbitalNames.getSectorSystem(waypoint), waypoint) }
+        call { api.getJumpGate(OrbitalNames.getSectorSystem(waypoint), waypoint) }.also { sink.gateRead(it) }
 
     override suspend fun jump(ship: String, waypoint: String): Ship {
         var current = settled(ship)

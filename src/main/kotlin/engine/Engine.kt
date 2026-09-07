@@ -381,6 +381,8 @@ class Engine(
             world.extractions = (world.extractions + record).takeLast(2000)
         }
 
+        override suspend fun gateRead(gate: model.responsebody.JumpGate) { store?.putGate(gate) }
+
         override suspend fun systemLoaded(system: System, waypoints: List<Waypoint>) {
             store?.putSystem(system)
             store?.putWaypoints(waypoints)
