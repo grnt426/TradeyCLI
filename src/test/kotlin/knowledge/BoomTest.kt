@@ -77,7 +77,9 @@ class BoomTest {
             ).associateBy { it.symbol },
         ).withFrontier((1..5).map { FrontierGate("X1-Q$it-A1", "X1-TH77") })
         assertEquals(5, Strategy.pioneerRoom(plan))
-        assertEquals(6, Strategy.growProbes(plan, fleet).goals.fleet.first { it.type == model.ship.ShipType.SHIP_PROBE }.count)
+        assertEquals(6, Strategy.growProbes(plan, fleet).goals.fleet.first { it.type == model.ship.ShipType.SHIP_PROBE && it.system == null }.count)
+        val withKit = plan.withGoal(FleetGoal(ShipType.SHIP_PROBE, 2, system = "X1-MF53"))
+        assertEquals(8, Strategy.growProbes(withKit, fleet).goals.fleet.first { it.type == model.ship.ShipType.SHIP_PROBE && it.system == null }.count, "a system's kit probes count on top")
         val once = Strategy.spreadHaulers(plan, fleet)
         assertEquals("X1-MF53", once.assignmentFor("H-5")?.params?.get("system"), "the newest hauler goes to the entered system, not the one still in cascade")
         val twice = Strategy.spreadHaulers(once, fleet)

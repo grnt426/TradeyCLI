@@ -87,7 +87,9 @@ object Strategy {
      * Only ever raised; a cheap probe that finds no gate charts where it stands.
      */
     fun growProbes(plan: Plan, snapshot: Snapshot): Plan {
-        val wanted = 1 + pioneerRoom(plan)
+        // The global goal counts every probe, so the systems' kit probes are added on top of the watcher and the pioneers.
+        val bound = plan.goals.fleet.filter { it.type == ShipType.SHIP_PROBE && it.system != null }.sumOf { it.count }
+        val wanted = 1 + pioneerRoom(plan) + bound
         val goal = plan.goals.fleet.firstOrNull { it.type == ShipType.SHIP_PROBE && it.system == null }
         return if ((goal?.count ?: 0) >= wanted) plan else plan.withGoal(FleetGoal(ShipType.SHIP_PROBE, wanted, reserve = GALAXY_RESERVE))
     }
@@ -523,9 +525,11 @@ object Strategy {
                 }
                 Stage.SETTLE -> {
                     // Extra probes beyond the watcher pioneer while the frontier has room.
-                    val probesHere = snapshot.ships.values.filter { it.nav.systemSymbol == record.symbol && !it.usesFuel }.sortedBy { it.symbol }
+                    // Symbols sort by length then name so -2 stays the watcher ahead of -10; a probe bound to another system's kit is not taken.
+                    val probesHere = snapshot.ships.values.filter { it.nav.systemSymbol == record.symbol && !it.usesFuel }.sortedWith(compareBy({ it.symbol.length }, { it.symbol }))
                     val pioneers = next.assignments.count { it.behaviour == "pioneer" }
-                    probesHere.drop(SETTLE_PROBES).filter { next.assignmentFor(it.symbol)?.behaviour in setOf("probeMarkets", "chartSystem", null) }
+                    probesHere.drop(SETTLE_PROBES)
+                        .filter { next.assignmentFor(it.symbol)?.behaviour in setOf("probeMarkets", "chartSystem", null) && next.assignmentFor(it.symbol)?.params?.get("system") == null }
                         .take((pioneerRoom(next) - pioneers).coerceAtLeast(0))
                         .forEach { next = next.with(Assignment(it.symbol, "pioneer")) }
                 }
