@@ -170,6 +170,35 @@ class StrategyTest {
     }
 
     @Test
+    fun `within an hour of the gate at the current rate the plan wants the boom's probes and parks every probe but the buyer at the gate`() {
+        val seed = pricedSeed()
+        val base = SimRun.worldFrom(SimUniverse(seed, VirtualClock(TestCoroutineScheduler(), now))).snapshot(1)
+        val site = base.waypoints.values.first { it.type == model.system.WaypointType.JUMP_GATE }
+        val probe = base.ships.getValue(Fixtures.PROBE)
+        val second = probe.copy(symbol = "P-2")
+        fun delivery(minutesAgo: Long, units: Int) = storage.TaggedTransaction(
+            model.market.MarketTransaction("H-1", "X1-TH77-F47", TradeSymbol.FAB_MATS, model.market.TransactionType.PURCHASE, units, 1000, units * 1000, now.minusSeconds(minutesAgo * 60).toString()),
+            "gate:${site.symbol}",
+        )
+        fun snapshotWith(remaining: Int) = base.copy(
+            waypoints = base.waypoints + (site.symbol to site.copy(isUnderConstruction = true)),
+            constructionBill = listOf(model.ConstructionMaterial(TradeSymbol.FAB_MATS, 1600, (1600 - remaining).toLong())),
+            taggedTransactions = listOf(delivery(30, 80), delivery(60, 80), delivery(90, 40)), // 200 units in two hours: 100 an hour
+            ships = base.ships + (second.symbol to second),
+        )
+        val plan = Plan(listOf(plan.Assignment(Fixtures.PROBE, "expand"), plan.Assignment("P-2", "probeMarkets", mapOf("maxAge" to "10"))))
+        assertEquals(100.0, Strategy.gateRate(snapshotWith(90), now))
+        assertTrue(Strategy.gateImminent(snapshotWith(90), now))
+        assertTrue(!Strategy.gateImminent(snapshotWith(500), now), "five hours of hauling left")
+        assertEquals(plan, Strategy.readyForBoom(plan, snapshotWith(500), now))
+        val ready = Strategy.readyForBoom(plan, snapshotWith(90), now)
+        assertEquals(1 + Strategy.PIONEERS, ready.goals.fleet.first { it.type == model.ship.ShipType.SHIP_PROBE }.count)
+        assertEquals("expand", ready.assignmentFor(Fixtures.PROBE)?.behaviour, "the buyer keeps buying")
+        assertEquals(site.symbol, ready.assignmentFor("P-2")?.params?.get("markets"), "the other probe waits at the gate")
+        assertEquals(ready, Strategy.readyForBoom(ready, snapshotWith(90), now), "idempotent")
+    }
+
+    @Test
     fun `the plan carries its phase through json and starts in escape`() {
         val file = File.createTempFile("plan", ".json").also { it.deleteOnExit() }
         Plan.save(file, Plan().withPhase(Phase.BOOM))

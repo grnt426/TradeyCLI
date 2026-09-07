@@ -33,6 +33,12 @@ escape tick promotes the first trading hauler by symbol to `supplyGate`, one per
 producer whose export is GROWING or STRONG is taken from rather than fed first (`takeWhenGrowing`),
 and nursing, feeding and gardening stop at an import that reads `feedUntil` (HIGH).
 
+**Boom readiness.** With `READY_HOURS` (1) of hauling left at the last two hours' delivery rate,
+the escape tick raises the probe goal to a watcher plus `PIONEERS` and sends every probe but the
+buyer to wait at the gate, reading its market. When the last unit lands and the phase turns, the
+boom's rebalance makes them pioneers where they already stand, and the first jumps happen minutes
+after the gate opens instead of half an hour later.
+
 **The gate rush.** ESCAPE is rushed, but not at the cost of market health or of the capital the
 boom needs. The gate hauler re-reads the bill every load and prices what is left at the cheapest
 listing in the system. Once the bank covers `RUSH_COMFORT` (1.5) times that, plus the

@@ -125,6 +125,57 @@ object Strategy {
 
     const val GATE_CHAIN = "gate-"
 
+    /** With this much hauling left on the gate at the current rate, the boom's probes are bought and sent to wait at the gate. */
+    const val READY_HOURS = 1.0
+
+    /** Units delivered to the home site per hour over the last two hours, from the gate-tagged purchases. */
+    fun gateRate(snapshot: Snapshot, now: java.time.Instant): Double {
+        val home = snapshot.hqSystem ?: return 0.0
+        val site = snapshot.waypointsIn(home).firstOrNull { it.isUnderConstruction } ?: return 0.0
+        val since = now.minus(java.time.Duration.ofHours(2))
+        val units = snapshot.taggedTransactions
+            .filter { it.tag == "gate:${site.symbol}" && it.transaction.type == model.market.TransactionType.PURCHASE && it.transaction.tradeSymbol != model.market.TradeSymbol.FUEL }
+            .filter { java.time.Instant.parse(it.transaction.timestamp) >= since }
+            .sumOf { it.transaction.units }
+        return units / 2.0
+    }
+
+    /** The gate is within [READY_HOURS] of completion at the current delivery rate. */
+    fun gateImminent(snapshot: Snapshot, now: java.time.Instant): Boolean {
+        val bill = snapshot.constructionBill ?: return false
+        val remaining = bill.sumOf { (it.required - it.fulfilled).coerceAtLeast(0) }
+        if (remaining <= 0) return false
+        val rate = gateRate(snapshot, now)
+        return rate > 0 && remaining <= rate * READY_HOURS
+    }
+
+    /**
+     * The boom readiness fleet: when the gate is within [READY_HOURS] of completion, the plan wants
+     * the boom's probes (a watcher plus [PIONEERS]) and every probe but the buyer waits at the gate,
+     * reading its market, so the pioneers jump the minute the phase turns instead of half an hour
+     * later. Grant's idea on the morning of 2026-09-07, with 92 FAB_MATS to go.
+     */
+    fun readyForBoom(plan: Plan, snapshot: Snapshot, now: java.time.Instant): Plan {
+        if (!gateImminent(snapshot, now)) return plan
+        val home = snapshot.hqSystem ?: return plan
+        val site = snapshot.waypointsIn(home).firstOrNull { it.isUnderConstruction } ?: return plan
+        var next = plan
+        val wanted = 1 + PIONEERS
+        val goal = plan.goals.fleet.firstOrNull { it.type == ShipType.SHIP_PROBE && it.system == null }
+        if ((goal?.count ?: 0) < wanted) next = next.withGoal(FleetGoal(ShipType.SHIP_PROBE, wanted, reserve = GALAXY_RESERVE))
+        val probes = snapshot.ships.values.filter { !it.usesFuel && it.nav.systemSymbol == home }.sortedBy { it.symbol }
+        // The buyer is whichever probe expands the fleet; without one, the first by symbol keeps its job.
+        val buyer = probes.firstOrNull { plan.assignmentFor(it.symbol)?.behaviour == "expand" } ?: probes.firstOrNull()
+        probes.filter { it.symbol != buyer?.symbol }.forEach { probe ->
+            val current = next.assignmentFor(probe.symbol)
+            val waiting = current?.behaviour == "probeMarkets" && current.params["markets"] == site.symbol
+            if (!waiting && current?.behaviour in setOf(null, "probeMarkets", "chartSystem", "expand")) {
+                next = next.with(Assignment(probe.symbol, "probeMarkets", mapOf("markets" to site.symbol, "maxAge" to "10")))
+            }
+        }
+        return next
+    }
+
     /**
      * One chain per material the gate still needs: every input its home producer imports, hauled
      * from the cheapest other market that lists it, and the same again for the inputs' own
@@ -194,8 +245,8 @@ object Strategy {
         return plan.with(Assignment(trader.ship, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000")))
     }
 
-    /** The escape's bookkeeping, once a minute: the gate chains and their teams, then a promotion when a producer has a surplus. Pure. */
-    fun escapeTick(plan: Plan, snapshot: Snapshot, now: java.time.Instant): Plan = promoteForSurplus(seedGateChains(plan, snapshot, now), snapshot)
+    /** The escape's bookkeeping, once a minute: the gate chains and their teams, a promotion when a producer has a surplus, the readiness fleet near the end. Pure. */
+    fun escapeTick(plan: Plan, snapshot: Snapshot, now: java.time.Instant): Plan = readyForBoom(promoteForSurplus(seedGateChains(plan, snapshot, now), snapshot), snapshot, now)
 
     /** "market/good" for every export of a gate-chain good in the home system, healthy or not. */
     fun chainSources(snapshot: Snapshot): Set<String> {
