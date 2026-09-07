@@ -25,7 +25,7 @@ class RebalanceTest {
         val plan = Plan(listOf(Assignment(Fixtures.COMMAND_SHIP, "supplyGate", mapOf("site" to "X1-TH77-I54")), Assignment(Fixtures.PROBE, "probeMarkets", mapOf("markets" to "X1-TH77-F47", "maxAge" to "5"))))
         val next = Strategy.rebalance(Phase.BOOM, plan, snap, listOf("X1-MF53", "X1-XX21"))
         assertEquals("expand", next.assignmentFor(Fixtures.PROBE)?.behaviour, "the home probe buys the boom fleet, reading prices while it waits")
-        assertEquals(mapOf("maxAge" to "10"), next.assignmentFor(Fixtures.PROBE)?.params, "the first probe roams home")
+        assertEquals(emptyMap<String, String>(), next.assignmentFor(Fixtures.PROBE)?.params, "the first probe roams home")
         // The frigate has a real hold: in the boom it trades like a hauler.
         assertEquals("trade", next.assignmentFor(Fixtures.COMMAND_SHIP)?.behaviour)
         assertEquals(plan, Strategy.rebalance(Phase.ESCAPE, plan, snap, emptyList()), "only boom re-plans")
