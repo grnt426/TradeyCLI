@@ -55,8 +55,8 @@ private suspend fun BehaviourScope.runLeg(leg: Leg, reserve: Long) {
     val rules = knowledge.Strategy.market(shared.plan.phase)
     // A consumer already stocked to the brim pays nothing and grows nothing: let it drain first.
     snapshot().markets[leg.to]?.good(leg.good)?.let { bid ->
-        if (MarketHealth.saturated(bid, rules)) {
-            status("waiting", "${leg.to} is saturated with ${leg.good} (${MarketHealth.describe(bid)}); letting it drain for 10 minutes")
+        if (MarketHealth.saturated(bid, rules) || bid.supply >= rules.feedUntil) {
+            status("waiting", "${leg.to} has enough ${leg.good} (${MarketHealth.describe(bid)}); letting it drain for 10 minutes")
             clock.sleep(10.minutes)
             return
         }

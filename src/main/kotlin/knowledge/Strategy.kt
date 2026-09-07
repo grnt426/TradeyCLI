@@ -175,6 +175,28 @@ object Strategy {
         return next
     }
 
+    /**
+     * A gate producer stocked to [MarketAssumptions.gateSurplusAt] or better can spare more than one
+     * hauler carries: the first trading hauler by symbol becomes a second gate hauler, up to
+     * [RUSH_HAULERS] of them. Nobody is demoted; a gate hauler trades once when it finds nothing to
+     * take, and the boom reassigns everyone. One promotion per call.
+     */
+    fun promoteForSurplus(plan: Plan, snapshot: Snapshot): Plan {
+        val home = snapshot.hqSystem ?: return plan
+        val site = snapshot.waypointsIn(home).firstOrNull { it.isUnderConstruction } ?: return plan
+        val bill = snapshot.constructionBill?.filter { it.fulfilled < it.required } ?: return plan
+        if (plan.assignments.count { it.behaviour == "supplyGate" } >= RUSH_HAULERS) return plan
+        val rules = market(Phase.ESCAPE)
+        val surplus = bill.any { m -> snapshot.marketsIn(home).any { p -> p.good(m.tradeSymbol)?.let { it.type == model.market.TradeGoodType.EXPORT && it.supply >= rules.gateSurplusAt } == true } }
+        if (!surplus) return plan
+        val trader = plan.assignments.filter { it.behaviour == "trade" }.sortedBy { it.ship }
+            .firstOrNull { a -> snapshot.ships[a.ship]?.let { it.usesFuel && it.cargo.capacity >= 60 && !it.canMine && it.nav.systemSymbol == home } == true } ?: return plan
+        return plan.with(Assignment(trader.ship, "supplyGate", mapOf("site" to site.symbol, "reserve" to "200000")))
+    }
+
+    /** The escape's bookkeeping, once a minute: the gate chains and their teams, then a promotion when a producer has a surplus. Pure. */
+    fun escapeTick(plan: Plan, snapshot: Snapshot, now: java.time.Instant): Plan = promoteForSurplus(seedGateChains(plan, snapshot, now), snapshot)
+
     /** "market/good" for every export of a gate-chain good in the home system, healthy or not. */
     fun chainSources(snapshot: Snapshot): Set<String> {
         val home = snapshot.hqSystem ?: return emptySet()

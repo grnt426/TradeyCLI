@@ -79,18 +79,19 @@ class MarketHealthBehaviourTest {
     }
 
     @Test
-    fun `a chain bee leaves a saturated consumer alone and a starved producer untouched`() {
+    fun `a chain bee leaves a fed consumer alone and a starved producer untouched`() {
+        // HIGH is fed (MarketAssumptions.feedUntil): a bee that keeps delivering buries the import to ABUNDANT and sells at a third of cost.
         val seed = pricedSeed()
-            .withListing("X1-TH77-A3", TradeSymbol.COPPER, SupplyLevel.ABUNDANT)
+            .withListing("X1-TH77-A3", TradeSymbol.COPPER, SupplyLevel.HIGH)
             .withListing("X1-TH77-H50", TradeSymbol.IRON, SupplyLevel.SCARCE)
         val chain = Chain("test", legs = listOf(Leg(TradeSymbol.COPPER, "X1-TH77-H50", "X1-TH77-A3"), Leg(TradeSymbol.IRON, "X1-TH77-H50", "X1-TH77-F47")), ships = listOf(Fixtures.COMMAND_SHIP), enrolledAt = now.toString(), reserve = 50_000)
         val plan = Plan(listOf(Assignment(Fixtures.COMMAND_SHIP, "feed", mapOf("chain" to "test"))), chains = listOf(chain))
         val report = SimRun(seed, plan, hours = 2).run()
         assertTrue(report.failures.isEmpty(), report.failures.toString())
         val bought = report.trace.events.filterIsInstance<Event.Bought>()
-        assertTrue(bought.none { it.good == "COPPER" }, "no copper bought for a consumer that is ABUNDANT in it: $bought")
+        assertTrue(bought.none { it.good == "COPPER" }, "no copper bought for a consumer already HIGH in it: $bought")
         assertTrue(bought.none { it.good == "IRON" }, "no iron taken from a producer that is SCARCE in it: $bought")
         val listing = seed.markets.first { it.symbol == "X1-TH77-A3" }.good(TradeSymbol.COPPER)!!
-        assertTrue(MarketHealth.saturated(listing))
+        assertTrue(listing.supply >= knowledge.MarketAssumptions().feedUntil)
     }
 }

@@ -134,7 +134,8 @@ suspend fun BehaviourScope.supplyGate() {
                 if (pick != null && nurse && rules.protectStarvedChains) {
                     // A producer with a short input is fed, not drawn on, until the input is back to MODERATE; taking from it only raises the bill.
                     val producer = snapshot().markets[pick.market]
-                    val starved = producer != null && MarketHealth.starvedInputs(producer, pick.material).any { it.supply <= model.market.SupplyLevel.LIMITED }
+                    val growing = rules.takeWhenGrowing && pick.listing?.activity.let { it == model.market.ActivityLevel.GROWING || it == model.market.ActivityLevel.STRONG }
+                    val starved = producer != null && !growing && MarketHealth.starvedInputs(producer, pick.material).any { it.supply <= model.market.SupplyLevel.LIMITED }
                     if (starved) {
                         val leg = nurseLeg(producer!!, pick.material, spendable, rules)
                         if (leg != null) { status(detail = "${pick.material}'s inputs at ${pick.market} are short; feeding before taking"); nurse(producer, leg); continue }
@@ -225,7 +226,7 @@ data class NurseLeg(val target: Market, val material: TradeSymbol, val input: Ma
 fun BehaviourScope.nurseLeg(producer: Market, material: TradeSymbol, spendable: Long, rules: MarketAssumptions, depth: Int = 2): NurseLeg? {
     val system = me.nav.systemSymbol
     for (input in MarketHealth.starvedInputs(producer, material)) {
-        if (MarketHealth.saturated(input, rules)) continue
+        if (MarketHealth.saturated(input, rules) || input.supply >= rules.feedUntil) continue
         val candidates = snapshot().marketsIn(system)
             .filter { it.symbol != producer.symbol }
             .mapNotNull { m -> m.good(input.symbol)?.let { offer -> m to offer } }

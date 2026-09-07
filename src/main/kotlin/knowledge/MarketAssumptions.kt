@@ -89,6 +89,25 @@ data class MarketAssumptions(
      * E-row importers while F55, the fab-mats producer, sat short of iron.
      */
     val reserveChainExportsBelow: SupplyLevel = LIMITED,
+    /**
+     * An input stocked to this level or better has been fed: nursing, feeding and gardening stop
+     * delivering there. On 2026-09-06 a feeder buried D47's microprocessors and electronics to
+     * ABUNDANT (selling at a third of cost) and the gate hauler kept hauling iron ore into H57
+     * after it read HIGH, because only ABUNDANT counted as enough.
+     */
+    val feedUntil: SupplyLevel = HIGH,
+    /**
+     * A producer whose export activity is GROWING or STRONG is taken from, not fed first, whatever
+     * its inputs read: activity is the market's own signal that the inputs suffice. F55 read
+     * MODERATE/STRONG with a doubled trade volume while the gate hauler spent its cycles nursing.
+     */
+    val takeWhenGrowing: Boolean = true,
+    /**
+     * In ESCAPE, a gate material's producer at this stock or better is more than one hauler can
+     * carry within the take budget (HIGH at F55: four volumes of 43 an hour): a trader is promoted
+     * to a second gate hauler, up to `Strategy.RUSH_HAULERS`.
+     */
+    val gateSurplusAt: SupplyLevel = HIGH,
     /** A nursing leg may sell an input for less than it cost, down to this share of the buy price, because the goal is the producer's price, not the leg's. */
     val nurseMinSellRatio: Double = 0.5,
     /** Trade volumes of an input to deliver per nursing visit; the docs say consumption grows as we supply, so a few volumes is enough to move it. */

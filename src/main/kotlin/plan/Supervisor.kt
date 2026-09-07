@@ -79,7 +79,7 @@ class Supervisor(
     fun tick() {
         if (plan.phase == Phase.ESCAPE) {
             val snapshot = verbs.snapshot().copy(plan = plan)
-            if (knowledge.Strategy.seedGateChains(plan, snapshot, clock.now()) != plan) change("seed the gate chains") { knowledge.Strategy.seedGateChains(it, snapshot.copy(plan = it), clock.now()) }
+            if (knowledge.Strategy.escapeTick(plan, snapshot, clock.now()) != plan) change("the escape's tick: gate chains, surplus") { knowledge.Strategy.escapeTick(it, snapshot.copy(plan = it), clock.now()) }
             return
         }
         if (plan.phase != Phase.BOOM) return

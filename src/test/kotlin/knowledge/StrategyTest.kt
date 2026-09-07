@@ -137,6 +137,39 @@ class StrategyTest {
     }
 
     @Test
+    fun `a gate producer at HIGH promotes one trading hauler to the gate per tick, up to the rush count, and nobody when stock is MODERATE`() {
+        val seed = pricedSeed()
+        fun snapshotWith(level: SupplyLevel): engine.Snapshot {
+            val markets = seed.markets.map { m ->
+                m.copy(tradeGoods = m.tradeGoods.map { g -> if (g.symbol in setOf(TradeSymbol.FAB_MATS, TradeSymbol.ADVANCED_CIRCUITRY) && g.type == model.market.TradeGoodType.EXPORT) g.copy(supply = level) else g }).also { it.lastRead = now }
+            }
+            val s = SimRun.worldFrom(SimUniverse(seed, VirtualClock(TestCoroutineScheduler(), now))).snapshot(1)
+            val frigate = s.ships.getValue(Fixtures.COMMAND_SHIP)
+            val haulers = (1..4).map { i -> frigate.copy(symbol = "H-$i", mounts = emptyList(), cargo = frigate.cargo.copy(capacity = 80)) }
+            return s.copy(
+                markets = markets.associateBy { it.symbol },
+                waypoints = s.waypoints.mapValues { (_, w) -> if (w.type == model.system.WaypointType.JUMP_GATE) w.copy(isUnderConstruction = true) else w },
+                constructionBill = listOf(model.ConstructionMaterial(TradeSymbol.FAB_MATS, 1600, 100)),
+                ships = s.ships + haulers.associateBy { it.symbol },
+            )
+        }
+        val site = snapshotWith(SupplyLevel.HIGH).waypointsIn("X1-TH77").first { it.isUnderConstruction }.symbol
+        val plan = Plan(listOf(
+            plan.Assignment("H-1", "supplyGate", mapOf("site" to site, "reserve" to "200000")),
+            plan.Assignment("H-2", "runContract"), plan.Assignment("H-3", "trade"), plan.Assignment("H-4", "trade"), plan.Assignment(Fixtures.COMMAND_SHIP, "trade"),
+        ))
+        val high = snapshotWith(SupplyLevel.HIGH)
+        val once = Strategy.promoteForSurplus(plan, high)
+        assertEquals("supplyGate", once.assignmentFor("H-3")?.behaviour, "the first trading hauler by symbol; the frigate's 40 hold does not count")
+        assertEquals("trade", once.assignmentFor("H-4")?.behaviour, "one promotion per tick")
+        val twice = Strategy.promoteForSurplus(once, high)
+        assertEquals("supplyGate", twice.assignmentFor("H-4")?.behaviour)
+        assertEquals(twice, Strategy.promoteForSurplus(twice, high), "RUSH_HAULERS reached")
+        assertEquals(plan, Strategy.promoteForSurplus(plan, snapshotWith(SupplyLevel.MODERATE)), "no surplus, no promotion")
+        assertEquals(plan, Strategy.promoteForSurplus(plan, high.copy(constructionBill = emptyList())), "nothing owed, nothing promoted")
+    }
+
+    @Test
     fun `the plan carries its phase through json and starts in escape`() {
         val file = File.createTempFile("plan", ".json").also { it.deleteOnExit() }
         Plan.save(file, Plan().withPhase(Phase.BOOM))

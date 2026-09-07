@@ -25,6 +25,14 @@ the same for an input's own producer in the system. `FEEDERS` haulers work them 
 whether or not a leg pays (iron costs 8 a unit more at the refinery than the fab pays); a source
 down to LIMITED gives up one trade volume a visit. `chain` prints each chain's ledger and verdict.
 
+**A surplus promotes a hauler.** Once feeding works the producer outruns one hauler: F55 read
+MODERATE/STRONG with its trade volume doubled to 43 on the evening of 2026-09-06 while D47 sat
+ABUNDANT in circuitry. When a gate material's producer reads `gateSurplusAt` (HIGH) or better, the
+escape tick promotes the first trading hauler by symbol to `supplyGate`, one per minute, up to
+`RUSH_HAULERS`. Nobody is demoted: a gate hauler trades once when it finds nothing to take. A
+producer whose export is GROWING or STRONG is taken from rather than fed first (`takeWhenGrowing`),
+and nursing, feeding and gardening stop at an import that reads `feedUntil` (HIGH).
+
 **The gate rush.** ESCAPE is rushed, but not at the cost of market health or of the capital the
 boom needs. The gate hauler re-reads the bill every load and prices what is left at the cheapest
 listing in the system. Once the bank covers `RUSH_COMFORT` (1.5) times that, plus the
