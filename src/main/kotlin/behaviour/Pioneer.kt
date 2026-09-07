@@ -30,6 +30,7 @@ val pioneerSpec = BehaviourSpec(
 
 suspend fun BehaviourScope.pioneer() {
     val kit = param("kit")?.toLongOrNull() ?: Strategy.RUSH_KIT
+    val triedAndFailed = mutableSetOf<String>()
     while (true) {
         clock.sleep(1.minutes.div(6))
         val plan = shared.plan
@@ -38,11 +39,12 @@ suspend fun BehaviourScope.pioneer() {
         // entry system has a known route from here (E spun for ten minutes in ZN49 on 2026-09-07 trying to
         // take a gate that opened from home, two jumps back).
         val hereGate = snapshot().waypointsIn(here).firstOrNull { it.type == WaypointType.JUMP_GATE }?.symbol
-        val entry = plan.frontier
-            .filter { it.gate !in shared.unreachableGates && !shared.claimedByOther(it.gate, ship) && (it.claimedBy == null || it.claimedBy == ship) }
-            .filter { it.via == here || (hereGate != null && knowledge.GateGraph.route(shared.gates, hereGate, it.via, shared.unreachableGates) != null) }
-            .sortedBy { if (it.via == here) 0 else 1 }
-            .firstOrNull()
+        val open = plan.frontier
+            .filter { it.gate !in shared.unreachableGates && !shared.claimedByOther(it.gate, ship) && (it.claimedBy == null || it.claimedBy == ship) && it.gate !in triedAndFailed }
+        fun hops(f: FrontierGate): Int? = if (f.via == here) 0 else hereGate?.let { g -> knowledge.GateGraph.route(shared.gates, g, f.via, shared.unreachableGates)?.size }
+        // Routable first, nearest first; then the rest, because the map is read as ships move and a route
+        // unknown now may open with one gate read (seven pioneers sat on "frontier is empty" on 2026-09-07).
+        val entry = open.sortedWith(compareBy({ hops(it) == null }, { hops(it) ?: Int.MAX_VALUE })).firstOrNull()
         if (entry == null) {
             // Nothing to enter: be useful where the ship stands.
             if (snapshot().waypointsIn(here).any { it.hasTrait(WaypointTraitSymbol.UNCHARTED) }) { phase("chart while waiting", here) { chartSystem() }; continue }
@@ -52,7 +54,13 @@ suspend fun BehaviourScope.pioneer() {
         }
         shared.claim(ship, entry.gate)
         shared.editPlan("$ship takes ${entry.gate}") { it.withFrontierClaim(entry.gate, ship) }
-        if (here != entry.via && !goToSystem(entry.via)) { shared.release(ship); shared.editPlan("$ship gives up ${entry.gate}") { it.withFrontierClaim(entry.gate, null) }; continue }
+        if (here != entry.via && !goToSystem(entry.via)) {
+            shared.release(ship)
+            shared.editPlan("$ship gives up ${entry.gate}") { it.withFrontierClaim(entry.gate, null) }
+            triedAndFailed += entry.gate
+            if (triedAndFailed.size >= open.size) { status("waiting", "no frontier gate is reachable from $here; trying again in 10 minutes"); triedAndFailed.clear(); clock.sleep(10.minutes) }
+            continue
+        }
         val fromGate = snapshot().waypointsIn(me.nav.systemSymbol).firstOrNull { it.type == WaypointType.JUMP_GATE } ?: throw BehaviourFailure("${me.nav.systemSymbol} has no gate")
         phase("travel to gate", fromGate.symbol) { travelTo(fromGate.symbol) }
         val arrived = phase("jump", "to ${entry.gate}") {

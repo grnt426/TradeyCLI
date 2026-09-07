@@ -593,9 +593,10 @@ object Strategy {
         val charting = plan.assignments.filter { it.behaviour == "chartSystem" && snapshot.ships[it.ship]?.usesFuel == false }
         // A system whose waypoints we have not loaded is not done, only unread.
         fun done(system: String) = snapshot.waypointsIn(system).isNotEmpty() && uncharted(system) == 0
-        // Idle watchers beyond one per system are spare too: a probe that finished charting sits reading prices.
+        // Idle watchers beyond one per system, and parked probes, are spare too: the reserve for the next system.
         val watching = plan.assignments.filter { it.behaviour == "probeMarkets" && it.params["markets"] == null && snapshot.ships[it.ship]?.usesFuel == false }
-            .groupBy { snapshot.ships[it.ship]?.nav?.systemSymbol }.values.flatMap { it.sortedWith(compareBy({ it.ship.length }, { it.ship })).drop(SETTLE_PROBES) }
+            .groupBy { snapshot.ships[it.ship]?.nav?.systemSymbol }.values.flatMap { it.sortedWith(compareBy({ it.ship.length }, { it.ship })).drop(SETTLE_PROBES) } +
+            plan.assignments.filter { it.behaviour == "park" && snapshot.ships[it.ship]?.usesFuel == false }
         var next = plan
         var moves = 0
         while (moves < PROBE_MOVES_PER_TICK) {
@@ -610,8 +611,8 @@ object Strategy {
             next = when {
                 need != null -> next.with(Assignment(spare.ship, "chartSystem", mapOf("system" to need)))
                 pioneers < pioneerRoom(next) -> next.with(Assignment(spare.ship, "pioneer"))
-                spare.behaviour == "probeMarkets" -> break // already watching, nowhere better to be
-                else -> next.with(Assignment(spare.ship, "probeMarkets", mapOf("maxAge" to BOOM_WATCH_MINUTES.toString())))
+                spare.behaviour == "park" -> break // already parked, nowhere better to be
+                else -> next.with(Assignment(spare.ship, "park")) // a watcher touring its markets costs requests and earns nothing
             }
             moves++
         }
