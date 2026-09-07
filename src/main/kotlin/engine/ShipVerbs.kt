@@ -103,6 +103,8 @@ class ShipVerbs(
             call { api.navigate(ship, waypoint) }
         } catch (e: VerbFailure.Api) {
             if (e.error.code == ApiErrorCodes.NAVIGATE_INSUFFICIENT_FUEL) throw VerbFailure.InsufficientFuel(ship, needed, current.fuel.current)
+            // The world's copy of a ship can lag the server after a jump; when the server says the ship is already there, believe it (a probe looped on 4204 for an hour on 2026-09-07).
+            if (e.error.code == ApiErrorCodes.NAVIGATE_SAME_DESTINATION) return update(call { api.getMyShip(ship) })
             throw e
         }
         current = update(current.copy(nav = response.nav, fuel = response.fuel ?: current.fuel))
@@ -363,11 +365,13 @@ class ShipVerbs(
         var current = settled(ship)
         awaitCooldown(current)
         if (current.isDocked) current = orbit(ship)
+        val from = current.nav.waypointSymbol
         val response = call(retryOnCooldown = true) { api.jump(ship, waypoint) }
         response.transaction?.let { sink.transaction(it, world.chainOf[ship]) }
         response.agent?.let { agentChanged(it) }
         current = update(current.copy(nav = response.nav, cooldown = response.cooldown))
-        activity(ship, "jump", waypoint, response.cooldown.totalSeconds)
+        // Gate to gate, so the console can draw the hop between the two systems.
+        activity(ship, "jump", "$from -> $waypoint", response.cooldown.totalSeconds)
         sink.event(Event.Jumped(ship, waypoint, response.transaction?.totalPrice?.toLong() ?: 0))
         return current
     }

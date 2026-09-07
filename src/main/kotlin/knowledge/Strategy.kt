@@ -552,12 +552,12 @@ object Strategy {
         // The gate is done: its haulers become the boom's traders.
         behaviour == "supplyGate" && ship.cargo.capacity > 0 -> Assignment(ship.symbol, "trade")
         // Home charted: now read every market once; in the boom a charted system just needs its prices watched.
-        !ship.usesFuel && behaviour == "chartSystem" && phase == Phase.BOOM -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to "10"))
+        !ship.usesFuel && behaviour == "chartSystem" && phase == Phase.BOOM -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to BOOM_WATCH_MINUTES.toString()))
         !ship.usesFuel && behaviour == "chartSystem" -> Assignment(ship.symbol, "probeMarkets")
         // The probe has read every market: park it at a yard and buy the fleet the goals ask for, if any is still unmet.
         !ship.usesFuel && behaviour == "probeMarkets" && goalsUnmet(snapshot) -> Assignment(ship.symbol, "expand")
         // Otherwise, and when an explorer runs out of map, keep the prices fresh where it stands.
-        !ship.usesFuel && (behaviour == "probeMarkets" || behaviour == "explore") -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to "10"))
+        !ship.usesFuel && (behaviour == "probeMarkets" || behaviour == "explore") -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to BOOM_WATCH_MINUTES.toString()))
         else -> null
     }
 
@@ -576,6 +576,8 @@ object Strategy {
         else -> null
     }
 
+    /** Minutes between a boom watcher's re-reads: with 80 ships the API's budget goes to charts and jumps first (156 rate-limit hits in four hours on 2026-09-07, two thirds of them market reads). */
+    const val BOOM_WATCH_MINUTES = 30
     /** Probes charting one system at once: more than this collide on the same waypoints. */
     const val PROBES_PER_CHART = 4
 
@@ -609,7 +611,7 @@ object Strategy {
                 need != null -> next.with(Assignment(spare.ship, "chartSystem", mapOf("system" to need)))
                 pioneers < pioneerRoom(next) -> next.with(Assignment(spare.ship, "pioneer"))
                 spare.behaviour == "probeMarkets" -> break // already watching, nowhere better to be
-                else -> next.with(Assignment(spare.ship, "probeMarkets", mapOf("maxAge" to "10")))
+                else -> next.with(Assignment(spare.ship, "probeMarkets", mapOf("maxAge" to BOOM_WATCH_MINUTES.toString())))
             }
             moves++
         }
