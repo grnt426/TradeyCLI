@@ -33,6 +33,10 @@ escape tick promotes the first trading hauler by symbol to `supplyGate`, one per
 producer whose export is GROWING or STRONG is taken from rather than fed first (`takeWhenGrowing`),
 and nursing, feeding and gardening stop at an import that reads `feedUntil` (HIGH).
 
+**Record.** Reset 2026-09-06: registered 09:04 EDT, gate X1-ZJ35-I61 complete 08:29 EDT on 2026-09-07,
+23 h 25 min, with 15 ships and 3.4M in the bank at completion. The last third of the bill took the
+feeders and three gate haulers; the first two thirds took one hauler and the traders' nursing.
+
 **The final push.** With `FINAL_PUSH_UNITS` (100) or fewer left on the whole bill, the gate haulers
 buy regardless of the producers' health: no take budget, no nursing, no feeding first. A drained
 producer recovers in hours, and by the time another gate needs its parts the boom has the whole

@@ -66,9 +66,15 @@ home gate and makes two probes pioneers; the `systems` command. Knobs: `Strategy
 (350k), `GALAXY_RESERVE` (300k), `PIONEERS` (2), `NETWORK_SHARE` (0.25), `SETTLE_HAULERS`,
 `SETTLE_PROBES`.
 
+**Growth.** The probe goal follows the frontier: a watcher plus one pioneer per open gate, up to
+`MAX_PIONEERS` (8), and probes are bought unpaced (only ships at `PACED_PURCHASE_PRICE` or more
+wait ten minutes between purchases). Every gate a pioneer finds is another probe bought at the
+nearest yard, so the fleet grows with the map. Home's traders beyond `HOME_TRADERS` (2) spread over
+the systems the pioneers have entered, `HAULERS_PER_SYSTEM` (2) each, one move a minute; a trader
+sent to a system counts against its rush-kit hauler goal, so migration replaces a purchase.
+
 Still to do: the cascade does not yet send a follow-up ship to a system whose only known gate is
-two jumps away when the pioneer count is exhausted; Settle does not yet release surplus haulers to
-systems that need seeding; per-system idle time.
+two jumps away when the pioneer count is exhausted; per-system idle time.
 
 ## Measurements to keep
 

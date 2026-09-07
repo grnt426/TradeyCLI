@@ -157,11 +157,13 @@ class BehaviourScope(
                     status(detail = "would buy ${goal.type} at $price but the bank must keep $reserve (working capital for the traders)")
                     continue
                 }
-                shared.lastPurchaseAt?.let { last ->
-                    val minutes = java.time.Duration.between(last, clock.now()).toMinutes()
-                    if (minutes < knowledge.Strategy.MINUTES_BETWEEN_PURCHASES) { status(detail = "bought a ship ${minutes} min ago; the next waits"); return null }
+                if (price >= knowledge.Strategy.PACED_PURCHASE_PRICE) {
+                    shared.lastPurchaseAt?.let { last ->
+                        val minutes = java.time.Duration.between(last, clock.now()).toMinutes()
+                        if (minutes < knowledge.Strategy.MINUTES_BETWEEN_PURCHASES) { status(detail = "bought a ship ${minutes} min ago; the next waits"); return null }
+                    }
+                    shared.lastPurchaseAt = clock.now()
                 }
-                shared.lastPurchaseAt = clock.now()
                 if (!me.isDocked) dock(ship)
                 val bought = purchaseShip(goal.type, here.symbol)
                 status(detail = "bought ${bought.symbol} (${goal.type}) for $price; ${owned + 1}/${goal.count}" + (goal.system?.let { " for $it" } ?: ""))

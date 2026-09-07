@@ -58,8 +58,9 @@ object Strategy {
 
     /** Credits each trading ship needs in hand to fill a hold: a 40-unit load of clothing or fabrics costs 70k. Three haulers bought in one minute on 2026-09-06 left 90k for five traders. */
     const val WORKING_CAPITAL_PER_TRADER = 120_000L
-    /** Minutes between ship purchases, so each one's effect on income is seen before the next. */
+    /** Minutes between ship purchases, so each one's effect on income is seen before the next. Only ships at [PACED_PURCHASE_PRICE] or more are paced: a probe is a tenth of a hauler and its job is charting, not income. */
     const val MINUTES_BETWEEN_PURCHASES = 10L
+    const val PACED_PURCHASE_PRICE = 100_000L
 
     /** The bank a purchase must leave: the goal's reserve, or enough working capital for every ship that trades, whichever is more. */
     fun purchaseReserve(goalReserve: Long, snapshot: Snapshot): Long {
@@ -71,6 +72,53 @@ object Strategy {
     const val RUSH_KIT = 350_000L
     const val GALAXY_RESERVE = 300_000L
     const val PIONEERS = 2
+    /** The boom grows with the frontier: pioneers up to the number of open frontier gates, capped here. */
+    const val MAX_PIONEERS = 8
+    /** Traders kept at home in the boom; the rest spread over the systems the pioneers open, [HAULERS_PER_SYSTEM] each. */
+    const val HOME_TRADERS = 2
+    const val HAULERS_PER_SYSTEM = 2
+
+    /** Pioneers the frontier has room for right now: at least [PIONEERS], one per open gate, at most [MAX_PIONEERS]. */
+    fun pioneerRoom(plan: Plan?): Int = maxOf(PIONEERS, minOf(MAX_PIONEERS, plan?.frontier?.size ?: 0))
+
+    /**
+     * The probe goal follows the frontier: a watcher at home plus one pioneer per open gate, so every
+     * gate the pioneers find gets a probe of its own (quadratic growth, Grant's ask on 2026-09-07).
+     * Only ever raised; a cheap probe that finds no gate charts where it stands.
+     */
+    fun growProbes(plan: Plan, snapshot: Snapshot): Plan {
+        val wanted = 1 + pioneerRoom(plan)
+        val goal = plan.goals.fleet.firstOrNull { it.type == ShipType.SHIP_PROBE && it.system == null }
+        return if ((goal?.count ?: 0) >= wanted) plan else plan.withGoal(FleetGoal(ShipType.SHIP_PROBE, wanted, reserve = GALAXY_RESERVE))
+    }
+
+    /**
+     * Home's spare traders go where the markets are fresh: each system the pioneers have entered
+     * through a built gate gets [HAULERS_PER_SYSTEM] traders, [HOME_TRADERS] stay home, one move per
+     * tick. A trader sent to a system counts against that system's rush-kit hauler goal, so the
+     * migration replaces a purchase.
+     */
+    fun spreadHaulers(plan: Plan, snapshot: Snapshot): Plan {
+        val home = snapshot.hqSystem ?: return plan
+        val isTrader = { a: Assignment -> a.behaviour == "trade" && snapshot.ships[a.ship]?.let { it.usesFuel && it.cargo.capacity >= 40 } == true }
+        val homeTraders = plan.assignments.filter { a -> isTrader(a) && a.params["system"] == null && snapshot.ships[a.ship]?.nav?.systemSymbol == home }.sortedBy { it.ship }
+        if (homeTraders.size <= HOME_TRADERS) return plan
+        val target = plan.systems.values
+            .filter { it.symbol != home && it.gateBuilt && it.stage != Stage.CASCADE }
+            .sortedBy { it.arrivedAt ?: "" }
+            .firstOrNull { s ->
+                val bound = plan.assignments.count { a -> isTrader(a) && a.params["system"] == s.symbol }
+                val there = snapshot.ships.values.count { it.nav.systemSymbol == s.symbol && it.usesFuel && it.cargo.capacity >= 40 && plan.assignmentFor(it.symbol)?.behaviour == "trade" && plan.assignmentFor(it.symbol)?.params?.get("system") != s.symbol }
+                bound + there < HAULERS_PER_SYSTEM
+            } ?: return plan
+        // The newest real hauler moves (symbols sort by length then name, so -10 comes after -F); the frigate and the old hands keep home's routes.
+        val mover = homeTraders.filter { a -> snapshot.ships[a.ship]?.let { it.cargo.capacity >= 60 && !it.canMine } == true }
+            .sortedWith(compareBy({ it.ship.length }, { it.ship })).lastOrNull() ?: return plan
+        return plan.with(Assignment(mover.ship, "trade", mapOf("system" to target.symbol)))
+    }
+
+    /** The boom's bookkeeping, once a minute: stage transitions, the probe goal, and one hauler spread. Pure. */
+    fun boomTick(plan: Plan, snapshot: Snapshot, now: java.time.Instant): Plan = spreadHaulers(growProbes(advanceSystems(plan, snapshot, now), snapshot), snapshot)
     const val NETWORK_SHARE = 0.25
     /** Ships a settled system keeps: two haulers trading and gardening, one probe watching prices. */
     const val SETTLE_HAULERS = 2
@@ -403,7 +451,7 @@ object Strategy {
             }
             Phase.BOOM -> when {
                 // A probe bought without a system in mind pioneers while the frontier has room for one, else charts where it is.
-                !ship.usesFuel && (snapshot.plan?.assignments?.count { it.behaviour == "pioneer" } ?: 0) < PIONEERS -> Assignment(ship.symbol, "pioneer")
+                !ship.usesFuel && (snapshot.plan?.assignments?.count { it.behaviour == "pioneer" } ?: 0) < pioneerRoom(snapshot.plan) -> Assignment(ship.symbol, "pioneer")
                 !ship.usesFuel -> Assignment(ship.symbol, "chartSystem")
                 else -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
             }
@@ -478,7 +526,7 @@ object Strategy {
                     val probesHere = snapshot.ships.values.filter { it.nav.systemSymbol == record.symbol && !it.usesFuel }.sortedBy { it.symbol }
                     val pioneers = next.assignments.count { it.behaviour == "pioneer" }
                     probesHere.drop(SETTLE_PROBES).filter { next.assignmentFor(it.symbol)?.behaviour in setOf("probeMarkets", "chartSystem", null) }
-                        .take((PIONEERS - pioneers).coerceAtLeast(0))
+                        .take((pioneerRoom(next) - pioneers).coerceAtLeast(0))
                         .forEach { next = next.with(Assignment(it.symbol, "pioneer")) }
                 }
                 Stage.CASCADE -> {}

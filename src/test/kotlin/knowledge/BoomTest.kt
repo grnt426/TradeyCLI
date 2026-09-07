@@ -62,6 +62,31 @@ class BoomTest {
     }
 
     @Test
+    fun `the probe goal follows the frontier and home's spare traders spread two per opened system, one move a tick`() {
+        val snap = snap()
+        val frigate = snap.ships.getValue(Fixtures.COMMAND_SHIP)
+        val haulers = (1..5).map { i -> frigate.copy(symbol = "H-$i", mounts = emptyList(), cargo = frigate.cargo.copy(capacity = 80)) }
+        val fleet = snap.copy(ships = snap.ships + haulers.associateBy { it.symbol })
+        val plan = Plan(
+            assignments = listOf(Assignment(Fixtures.COMMAND_SHIP, "trade")) + haulers.map { Assignment(it.symbol, "trade") },
+            phase = Phase.BOOM,
+            systems = listOf(
+                SystemRecord("X1-TH77", Stage.SETTLE, gateBuilt = true, note = "home"),
+                SystemRecord("X1-MF53", Stage.RUSH, gate = "X1-MF53-I57", gateBuilt = true, arrivedAt = now.toString()),
+                SystemRecord("X1-XX21", Stage.CASCADE, gate = "X1-XX21-Z25C", gateBuilt = true, arrivedAt = now.plusSeconds(60).toString()),
+            ).associateBy { it.symbol },
+        ).withFrontier((1..5).map { FrontierGate("X1-Q$it-A1", "X1-TH77") })
+        assertEquals(5, Strategy.pioneerRoom(plan))
+        assertEquals(6, Strategy.growProbes(plan, fleet).goals.fleet.first { it.type == model.ship.ShipType.SHIP_PROBE }.count)
+        val once = Strategy.spreadHaulers(plan, fleet)
+        assertEquals("X1-MF53", once.assignmentFor("H-5")?.params?.get("system"), "the newest hauler goes to the entered system, not the one still in cascade")
+        val twice = Strategy.spreadHaulers(once, fleet)
+        assertEquals("X1-MF53", twice.assignmentFor("H-4")?.params?.get("system"))
+        assertEquals(twice, Strategy.spreadHaulers(twice, fleet), "two per system, and no other system is open")
+        assertEquals(4, twice.assignments.count { it.behaviour == "trade" && it.params["system"] == null }, "the frigate and three haulers stay home")
+    }
+
+    @Test
     fun `a rushed system settles once charted and read, or networks when its gate is unbuilt, and a hauler there is sent to it`() {
         val s = snap()
         // Home's seed is charted and read: a RUSH record settles because the gate is under construction in the seed? then it networks.

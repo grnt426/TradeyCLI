@@ -85,8 +85,8 @@ class Supervisor(
         }
         if (plan.phase != Phase.BOOM) return
         val snapshot = verbs.snapshot().copy(plan = plan)
-        val next = knowledge.Strategy.advanceSystems(plan, snapshot, clock.now())
-        if (next != plan) change("advance the boom") { knowledge.Strategy.advanceSystems(it, snapshot.copy(plan = it), clock.now()) }
+        val next = knowledge.Strategy.boomTick(plan, snapshot, clock.now())
+        if (next != plan) change("the boom's tick: stages, probes, spread") { knowledge.Strategy.boomTick(it, snapshot.copy(plan = it), clock.now()) }
     }
 
     /** Applies the plan file when it differs from what is running: `assign` and `phase` in another terminal take effect within seconds. */
