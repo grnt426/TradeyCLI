@@ -72,7 +72,7 @@ object Intentions {
 
         // What it is saving for
         plan?.goals?.fleet?.forEach { goal ->
-            val owned = goal.owned(snapshot.ships.values)
+            val owned = goal.owned(snapshot.ships.values, snapshot.plan)
             if (owned >= goal.count) {
                 lines += Intent("Fleet goal met: $owned of ${goal.describe()}", Intent.Tone.NEUTRAL)
                 return@forEach

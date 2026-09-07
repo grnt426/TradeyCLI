@@ -120,7 +120,7 @@ object Strategy {
     }
 
     /** The boom's bookkeeping, once a minute: stage transitions, the probe goal, and one hauler spread. Pure. */
-    fun boomTick(plan: Plan, snapshot: Snapshot, now: java.time.Instant): Plan = spreadHaulers(growProbes(advanceSystems(plan, snapshot, now), snapshot), snapshot)
+    fun boomTick(plan: Plan, snapshot: Snapshot, now: java.time.Instant): Plan = spreadProbes(spreadHaulers(growProbes(advanceSystems(plan, snapshot, now), snapshot), snapshot), snapshot)
     const val NETWORK_SHARE = 0.25
     /** Ships a settled system keeps: two haulers trading and gardening, one probe watching prices. */
     const val SETTLE_HAULERS = 2
@@ -562,7 +562,50 @@ object Strategy {
     }
 
     /** Whether any fleet goal still wants a ship. */
-    fun goalsUnmet(snapshot: Snapshot): Boolean = snapshot.plan?.goals?.fleet?.any { goal -> goal.owned(snapshot.ships.values) < goal.count } == true
+    fun goalsUnmet(snapshot: Snapshot): Boolean = snapshot.plan?.goals?.fleet?.any { goal -> goal.owned(snapshot.ships.values, snapshot.plan) < goal.count } == true
+
+    /**
+     * The most a yard may ask for a type before we wait: yard prices climb with every purchase and
+     * fall back over time, and a 120k probe (five times its floor) is a bad buy when a second yard
+     * two jumps away asks 24k.
+     */
+    fun priceCeiling(type: ShipType): Long? = when (type) {
+        ShipType.SHIP_PROBE -> 60_000L
+        ShipType.SHIP_LIGHT_HAULER -> 450_000L
+        ShipType.SHIP_MINING_DRONE, ShipType.SHIP_SURVEYOR, ShipType.SHIP_SIPHON_DRONE -> 90_000L
+        else -> null
+    }
+
+    /** Probes charting one system at once: more than this collide on the same waypoints. */
+    const val PROBES_PER_CHART = 4
+
+    /**
+     * Spare probes go where charts remain. A probe whose chart target is done, or which is the fifth
+     * or later on one system, moves to the known system with the most uncharted waypoints and room,
+     * else pioneers while the frontier has room, else watches prices where it stands. One move per
+     * tick, so the frontier and the charts fill in together.
+     */
+    fun spreadProbes(plan: Plan, snapshot: Snapshot): Plan {
+        fun uncharted(system: String) = snapshot.waypointsIn(system).count { it.hasTrait(model.WaypointTraitSymbol.UNCHARTED) }
+        fun target(a: Assignment) = a.params["system"] ?: snapshot.ships[a.ship]?.nav?.systemSymbol
+        val charting = plan.assignments.filter { it.behaviour == "chartSystem" && snapshot.ships[it.ship]?.usesFuel == false }
+        val boundTo = charting.groupBy { target(it) }
+        // A system whose waypoints we have not loaded is not done, only unread.
+        fun done(system: String) = snapshot.waypointsIn(system).isNotEmpty() && uncharted(system) == 0
+        val spare = charting.firstOrNull { a ->
+            val t = target(a) ?: return@firstOrNull true
+            done(t) || (boundTo[t]?.indexOf(a) ?: 0) >= PROBES_PER_CHART
+        } ?: return plan
+        val need = plan.systems.keys
+            .filter { uncharted(it) > 0 && (boundTo[it]?.size ?: 0) < PROBES_PER_CHART }
+            .maxByOrNull { uncharted(it) }
+        val pioneers = plan.assignments.count { it.behaviour == "pioneer" }
+        return when {
+            need != null -> plan.with(Assignment(spare.ship, "chartSystem", mapOf("system" to need)))
+            pioneers < pioneerRoom(plan) -> plan.with(Assignment(spare.ship, "pioneer"))
+            else -> plan.with(Assignment(spare.ship, "probeMarkets", mapOf("maxAge" to "10")))
+        }
+    }
 
     fun describe(phase: Phase): String = when (phase) {
         Phase.ESCAPE -> "ESCAPE: market health first; profits fund the logistics that keep producers fed and the gate supplied"

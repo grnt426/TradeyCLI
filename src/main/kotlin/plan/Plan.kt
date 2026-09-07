@@ -129,6 +129,18 @@ data class FleetGoal(
     val system: String? = null,
 ) {
     fun owned(ships: Collection<model.ship.Ship>): Int = ships.count { behaviour.BehaviourScope.shipTypeOf(it) == type && (system == null || it.nav.systemSymbol == system) }
+
+    /**
+     * The count against the goal with the plan in hand: for a system, the ships there plus the ships
+     * assigned to it and still on the way. Without this, 33 probes were bought for X1-ZN49 on
+     * 2026-09-07 while the first two were in transit, and the yard's price climbed to 120k.
+     */
+    fun owned(ships: Collection<model.ship.Ship>, plan: Plan?): Int {
+        if (system == null || plan == null) return owned(ships)
+        return ships.count { s ->
+            behaviour.BehaviourScope.shipTypeOf(s) == type && (s.nav.systemSymbol == system || plan.assignmentFor(s.symbol)?.params?.get("system") == system)
+        }
+    }
     fun describe(): String = "${count}x${type.name.removePrefix("SHIP_")}" + (system?.let { " in $it" } ?: "")
 }
 

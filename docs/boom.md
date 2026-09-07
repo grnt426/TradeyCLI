@@ -72,6 +72,13 @@ path hop by hop, growing the map as it passes. Home's yard therefore buys for th
 network: a kit probe bought at A2 for a system two jumps out jumps twice. A pioneer only takes a
 frontier gate whose entry system it can route to.
 
+**Kits are counted in flight.** A system's goal counts the ships assigned to it as well as the ships
+in it, so a kit bought at home is not bought again while it jumps out (33 probes went to ZN49 on
+2026-09-07 before this). Yard prices climb with every purchase: a type above its ceiling
+(`Strategy.priceCeiling`: probe 60k, hauler 450k) waits for the price to fall. Spare probes, a
+chart target done or a fifth probe on one system, move to the known system with the most charts
+left (`PROBES_PER_CHART` 4 per system), else pioneer, else watch prices where they stand.
+
 **Growth.** The probe goal follows the frontier: a watcher plus one pioneer per open gate, up to
 `MAX_PIONEERS` (8), and probes are bought unpaced (only ships at `PACED_PURCHASE_PRICE` or more
 wait ten minutes between purchases). Every gate a pioneer finds is another probe bought at the

@@ -153,7 +153,7 @@ private fun BehaviourScope.affordableGoalYard(): model.system.Waypoint? {
     val snap = snapshot()
     val credits = snap.agent?.credits ?: return null
     val fleet = snap.ships.values
-    val wanted = shared.goals.fleet.filter { with(BehaviourScope.Companion) { it.buyableAt(me.nav.systemSymbol, shared.plan) } && it.owned(fleet) < it.count }
+    val wanted = shared.goals.fleet.filter { with(BehaviourScope.Companion) { it.buyableAt(me.nav.systemSymbol, shared.plan) } && it.owned(fleet, shared.plan) < it.count }
     if (wanted.isEmpty()) return null
     val yards = snap.waypointsIn(me.nav.systemSymbol).filter { it.hasShipyard }
     return Tour.nearest(here, yards.filter { y ->

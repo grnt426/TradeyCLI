@@ -36,7 +36,7 @@ suspend fun BehaviourScope.expand() {
     while (true) {
         val goals = shared.goals.fleet
         val fleet = snapshot().ships.values
-        val wanted = goals.filter { it.buyableAt(me.nav.systemSymbol, shared.plan) }.firstOrNull { goal -> goal.owned(fleet) < goal.count }
+        val wanted = goals.filter { it.buyableAt(me.nav.systemSymbol, shared.plan) }.firstOrNull { goal -> goal.owned(fleet, shared.plan) < goal.count }
         if (wanted == null) {
             // Nothing to buy: a probe parked at a yard is a probe not reading prices. One pass over stale markets, then check again.
             val stale = clock.now().minusSeconds(10 * 60)
@@ -51,16 +51,25 @@ suspend fun BehaviourScope.expand() {
             continue
         }
         val yard = fixedYard ?: phase("choose yard") {
+            // The cheapest yard we have a price for, anywhere a probe can jump to; a yard's price climbs with every
+            // purchase there (A2's probes went from 23k to 128k on 2026-09-07 while C44, in the same system, asked 21k).
             val snap = snapshot()
-            val selling = snap.waypointsIn(me.nav.systemSymbol).filter { w -> snap.shipyards[w.symbol]?.sells(wanted.type) == true }
-            Tour.nearest(here, selling)?.symbol ?: throw BehaviourFailure("no shipyard in ${me.nav.systemSymbol} sells ${wanted.type}")
+            val ceiling = knowledge.Strategy.priceCeiling(wanted.type)
+            val known = snap.shipyards.values.filter { y -> y.sells(wanted.type) && y.priceOf(wanted.type) != null && (ceiling == null || y.priceOf(wanted.type)!! <= ceiling) }
+                .filter { y -> !me.usesFuel || y.symbol.substringBeforeLast('-') == me.nav.systemSymbol }
+            val cheapest = known.minByOrNull { y -> y.priceOf(wanted.type)!! + (if (y.symbol.substringBeforeLast('-') == me.nav.systemSymbol) 0 else 5_000) }
+            cheapest?.symbol
+                ?: snap.waypointsIn(me.nav.systemSymbol).filter { w -> snap.shipyards[w.symbol]?.sells(wanted.type) == true }.let { Tour.nearest(here, it) }?.symbol
+                ?: throw BehaviourFailure("no shipyard in ${me.nav.systemSymbol} sells ${wanted.type}")
         }
+        val yardSystem = yard.substringBeforeLast('-')
+        if (me.nav.systemSymbol != yardSystem) phase("travel to yard", yard) { if (!goToSystem(yardSystem)) { clock.sleep(every); return@phase } }
         if (me.nav.waypointSymbol != yard) phase("travel to yard", yard) { travelTo(yard) }
         dock(ship)
         val bought = phase("buy", "at $yard for ${wanted.type.name.removePrefix("SHIP_")}") { maybeExpand() }
         if (bought != null) continue
         val price = snapshot().shipyards[yard]?.priceOf(wanted.type)
-        val owned = wanted.owned(snapshot().ships.values)
+        val owned = wanted.owned(snapshot().ships.values, shared.plan)
         status(
             "waiting",
             "at $yard for ${wanted.type.name.removePrefix("SHIP_")} #${owned + 1} of ${wanted.count}" +

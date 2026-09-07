@@ -62,6 +62,31 @@ class BoomTest {
     }
 
     @Test
+    fun `a system's goal counts the ships bound for it, and spare chart probes move to the system with the most charts left`() {
+        val snap = snap()
+        val probe = snap.ships.getValue(Fixtures.PROBE)
+        val probes = (1..6).map { i -> probe.copy(symbol = "P-$i") }
+        val fleet = snap.copy(ships = snap.ships + probes.associateBy { it.symbol })
+        val goal = FleetGoal(ShipType.SHIP_PROBE, 2, system = "X1-MF53")
+        val bound = Plan(listOf(Assignment("P-1", "chartSystem", mapOf("system" to "X1-MF53")), Assignment("P-2", "chartSystem", mapOf("system" to "X1-MF53"))))
+        assertEquals(0, goal.owned(fleet.ships.values), "nobody is there yet")
+        assertEquals(2, goal.owned(fleet.ships.values, bound), "two are on the way: the kit is bought, not bought again")
+        // Home is charted in the fixture; MF53 is not (its waypoints are unknown, so nothing counts as uncharted) and TH77 has none left.
+        val uncharted = fleet.copy(waypoints = fleet.waypoints.mapValues { (_, w) -> if (w.symbol == "X1-TH77-B9") w.copy(traits = w.traits + model.WaypointTrait(WaypointTraitSymbol.UNCHARTED, "Uncharted", "")) else w })
+        val crowded = Plan(
+            assignments = probes.map { Assignment(it.symbol, "chartSystem", mapOf("system" to "X1-MF53")) },
+            phase = Phase.BOOM,
+            systems = listOf(SystemRecord("X1-TH77", Stage.SETTLE, gateBuilt = true), SystemRecord("X1-MF53", Stage.RUSH, gateBuilt = true)).associateBy { it.symbol },
+        )
+        val once = Strategy.spreadProbes(crowded, uncharted)
+        val moved = once.assignments.filter { it.params["system"] == "X1-TH77" }
+        assertEquals(1, moved.size, "one probe per tick leaves the crowd for the system with charts left: ${once.assignments.map { it.params }}")
+        assertEquals("P-5", moved.single().ship, "the fifth probe on MF53 is the first spare")
+        val settled = Strategy.spreadProbes(Strategy.spreadProbes(once, uncharted), uncharted)
+        assertEquals(4, settled.assignments.count { it.params["system"] == "X1-MF53" }, "four stay charting MF53")
+    }
+
+    @Test
     fun `the probe goal follows the frontier and home's spare traders spread two per opened system, one move a tick`() {
         val snap = snap()
         val frigate = snap.ships.getValue(Fixtures.COMMAND_SHIP)

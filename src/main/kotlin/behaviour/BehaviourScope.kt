@@ -149,9 +149,12 @@ class BehaviourScope(
             val yard = refreshShipyard(here.symbol)
             val fleet = snapshot().ships.values
             for (goal in goals) {
-                val owned = goal.owned(fleet)
+                val owned = goal.owned(fleet, shared.plan)
                 if (owned >= goal.count) continue
                 val price = yard.priceOf(goal.type) ?: continue
+                knowledge.Strategy.priceCeiling(goal.type)?.let { ceiling ->
+                    if (price > ceiling) { status(detail = "would buy ${goal.type} but ${here.symbol} asks $price, above the ${ceiling / 1000}k ceiling; waiting for the price to fall"); continue }
+                }
                 val reserve = knowledge.Strategy.purchaseReserve(goal.reserve, snapshot())
                 if (agent().credits - price < reserve) {
                     status(detail = "would buy ${goal.type} at $price but the bank must keep $reserve (working capital for the traders)")
