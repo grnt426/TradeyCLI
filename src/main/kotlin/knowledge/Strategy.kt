@@ -557,7 +557,7 @@ object Strategy {
         // The probe has read every market: park it at a yard and buy the fleet the goals ask for, if any is still unmet.
         !ship.usesFuel && behaviour == "probeMarkets" && goalsUnmet(snapshot) -> Assignment(ship.symbol, "expand")
         // Otherwise, and when an explorer runs out of map, keep the prices fresh where it stands.
-        !ship.usesFuel && (behaviour == "probeMarkets" || behaviour == "explore") -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to BOOM_WATCH_MINUTES.toString()))
+        !ship.usesFuel && (behaviour == "probeMarkets" || behaviour == "explore") -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to (if (phase == Phase.BOOM) BOOM_WATCH_MINUTES else 10).toString()))
         else -> null
     }
 
