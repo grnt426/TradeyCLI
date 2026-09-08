@@ -45,6 +45,24 @@ class TradingTest {
     }
 
     @Test
+    fun `every load carries its request cost, and a floor per request drops the short cheap cycles`() {
+        val seed = pricedSeed()
+        val snap = SimRun.worldFrom(SimUniverse(seed, VirtualClock(TestCoroutineScheduler(), now))).snapshot(1)
+            .let { s -> s.copy(markets = seed.markets.associateBy { it.symbol }.mapValues { (_, m) -> m.also { it.lastRead = now } }) }
+        val ship = snap.ships.getValue(Fixtures.COMMAND_SHIP)
+        val all = Trading.rank(snap, ship, now)
+        assertTrue(all.all { it.requests >= behaviour.decisions.TradePlan.CYCLE_REQUESTS + 2 }, "at least one purchase and one sale on top of the cycle")
+        assertTrue(all.all { it.creditsPerRequest == it.profit.toDouble() / it.requests })
+        val floor = all.maxOf { it.creditsPerRequest } / 2
+        val kept = Trading.rank(snap, ship, now, TradingAssumptions(minCreditsPerRequest = floor))
+        assertTrue(kept.isNotEmpty() && kept.size < all.size, "the floor keeps the best-paying loads and drops the rest: ${kept.size} of ${all.size}")
+        assertTrue(kept.all { it.creditsPerRequest >= floor })
+        assertTrue(Trading.rank(snap, ship, now, TradingAssumptions(minCreditsPerRequest = 1e12)).isEmpty())
+        assertEquals(0.0, knowledge.Strategy.trading(plan.Phase.ESCAPE).minCreditsPerRequest, "the escape has no floor; health decides")
+        assertEquals(knowledge.Strategy.MIN_CREDITS_PER_REQUEST, knowledge.Strategy.trading(plan.Phase.BOOM).minCreditsPerRequest)
+    }
+
+    @Test
     fun `load sizing stops when the moving prices eat the margin or the money runs out`() {
         val a = TradingAssumptions()
         val cheap = Trading.sizeLoad(buyPrice = 100, buyVolume = 10, sellPrice = 130, sellVolume = 10, capacity = 200, budget = 1_000_000, a)

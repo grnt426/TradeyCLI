@@ -80,9 +80,93 @@ class BoomTest {
         )
         val once = Strategy.spreadProbes(crowded, uncharted)
         val moved = once.assignments.filter { it.params["system"] == "X1-TH77" }
-        assertEquals(listOf("P-5", "P-6"), moved.map { it.ship }.sorted(), "the fifth and sixth probes on MF53 are spare and go where charts remain: ${once.assignments.map { it.params }}")
-        assertEquals(4, once.assignments.count { it.params["system"] == "X1-MF53" }, "four stay charting MF53")
+        assertEquals(listOf("P-5"), moved.map { it.ship }, "the fifth probe on MF53 is spare and goes where a chart remains; TH77 has one waypoint left, so it has room for one: ${once.assignments.map { it.params }}")
+        assertEquals("pioneer", once.assignmentFor("P-6")?.behaviour, "the sixth finds no room anywhere and pioneers (four probes bound to one waypoint bounced for hours on 2026-09-08)")
+        assertEquals(4, once.assignments.count { it.params["system"] == "X1-MF53" }, "four stay charting MF53, whose waypoints are unread rather than charted")
         assertEquals(once, Strategy.spreadProbes(once, uncharted), "settled")
+    }
+
+    @Test
+    fun `a spare probe prefers the charts it can reach in fewest jumps`() {
+        val snap = snap()
+        val probe = snap.ships.getValue(Fixtures.PROBE)
+        val template = snap.waypointsIn("X1-TH77").first { it.type == model.system.WaypointType.ASTEROID }
+        fun unchartedIn(system: String, n: Int) = (1..n).map { i -> template.copy(symbol = "$system-B$i", systemSymbol = system, traits = listOf(model.WaypointTrait(WaypointTraitSymbol.UNCHARTED, "Uncharted", ""))) }
+        val fleet = snap.copy(waypoints = snap.waypoints + (unchartedIn("X1-NEAR", 3) + unchartedIn("X1-FAR", 8)).associateBy { it.symbol })
+        val homeGate = snap.waypointsIn("X1-TH77").first { it.type == model.system.WaypointType.JUMP_GATE }.symbol
+        // Home is charted, so a probe charting home is spare. NEAR is one jump; FAR's gate has never been read, so its distance is unknown.
+        val plan = Plan(
+            assignments = listOf(Assignment(probe.symbol, "chartSystem")),
+            phase = Phase.BOOM,
+            systems = listOf("X1-TH77", "X1-NEAR", "X1-FAR").map { SystemRecord(it, Stage.SETTLE, gateBuilt = true) }.associateBy { it.symbol },
+        )
+        val gates = mapOf(homeGate to listOf("X1-NEAR-G1"))
+        assertEquals("X1-NEAR", Strategy.spreadProbes(plan, fleet, gates).assignmentFor(probe.symbol)?.params?.get("system"), "three charts one jump away beat eight at an unknown distance")
+        assertEquals("X1-FAR", Strategy.spreadProbes(plan, fleet).assignmentFor(probe.symbol)?.params?.get("system"), "with no map at all, the most charts win")
+    }
+
+    @Test
+    fun `a trader in a drained system moves to the neighbour within two jumps that promises the most, if it has a slot`() {
+        val snap = snap()
+        val frigate = snap.ships.getValue(Fixtures.COMMAND_SHIP)
+        val hauler = frigate.copy(symbol = "H-1", mounts = emptyList(), cargo = frigate.cargo.copy(capacity = 80))
+        val heavy = frigate.copy(symbol = "F-1", mounts = emptyList(), cargo = frigate.cargo.copy(capacity = 225))
+        val another = heavy.copy(symbol = "F-2")
+        // A second system with home's markets and prices under another name; home itself has no prices any more.
+        fun clone(symbol: String) = symbol.replace("X1-TH77", "X1-MF53")
+        val cloned = snap.waypointsIn("X1-TH77").map { it.copy(symbol = clone(it.symbol), systemSymbol = "X1-MF53", orbitals = emptyList(), orbits = null) }
+        val prices = snap.markets.values.map { m -> m.copy(symbol = clone(m.symbol)).also { it.lastRead = now } }
+        val drained = snap.markets.mapValues { (_, m) -> m.copy(tradeGoods = emptyList()).also { it.lastRead = now } }
+        val world = snap.copy(
+            ships = snap.ships + listOf(hauler, heavy, another).associateBy { it.symbol },
+            waypoints = snap.waypoints + cloned.associateBy { it.symbol },
+            markets = drained + prices.associateBy { it.symbol },
+        )
+        val homeGate = snap.waypointsIn("X1-TH77").first { it.type == model.system.WaypointType.JUMP_GATE }.symbol
+        val gates = mapOf(homeGate to listOf(clone(homeGate)))
+        val plan = Plan(
+            assignments = listOf(Assignment("H-1", "trade")),
+            phase = Phase.BOOM,
+            systems = listOf(SystemRecord("X1-TH77", Stage.SETTLE, gateBuilt = true, note = "home"), SystemRecord("X1-MF53", Stage.SETTLE, gateBuilt = true)).associateBy { it.symbol },
+        )
+        val rules = Strategy.trading(Phase.BOOM)
+        assertTrue(Strategy.tradeValue(world, hauler, "X1-MF53", now, rules) > Strategy.RELOCATE_MIN_RATE, "the clone's prices promise a rate")
+        assertEquals(0.0, Strategy.tradeValue(world, hauler, "X1-TH77", now, rules), "home promises nothing")
+        assertEquals("X1-MF53", Strategy.betterSystem(plan, world, hauler, gates, emptySet(), now, rules, localRate = 0.0))
+        assertEquals(null, Strategy.betterSystem(plan, world, hauler, emptyMap(), emptySet(), now, rules, localRate = 0.0), "no known gate, no move")
+        assertEquals(null, Strategy.betterSystem(plan, world, hauler, gates, emptySet(), now, rules, localRate = 10_000_000.0), "a system that pays well is not left")
+        val taken = plan.with(Assignment("F-1", "trade", mapOf("system" to "X1-MF53")))
+        assertEquals(null, Strategy.betterSystem(taken, world, hauler, gates, emptySet(), now, rules, localRate = 0.0), "a heavy bound there fills both slots")
+        assertEquals("X1-MF53", Strategy.bestTradingSystem(plan, world, heavy, now), "a new freighter goes where the prices promise the most")
+        assertEquals(null, Strategy.bestTradingSystem(taken, world, another, now), "and never on top of another heavy")
+    }
+
+    @Test
+    fun `spare probes are the parked, the watchers beyond one per system, and the charters of a charted system`() {
+        val snap = snap()
+        val probe = snap.ships.getValue(Fixtures.PROBE)
+        val probes = (1..5).map { i -> probe.copy(symbol = "P-$i") }
+        val fleet = snap.copy(ships = snap.ships + probes.associateBy { it.symbol })
+        val plan = Plan(listOf(
+            Assignment("P-1", "probeMarkets", mapOf("maxAge" to "30")),
+            Assignment("P-2", "probeMarkets", mapOf("maxAge" to "30")),
+            Assignment("P-3", "probeMarkets", mapOf("maxAge" to "30")),
+            Assignment("P-4", "park"),
+            Assignment("P-5", "chartSystem"),
+            Assignment(Fixtures.PROBE, "chartSystem", mapOf("system" to "X1-MF53")),
+        ))
+        // Three watchers at home: one is the watcher, two are spare. One parked. P-5 charts home, which is charted; the fixture probe charts an unread system.
+        assertEquals(4, Strategy.spareProbes(plan, fleet))
+        val kits = plan.withGoal(FleetGoal(ShipType.SHIP_PROBE, 2, system = "X1-MF53")).withGoal(FleetGoal(ShipType.SHIP_HEAVY_FREIGHTER, 25))
+        assertEquals(listOf(ShipType.SHIP_HEAVY_FREIGHTER), Strategy.pruneKits(kits, fleet).goals.fleet.map { it.type }, "kit goals go while spares exist; the freighter goal stays")
+        val busy = Plan(listOf(Assignment("P-1", "probeMarkets", mapOf("maxAge" to "30")))).withGoal(FleetGoal(ShipType.SHIP_PROBE, 2, system = "X1-MF53"))
+        assertEquals(busy, Strategy.pruneKits(busy, fleet), "with no spare probe the kit is still wanted")
+    }
+
+    @Test
+    fun `an explorer warps only as far as its tank brings it back, unless fuel is known on the far side`() {
+        assertEquals(397.5, Strategy.warpReach(800.0, fuelKnownAtTarget = false))
+        assertEquals(795.0, Strategy.warpReach(800.0, fuelKnownAtTarget = true))
     }
 
     @Test
@@ -94,8 +178,11 @@ class BoomTest {
         ).associateBy { it.symbol })
         val grown = Strategy.growFleet(plan)
         assertEquals(Strategy.FREIGHTERS, grown.goals.fleet.first { it.type == ShipType.SHIP_HEAVY_FREIGHTER }.count)
+        assertEquals(Strategy.BULK_FREIGHTERS, grown.goals.fleet.first { it.type == ShipType.SHIP_BULK_FREIGHTER }.count)
         assertEquals(Strategy.EXPLORERS, grown.goals.fleet.first { it.type == ShipType.SHIP_EXPLORER }.count)
         assertEquals(grown, Strategy.growFleet(grown), "added once; the goals themselves stop the buying")
+        val older = plan.withGoal(FleetGoal(ShipType.SHIP_HEAVY_FREIGHTER, 3, reserve = 3_000_000))
+        assertEquals(Strategy.FREIGHTERS, Strategy.growFleet(older).goals.fleet.first { it.type == ShipType.SHIP_HEAVY_FREIGHTER }.count, "a raised constant raises a goal already in the plan")
         val frigate = snap.ships.getValue(Fixtures.COMMAND_SHIP)
         val explorer = frigate.copy(symbol = "E-1", modules = frigate.modules + model.ship.components.Module("MODULE_WARP_DRIVE_I", "Warp Drive I", "", 0, frigate.modules.first().requirements))
         assertEquals("warpChart", Strategy.defaultAssignment(Phase.BOOM, explorer, snap.copy(plan = grown))?.behaviour)

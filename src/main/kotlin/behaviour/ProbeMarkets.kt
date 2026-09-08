@@ -4,6 +4,7 @@ import engine.VerbFailure
 import behaviour.decisions.Tour
 import model.system.Waypoint
 import java.time.Instant
+import plan.Phase
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -28,16 +29,20 @@ val probeMarketsSpec = BehaviourSpec(
 suspend fun BehaviourScope.probeMarkets() = surveyMarkets(
     system = param("system") ?: me.nav.systemSymbol,
     only = param("markets")?.split(',')?.map { it.trim().uppercase() }?.toSet(),
-    maxAge = param("maxAge")?.toLongOrNull()?.minutes,
+    watchEvery = param("maxAge")?.toLongOrNull()?.minutes,
 )
 
 /** Reads every market of [system] (or [only]) that has no prices or is older than [maxAge]; with [maxAge] it keeps watching. */
-suspend fun BehaviourScope.surveyMarkets(system: String, only: Set<String>? = null, maxAge: kotlin.time.Duration? = null) {
+suspend fun BehaviourScope.surveyMarkets(system: String, only: Set<String>? = null, watchEvery: kotlin.time.Duration? = null) {
     var read = 0
     val unreadable = mutableMapOf<String, Instant>()
     while (true) {
         val snap = snapshot()
         val now = clock.now()
+        // Watching a boom system nobody trades in is slowed right down: the prices are for the traders, and the requests are scarce.
+        val maxAge = watchEvery?.let { wanted ->
+            if (shared.plan.phase == Phase.BOOM && knowledge.Strategy.traderSlots(shared.plan, snap, system) == 0) maxOf(wanted, knowledge.Strategy.BOOM_IDLE_WATCH_MINUTES.minutes) else wanted
+        }
         val stale = maxAge?.let { now.minusSeconds(it.inWholeSeconds) }
         // A market that showed nothing is tried again after maxAge (the ship may not have counted as present); without maxAge it is skipped for good.
         unreadable.entries.removeIf { (_, at) -> maxAge != null && at.isBefore(now.minusSeconds(maxAge.inWholeSeconds)) }

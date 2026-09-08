@@ -35,6 +35,30 @@ class RequestPacerTest {
     }
 
     @Test
+    fun `a smoothed burst pool is spent one point per interval, never all at once`() = runTest {
+        val limits = RateLimits(staticPoints = 2, staticWindow = 1.seconds, burstPoints = 5, burstWindow = 10.seconds, smoothBurst = true)
+        val pacer = RequestPacer(backgroundScope, limits, testScheduler.timeSource)
+        val granted = mutableListOf<Int>()
+        repeat(9) { i -> launch { pacer.acquire(Priority.BACKGROUND); granted += i } }
+
+        runCurrent()
+        assertEquals(listOf(0, 1, 2), granted, "two static points and one burst point at once; the other four burst points wait their interval")
+
+        advanceTimeBy(1000)
+        runCurrent()
+        assertEquals(5, granted.size, "one second on: the static pool refilled (two more); the burst interval of two seconds has not passed")
+
+        advanceTimeBy(1000)
+        runCurrent()
+        assertEquals(8, granted.size, "two seconds on: two static and the second burst point")
+
+        advanceTimeBy(1000)
+        runCurrent()
+        assertEquals(9, granted.size)
+        assertEquals(0, pacer.queued)
+    }
+
+    @Test
     fun `idle requests only take a static point nobody else wanted, after a quiet moment`() = runTest {
         val pacer = RequestPacer(backgroundScope, smallLimits, testScheduler.timeSource)
         val order = mutableListOf<String>()

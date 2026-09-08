@@ -94,13 +94,55 @@ first, because our cached waypoint still said UNCHARTED. The order of worth when
 short: charts and jumps (the boom's income), then trades, then market and yard reads. A refused
 chart now clears the waypoint with one read; a gate already in the map is not re-read; boom
 watchers re-read every thirty minutes; the `request_log` table says where the budget went.
+The pacer spends the burst pool at its own average rate (`RateLimits.smoothBurst`, one point every
+two seconds): on 2026-09-08 with 230 ships it released 4 to 15 requests in one second whenever the
+pool refilled, those seconds carried nearly every 429, and a fifth of all requests were retries.
 
 **Growth.** The probe goal follows the frontier: a watcher plus one pioneer per open gate, up to
-`MAX_PIONEERS` (8), and probes are bought unpaced (only ships at `PACED_PURCHASE_PRICE` or more
-wait ten minutes between purchases). Every gate a pioneer finds is another probe bought at the
+`MAX_PIONEERS` (32), and probes are bought unpaced (only ships at `PACED_PURCHASE_PRICE` or more
+wait five minutes between purchases). Every gate a pioneer finds is another probe bought at the
 nearest yard, so the fleet grows with the map. Home's traders beyond `HOME_TRADERS` (2) spread over
 the systems the pioneers have entered, `HAULERS_PER_SYSTEM` (2) each, one move a minute; a trader
 sent to a system counts against its rush-kit hauler goal, so migration replaces a purchase.
+
+**Traders rotate (2026-09-08).** A heavy freighter in a fresh system netted 3-7M in its first hour,
+1.5-6M in its second and about 200k an hour from the third on, then sat there; 45% of all trader
+time was "waiting" while 25 held systems had no trader. So every trader in the boom, once it has
+been `TRADER_DWELL_MINUTES` (15) in a system, looks `RELOCATE_HOPS` (2) jumps out on each plan:
+`Strategy.tradeValue` scores a system by the best route's rate plus a fading share of the next two,
+as if the ship stood at its gate; a system that promises `RELOCATE_RATIO` (3) times the ship's best
+local route and at least `RELOCATE_MIN_RATE` (50k/h), discounted 15% per extra jump, and with a slot
+free (`TRADER_SLOTS_PER_SYSTEM` 2: one heavy at `HEAVY_HOLD` 150 or more, or two lights), gets the
+ship. Greedy on purpose: drain where you stand, then move next door. A new freighter starts in the
+system that promises the most (`bestTradingSystem`). `FREIGHTERS` is 25 (about 120 requests an hour
+each; the budget stood at 1.46 of 2.5 a second with three) and one `BULK_FREIGHTERS` is bought to
+measure a 490-hold, speed-60 hull against the heavies; both have a `priceCeiling`.
+
+**Probes stop bouncing (2026-09-08).** A system's chart room is the smaller of `PROBES_PER_CHART` and
+its uncharted waypoints (four probes were bound to each of four one-waypoint systems, arrived to a
+claimed waypoint, finished, and were re-sent: 1,212 jumps in six hours), and a spare probe picks the
+system with the most charts per jump from where it stands (`FAR_HOPS` 6 for an unknown distance)
+rather than the most charts anywhere. Watchers in a system with no trader in it or bound to it
+re-read every `BOOM_IDLE_WATCH_MINUTES` (180) instead of 30: prices only pay where a trader can act,
+and 71 watchers were a quarter of the budget.
+
+**The request floor (2026-09-08, 13:50 UTC).** With rotation and 32 pioneers the budget hit its
+ceiling within an hour: 2.4 requests a second and 15% refused. Credits per hour is fooled by a
+zero-distance cycle (a light hauler ran 27k loads between two markets in one orbit at ten requests
+a load; the bulk freighter did the same on aluminum at 28k), so every plan now carries its request
+count (`TradePlan.requests`: eight for the cycle plus one purchase and one sale per trade volume)
+and a load below `MIN_CREDITS_PER_REQUEST` (5k) is not planned outside ESCAPE. A pioneered system
+gets no kit while the fleet has `KIT_PROBES` (2) spare probes (42 were bought in seventy minutes),
+and the buyer weighs a yard's price by `HOP_PRICE_PENALTY` (4%) per jump to reach it, and takes the
+dearest unmet goal first (it left the cheapest heavy yard for a 21k kit probe after every purchase).
+Kit goals are pruned by the boom tick whenever the fleet has spare probes; with every probe busy they
+stay, and rightly: a chart is about 15k a request, better than any trade.
+
+**Explorers (2026-09-08).** A warp is taken only as far as the tank brings the ship back
+(`warpReach`: half the tank, the whole tank where the far side is known to sell fuel), the ship
+refuels at the nearest fuel market in the system rather than only where it stands, and when nothing
+lies within reach it goes through the gates to the held system with the most gate-less neighbours
+(`warpBase`) instead of waiting where it happens to be.
 
 Still to do: the cascade does not yet send a follow-up ship to a system whose only known gate is
 two jumps away when the pioneer count is exhausted; per-system idle time.

@@ -30,4 +30,25 @@ object GateGraph {
         }
         return null
     }
+
+    /**
+     * Every system within [maxHops] jumps of [from] over the gates we know, with the jumps it takes;
+     * [from]'s own system at 0. A gate whose connections were never read ends the search there.
+     */
+    fun hopsFrom(gates: Map<String, List<String>>, from: String, maxHops: Int, blocked: Set<String> = emptySet()): Map<String, Int> {
+        val out = mutableMapOf(from.substringBeforeLast('-') to 0)
+        val seen = mutableSetOf(from)
+        var frontier = listOf(from)
+        for (hop in 1..maxHops) {
+            val next = mutableListOf<String>()
+            for (node in frontier) for (gate in gates[node].orEmpty()) {
+                if (gate in seen || gate in blocked) continue
+                seen += gate
+                next += gate
+                out.putIfAbsent(gate.substringBeforeLast('-'), hop)
+            }
+            frontier = next
+        }
+        return out
+    }
 }

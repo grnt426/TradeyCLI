@@ -41,14 +41,24 @@ data class RateLimits(
     val staticWindow: Duration,
     val burstPoints: Int,
     val burstWindow: Duration,
+    /**
+     * Spend the burst pool at its own average rate (one point per [burstWindow]/[burstPoints]) instead
+     * of all at once when it refills. Measured on 2026-09-08 with 230 ships: the pacer let 4 to 15
+     * requests go in one second whenever the pool refilled, and those seconds carried nearly every
+     * 429; a fifth of all requests were refused and retried. The average is the same, the spikes go.
+     */
+    val smoothBurst: Boolean = false,
 ) {
     init {
         require(staticPoints > 0 && burstPoints > 0) { "Both pools need at least one point" }
     }
 
+    /** The least time between two burst points when [smoothBurst] is on; null spends them as fast as they are asked for. */
+    val burstInterval: Duration? get() = if (smoothBurst) burstWindow / burstPoints else null
+
     companion object {
         /** Enforced per account, so every agent of the account shares one pacer. */
-        val SPACE_TRADERS = RateLimits(2, 1.seconds, 30, 60.seconds)
+        val SPACE_TRADERS = RateLimits(2, 1.seconds, 30, 60.seconds, smoothBurst = true)
     }
 }
 
@@ -102,7 +112,22 @@ class RequestPacer(
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val history = IntArray(HISTORY_LENGTH)
     private var lastRealGrant: TimeMark? = null
+    private var lastBurstGrant: TimeMark? = null
     @Volatile private var throttledAt: TimeMark? = null
+
+    /** Time before the burst pool may be drawn on again: its refill when empty, else the smoothing interval since the last draw. */
+    private fun untilBurst(): Duration {
+        if (burstPool.available() == 0) return burstPool.untilRefill()
+        val interval = limits.burstInterval ?: return Duration.ZERO
+        return lastBurstGrant?.let { (interval - it.elapsedNow()).coerceAtLeast(Duration.ZERO) } ?: Duration.ZERO
+    }
+
+    private fun tryConsumeBurst(): Boolean {
+        if (untilBurst() > Duration.ZERO) return false
+        if (!burstPool.tryConsume()) return false
+        lastBurstGrant = timeSource.markNow()
+        return true
+    }
 
     /**
      * The server said 429. Another process of this account is probably spending the budget too,
@@ -176,13 +201,13 @@ class RequestPacer(
             lock.withLock {
                 val index = queues.indexOfFirst { it.isNotEmpty() }
                 if (index >= 0 && index < Priority.IDLE.ordinal) {
-                    if (staticPool.tryConsume() || burstPool.tryConsume()) {
+                    if (staticPool.tryConsume() || tryConsumeBurst()) {
                         grant = queues[index].removeFirst()
                         queued--
                         granted++
                         lastRealGrant = timeSource.markNow()
                     } else {
-                        wait = minOf(staticPool.untilRefill(), burstPool.untilRefill()).coerceAtLeast(1.milliseconds)
+                        wait = minOf(staticPool.untilRefill(), untilBurst()).coerceAtLeast(1.milliseconds)
                     }
                 } else if (index == Priority.IDLE.ordinal) {
                     // Idle work takes one static point only when the pool is full, so a point is

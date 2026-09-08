@@ -36,7 +36,11 @@ suspend fun BehaviourScope.expand() {
     while (true) {
         val goals = shared.goals.fleet
         val fleet = snapshot().ships.values
-        val wanted = goals.filter { it.buyableAt(me.nav.systemSymbol, shared.plan) }.firstOrNull { goal -> goal.owned(fleet, shared.plan) < goal.count }
+        // The dearest unmet goal first: a kit probe for a far system sits ahead of the freighter goal in the plan, and
+        // on 2026-09-08 the buyer left the cheapest heavy yard for a 21k probe two jumps away after every purchase.
+        val listed = snapshot().shipyards.values
+        fun cheapest(type: model.ship.ShipType) = listed.mapNotNull { it.priceOf(type) }.minOrNull() ?: 0L
+        val wanted = goals.filter { it.buyableAt(me.nav.systemSymbol, shared.plan) && it.owned(fleet, shared.plan) < it.count }.maxByOrNull { cheapest(it.type) }
         if (wanted == null) {
             // Nothing to buy: a probe parked at a yard is a probe not reading prices. One pass over stale markets, then check again.
             val stale = clock.now().minusSeconds(10 * 60)
@@ -57,7 +61,12 @@ suspend fun BehaviourScope.expand() {
             val ceiling = knowledge.Strategy.priceCeiling(wanted.type)
             val known = snap.shipyards.values.filter { y -> y.sells(wanted.type) && y.priceOf(wanted.type) != null && (ceiling == null || y.priceOf(wanted.type)!! <= ceiling) }
                 .filter { y -> !me.usesFuel || y.symbol.substringBeforeLast('-') == me.nav.systemSymbol }
-            val cheapest = known.minByOrNull { y -> y.priceOf(wanted.type)!! + (if (y.symbol.substringBeforeLast('-') == me.nav.systemSymbol) 0 else 5_000) }
+            // Price plus a share per jump: a probe jumps for free but each hop is antimatter and a ten-minute cooldown.
+            val hops = localGate(me.nav.systemSymbol)?.let { g -> knowledge.GateGraph.hopsFrom(shared.gates, g.symbol, 10, shared.unreachableGates) } ?: emptyMap()
+            val cheapest = known.minByOrNull { y ->
+                val system = y.symbol.substringBeforeLast('-')
+                (y.priceOf(wanted.type)!! * (1 + knowledge.Strategy.HOP_PRICE_PENALTY * (if (system == me.nav.systemSymbol) 0 else hops[system] ?: knowledge.Strategy.FAR_HOPS))).toLong()
+            }
             cheapest?.symbol
                 ?: snap.waypointsIn(me.nav.systemSymbol).filter { w -> snap.shipyards[w.symbol]?.sells(wanted.type) == true }.let { Tour.nearest(here, it) }?.symbol
                 ?: throw BehaviourFailure("no shipyard in ${me.nav.systemSymbol} sells ${wanted.type}")

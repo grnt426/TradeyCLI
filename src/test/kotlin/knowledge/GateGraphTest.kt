@@ -20,4 +20,11 @@ class GateGraphTest {
         assertNull(GateGraph.route(gates, "X1-A-G", "X1-E", blocked = setOf("X1-B-G")), "the only way runs through a blocked gate")
         assertNull(GateGraph.route(gates, "X1-C-G", "X1-Z"), "an unknown system has no route")
     }
+
+    @Test
+    fun `the systems within a few jumps, each with the jumps it takes`() {
+        assertEquals(mapOf("X1-A" to 0, "X1-B" to 1, "X1-C" to 1, "X1-D" to 2), GateGraph.hopsFrom(gates, "X1-A-G", 2))
+        assertEquals(mapOf("X1-A" to 0, "X1-B" to 1, "X1-C" to 1, "X1-D" to 2, "X1-E" to 3), GateGraph.hopsFrom(gates, "X1-A-G", 5), "E is known only as D's connection")
+        assertEquals(mapOf("X1-A" to 0, "X1-C" to 1), GateGraph.hopsFrom(gates, "X1-A-G", 3, blocked = setOf("X1-B-G")), "a blocked gate cuts off what lies beyond it")
+    }
 }

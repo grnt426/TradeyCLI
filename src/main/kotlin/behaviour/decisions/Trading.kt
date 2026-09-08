@@ -34,10 +34,19 @@ data class TradePlan(
     val health: String = "",
     /** The load delivers a short input to one of the gate's producers: any positive margin is worth it. */
     val feeds: Boolean = false,
+    /** API requests the cycle costs: docks, orbit, navigate, market reads, refuel, and one purchase and one sale per trade volume. */
+    val requests: Int = CYCLE_REQUESTS + 2,
 ) {
     val marginPerUnit: Int get() = sellPrice - buyPrice
+    /** What the load pays per request: under the account's request budget this, not the hour, is the scarce thing (Grant, 2026-09-08). */
+    val creditsPerRequest: Double get() = profit.toDouble() / requests
     fun summary(): String =
-        "$good ${source.symbol} @$buyPrice -> ${destination.symbol} @$sellPrice: $units units, ~$profit profit, ~${creditsPerHour.toInt()} cr/h, cycle ${cycleSeconds / 60}m"
+        "$good ${source.symbol} @$buyPrice -> ${destination.symbol} @$sellPrice: $units units, ~$profit profit, ~${creditsPerHour.toInt()} cr/h, ~${creditsPerRequest.toInt()} cr/req, cycle ${cycleSeconds / 60}m"
+
+    companion object {
+        /** Requests a cycle costs before the purchases and sales: dock, read, orbit, navigate, dock, read, refuel, read. */
+        const val CYCLE_REQUESTS = 8
+    }
 }
 
 data class TradingAssumptions(
@@ -70,6 +79,12 @@ data class TradingAssumptions(
     val protectedSources: Set<String> = emptySet(),
     /** "market/good" exports of gate-chain producers: at [MarketAssumptions.reserveChainExportsBelow] or worse they go only to [chainTargets]. */
     val chainSources: Set<String> = emptySet(),
+    /**
+     * A load must pay at least this per request or it is not planned. Credits per hour is fooled by a
+     * zero-distance cycle: on 2026-09-08 a light hauler ran 27k loads between two markets in one orbit
+     * at ten requests a load, 600 requests an hour, while the account's budget was full and refusing.
+     */
+    val minCreditsPerRequest: Double = 0.0,
 ) {
     /** The smallest margin worth having on a unit bought at [buyPrice]. */
     fun floor(buyPrice: Double): Double = maxOf(minMarginPerUnit.toDouble(), buyPrice * minMarginRatio)
@@ -120,17 +135,22 @@ object Trading {
                     val seconds = (if (legToSource > 0) Travel.seconds(legToSource, FlightMode.CRUISE, ship.engine.speed) else 0L) +
                         Travel.seconds(legToDestination, FlightMode.CRUISE, ship.engine.speed) + assumptions.overheadSeconds
                     val perHour = profit.toDouble() / seconds * 3600
+                    val requests = TradePlan.CYCLE_REQUESTS + ceilDiv(load.units, offer.tradeVolume) + ceilDiv(load.units, bid.tradeVolume)
+                    if (!feeds && profit.toDouble() / requests < assumptions.minCreditsPerRequest) continue
                     plans += TradePlan(
                         offer.symbol, source, destination, offer.purchasePrice, bid.sellPrice, load.units, profit, seconds, perHour, legToSource, legToDestination,
                         score = perHour * sourceWeight * destinationWeight * (if (feeds) assumptions.market.chainFeedBonus else 1.0),
                         health = "${offer.type.name.lowercase()} ${MarketHealth.describe(offer)} -> ${bid.type.name.lowercase()} ${MarketHealth.describe(bid)}" + (if (feeds) " (feeds the gate)" else ""),
                         feeds = feeds,
+                        requests = requests,
                     )
                 }
             }
         }
         return plans.sortedByDescending { it.score }
     }
+
+    private fun ceilDiv(units: Int, volume: Int): Int = if (volume <= 0) units else (units + volume - 1) / volume
 
     data class Load(val units: Int, val cost: Long, val revenue: Long) {
         val profit: Long get() = revenue - cost

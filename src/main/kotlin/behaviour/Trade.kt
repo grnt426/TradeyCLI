@@ -9,6 +9,7 @@ import engine.Travel
 import engine.VerbFailure
 import model.market.Market
 import model.ship.FlightMode
+import plan.Phase
 import java.time.Duration
 import java.time.Instant
 import kotlin.time.Duration.Companion.minutes
@@ -55,6 +56,7 @@ suspend fun BehaviourScope.trade() {
         }
     }
     var surveyed = false
+    val arrivedAt = clock.now()
 
     while (true) {
         clock.sleep(1.seconds)
@@ -72,6 +74,21 @@ suspend fun BehaviourScope.trade() {
                 .firstOrNull()
                 // Claim before anything suspends, or two traders planning at once both take the same route.
                 ?.also { shared.claimRoute(ship, "${it.good}@${it.source.symbol}", "${it.good}@${it.destination.symbol}") }
+        }
+        // A fresh system pays a heavy 3-7M in its first hour and 200k an hour from its third (2026-09-08): once this
+        // system is drained, a neighbour within two jumps that promises several times more is worth the jump. Greedy,
+        // and after a dwell, so the ship takes the routes it came for before it looks over the fence.
+        if (shared.plan.phase == Phase.BOOM && onlyGood == null && Duration.between(arrivedAt, now).toMinutes() >= knowledge.Strategy.TRADER_DWELL_MINUTES) {
+            val localRate = plan?.creditsPerHour ?: 0.0
+            val better = knowledge.Strategy.betterSystem(shared.plan, snapshot(), me, shared.gates, shared.unreachableGates, now, assumptions, localRate)
+            if (better != null) {
+                shared.releaseRoutes(ship)
+                status("relocate", "${me.nav.systemSymbol} pays ${localRate.toInt()} cr/h at best; $better promises more; moving there")
+                // The new system goes in the plan; the supervisor restarts this behaviour, which migrates on its way in.
+                shared.editPlan("$ship moves to trade in $better") { p -> p.assignmentFor(ship)?.let { a -> p.with(a.copy(params = a.params + ("system" to better))) } ?: p }
+                clock.sleep(30.seconds)
+                continue
+            }
         }
         if (plan == null) {
             // In a system nobody of ours has read, read it once ourselves before waiting on a probe.

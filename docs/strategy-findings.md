@@ -69,6 +69,13 @@ probes park, home's spare traders spread two per settled system, three heavy fre
 where traders are thinnest, two explorers warp to gate-less systems. Six hours in: 39 systems,
 150 ships, 31M, about 3M an hour, mostly charts.
 
+**The decay curve** (2026-09-08, 102M in the bank, rank 3): a heavy freighter in a fresh system
+netted 3-7M in its first hour, 1.5-6M in its second and about 200k an hour from the third on. A
+light hauler's curve is the same shape at a fifth the height. Income is the first three hours in a
+system; after that the ship should be somewhere else. Traders now rotate within two jumps
+(docs/boom.md), the freighter goal is 25, pioneers are capped at 32 and probes are bound to at most
+as many waypoints as a system has left.
+
 **Late** (not designed): the boom ends when the frontier and the gate-less systems within reach
 are charted. Trading in many fresh systems with big holds under the request budget is the likely
 shape; a settle-and-release of surplus haulers and a per-system idle measure are still unbuilt.

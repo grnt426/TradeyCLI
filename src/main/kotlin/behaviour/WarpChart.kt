@@ -1,43 +1,57 @@
 package behaviour
 
 import behaviour.decisions.Intentions
-import engine.Travel
+import behaviour.decisions.Tour
 import engine.VerbFailure
+import knowledge.Strategy
+import model.market.TradeSymbol
 import model.system.WaypointType
 import plan.Stage
 import plan.SystemRecord
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The explorer (docs/boom.md): 3,930 of the galaxy's 7,026 systems have no jump gate, so nobody
  * trading through the network has ever charted or traded them. A ship with a warp drive picks the
  * nearest gate-less system it can reach on its tank, warps there, charts every waypoint, reads
  * every market, and goes on. Each system it opens is recorded in the plan like a pioneered one.
+ *
+ * Two rules from the first day (2026-09-08). A warp is only taken when the tank brings the ship
+ * back, unless the far side is known to sell fuel: A0 warped into X1-XT25 and sat with 51 fuel two
+ * hops from that system's only market. And when nothing lies in reach, the ship goes through the
+ * gates to the held system with the most gate-less neighbours instead of checking every half hour
+ * from where it happens to stand: A2 waited nine hours at X1-ZX11.
  */
 val warpChartSpec = BehaviourSpec(
     name = "warpChart",
     description = "Warp to the nearest unheld system without a jump gate, chart it and read its markets; repeat.",
-    params = listOf(ParamSpec("reach", "Furthest warp to take, in distance units (default the tank)")),
+    params = listOf(ParamSpec("reach", "Furthest warp to take, in distance units (default: half the tank, the whole tank where fuel is known to be sold)")),
     validate = { _, ship, _ -> buildList { if (!ship.canWarp) add("${ship.symbol} has no warp drive") } },
     run = { warpChart() },
 )
 
 suspend fun BehaviourScope.warpChart() {
     while (true) {
-        clock.sleep(1.minutes.div(6))
+        clock.sleep(10.seconds)
         // Full tank first: the warp costs one fuel per unit of distance and there may be no market on the far side.
-        if (here.hasMarket && me.fuel.current < me.fuel.capacity) runCatching { refuel(ship) }
+        if (me.fuel.current < me.fuel.capacity) phase("refuel") { fillTank() }
         val snap = snapshot()
         val from = snap.systems[me.nav.systemSymbol] ?: run { status("waiting", "${me.nav.systemSymbol} is not in the map; checking again in 10 minutes"); clock.sleep(10.minutes); continue }
-        val reach = param("reach")?.toDoubleOrNull() ?: (me.fuel.current.toDouble() - 5)
         val held = shared.plan.systems.keys
-        val target = snap.systems.values
-            .filter { s -> s.symbol != from.symbol && s.symbol !in held && s.waypoints.none { it.type == WaypointType.JUMP_GATE } && s.waypoints.isNotEmpty() && !shared.claimedByOther(s.symbol, ship) }
-            .map { s -> s to Travel.distance(from.x.toInt(), from.y.toInt(), s.x.toInt(), s.y.toInt()) }
-            .filter { (_, d) -> d <= reach }
-            .minByOrNull { (_, d) -> d }
+        val fixed = param("reach")?.toDoubleOrNull()
+        val fuel = me.fuel.current.toDouble()
+        fun reach(system: model.system.System) = fixed ?: Strategy.warpReach(fuel, snap.marketsIn(system.symbol).any { it.trades(TradeSymbol.FUEL) })
+        val target = Strategy.warpTargets(snap, held, from, ::reach).firstOrNull { (s, _) -> !shared.claimedByOther(s.symbol, ship) }
         if (target == null) {
-            status("waiting", "no unheld gate-less system within ${reach.toInt()} of ${from.symbol}; checking again in 30 minutes")
+            // Nothing within a safe warp of here: go where there is something, through the gates.
+            val base = Strategy.warpBase(shared.plan, snap, me.fuel.capacity.toDouble())
+            if (base != null && base != from.symbol && snap.waypointsIn(from.symbol).any { it.type == WaypointType.JUMP_GATE }) {
+                val moved = phase("relocate", "to $base, which has gate-less neighbours in reach") { goToSystem(base) }
+                if (moved) continue
+                status(detail = "$base could not be reached from ${from.symbol}")
+            }
+            status("waiting", "no unheld gate-less system within a safe warp of ${from.symbol}; checking again in 30 minutes")
             clock.sleep(30.minutes)
             continue
         }
@@ -56,5 +70,19 @@ suspend fun BehaviourScope.warpChart() {
         phase("read markets", system.symbol) { probeMarkets() }
         shared.release(ship)
         status(detail = "${system.symbol} charted and read; ${Intentions.format(agent().credits)} in the bank")
+    }
+}
+
+/** Refuels here when here sells fuel, else at the nearest market in the system that does (or might: an unread market is tried). */
+private suspend fun BehaviourScope.fillTank() {
+    val snap = snapshot()
+    val station = if (here.hasMarket) here else Tour.nearest(here, snap.waypointsIn(me.nav.systemSymbol).filter { it.hasMarket && snap.markets[it.symbol]?.trades(TradeSymbol.FUEL) != false })
+    if (station == null) { status(detail = "no market in ${me.nav.systemSymbol} to refuel at"); return }
+    try {
+        if (station.symbol != here.symbol) travelTo(station.symbol)
+        dock(ship)
+        refuel(ship)
+    } catch (e: VerbFailure) {
+        status(detail = "could not refuel at ${station.symbol}: ${e.message}")
     }
 }
