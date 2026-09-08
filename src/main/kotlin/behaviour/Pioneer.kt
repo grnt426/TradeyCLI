@@ -38,7 +38,7 @@ suspend fun BehaviourScope.pioneer() {
         // The nearest frontier gate nobody else has claimed: one from this system first, else one whose
         // entry system has a known route from here (E spun for ten minutes in ZN49 on 2026-09-07 trying to
         // take a gate that opened from home, two jumps back).
-        val hereGate = snapshot().waypointsIn(here).firstOrNull { it.type == WaypointType.JUMP_GATE }?.symbol
+        val hereGate = localGate(here)?.symbol
         val open = plan.frontier
             .filter { it.gate !in shared.unreachableGates && !shared.claimedByOther(it.gate, ship) && (it.claimedBy == null || it.claimedBy == ship) && it.gate !in triedAndFailed }
         fun hops(f: FrontierGate): Int? = if (f.via == here) 0 else hereGate?.let { g -> knowledge.GateGraph.route(shared.gates, g, f.via, shared.unreachableGates)?.size }
@@ -61,7 +61,7 @@ suspend fun BehaviourScope.pioneer() {
             if (triedAndFailed.size >= open.size) { status("waiting", "no frontier gate is reachable from $here; trying again in 10 minutes"); triedAndFailed.clear(); clock.sleep(10.minutes) }
             continue
         }
-        val fromGate = snapshot().waypointsIn(me.nav.systemSymbol).firstOrNull { it.type == WaypointType.JUMP_GATE } ?: throw BehaviourFailure("${me.nav.systemSymbol} has no gate")
+        val fromGate = localGate(me.nav.systemSymbol) ?: throw BehaviourFailure("${me.nav.systemSymbol} has no gate")
         phase("travel to gate", fromGate.symbol) { travelTo(fromGate.symbol) }
         val arrived = phase("jump", "to ${entry.gate}") {
             try {
