@@ -679,6 +679,8 @@ object Strategy {
     const val TRADER_SLOTS_PER_SYSTEM = 2
     /** Traders look this many jumps out for a better system: far enough to see past a drained neighbour, near enough that the jumps and antimatter stay small. Grant's call, 2026-09-08. */
     const val RELOCATE_HOPS = 2
+    /** With no local route at all the search widens to this: the bulk freighter sat at PH90 for hours on 2026-09-08 with every system within two jumps drained. */
+    const val RELOCATE_HOPS_IDLE = 5
     /** A system must promise at least this rate before a trader jumps to it... */
     const val RELOCATE_MIN_RATE = 50_000.0
     /** ...and this many times what the ship can make where it stands, so it drains a system before leaving it. */
@@ -719,7 +721,7 @@ object Strategy {
     ): String? {
         val here = ship.nav.systemSymbol
         val gate = snapshot.waypointsIn(here).firstOrNull { it.type == model.system.WaypointType.JUMP_GATE } ?: return null
-        val hops = GateGraph.hopsFrom(gates, gate.symbol, RELOCATE_HOPS, blocked)
+        val hops = GateGraph.hopsFrom(gates, gate.symbol, if (localRate > 0.0) RELOCATE_HOPS else RELOCATE_HOPS_IDLE, blocked)
         val bar = maxOf(RELOCATE_MIN_RATE, localRate * RELOCATE_RATIO)
         return hops.entries
             .filter { (system, _) -> system != here && snapshot.pricedMarketsIn(system).size >= 3 && traderSlots(plan, snapshot, system, except = ship.symbol) + slotsOf(ship) <= TRADER_SLOTS_PER_SYSTEM }
