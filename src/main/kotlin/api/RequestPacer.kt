@@ -115,10 +115,16 @@ class RequestPacer(
     private var lastBurstGrant: TimeMark? = null
     @Volatile private var throttledAt: TimeMark? = null
 
-    /** Time before the burst pool may be drawn on again: its refill when empty, else the smoothing interval since the last draw. */
+    /**
+     * Time before the burst pool may be drawn on again: its refill when empty, [BURST_BACKOFF] after a
+     * 429 (the server counted something this pacer did not, so the static rate is all there is for a
+     * while), else the smoothing interval since the last draw.
+     */
     private fun untilBurst(): Duration {
         if (burstPool.available() == 0) return burstPool.untilRefill()
         val interval = limits.burstInterval ?: return Duration.ZERO
+        val sinceThrottle = throttledAt?.elapsedNow()
+        if (sinceThrottle != null && sinceThrottle < BURST_BACKOFF) return BURST_BACKOFF - sinceThrottle
         return lastBurstGrant?.let { (interval - it.elapsedNow()).coerceAtLeast(Duration.ZERO) } ?: Duration.ZERO
     }
 
@@ -238,6 +244,11 @@ class RequestPacer(
     }
 
     companion object {
+        /**
+         * After a 429 a smoothed pacer draws no burst point for this long. On 2026-09-08 with the bridge
+         * on the same account, seconds with three requests (two static, one burst) carried most refusals.
+         */
+        val BURST_BACKOFF: Duration = 15.seconds
         const val HISTORY_LENGTH = 20
 
         /** How long the real lanes must have been quiet before idle work may take a point. */

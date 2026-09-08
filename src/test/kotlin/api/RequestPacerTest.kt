@@ -59,6 +59,26 @@ class RequestPacerTest {
     }
 
     @Test
+    fun `after a throttle a smoothed pacer lives on the static pool alone for a while`() = runTest {
+        val limits = RateLimits(staticPoints = 2, staticWindow = 1.seconds, burstPoints = 5, burstWindow = 10.seconds, smoothBurst = true)
+        val pacer = RequestPacer(backgroundScope, limits, testScheduler.timeSource)
+        val granted = mutableListOf<Int>()
+        pacer.noteThrottled()
+        repeat(4) { i -> launch { pacer.acquire(Priority.BACKGROUND); granted += i } }
+        runCurrent()
+        assertEquals(listOf(0, 1), granted, "the two static points only; no burst point after a 429")
+        advanceTimeBy(1000)
+        runCurrent()
+        assertEquals(4, granted.size, "the static refill serves the rest; the burst pool stays untouched")
+        launch { pacer.acquire(Priority.BACKGROUND); granted += 4 }
+        runCurrent()
+        assertEquals(4, granted.size, "a fifth waits: static spent, burst backed off")
+        advanceTimeBy(RequestPacer.BURST_BACKOFF.inWholeMilliseconds)
+        runCurrent()
+        assertEquals(5, granted.size, "the backoff over, a burst point serves it")
+    }
+
+    @Test
     fun `idle requests only take a static point nobody else wanted, after a quiet moment`() = runTest {
         val pacer = RequestPacer(backgroundScope, smallLimits, testScheduler.timeSource)
         val order = mutableListOf<String>()
