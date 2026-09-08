@@ -376,10 +376,36 @@ class ShipVerbs(
         return current
     }
 
+    override suspend fun warpTo(ship: String, waypoint: String): Ship {
+        var current = settled(ship)
+        if (current.nav.waypointSymbol == waypoint) return current
+        val from = world.systems[current.nav.systemSymbol]
+        val to = world.systems[OrbitalNames.getSectorSystem(waypoint)]
+        val distance = if (from != null && to != null) Travel.distance(from.x.toInt(), from.y.toInt(), to.x.toInt(), to.y.toInt()) else 0.0
+        val needed = Travel.fuelCost(distance, FlightMode.CRUISE)
+        if (current.fuel.current < needed) throw VerbFailure.InsufficientFuel(ship, needed, current.fuel.current)
+        if (current.isDocked) current = orbit(ship)
+        if (current.nav.flightMode != FlightMode.CRUISE) {
+            current = call { api.setFlightMode(ship, FlightMode.CRUISE) }.let { update(current.copy(nav = it.nav, fuel = it.fuel ?: current.fuel)) }
+        }
+        val response = call { api.warp(ship, waypoint) }
+        current = update(current.copy(nav = response.nav, fuel = response.fuel ?: current.fuel))
+        activity(ship, "warp", "${from?.symbol ?: current.nav.systemSymbol} -> $waypoint (${distance.toInt()})", java.time.Duration.between(response.nav.route.departureTime, response.nav.route.arrival).seconds)
+        clock.sleepUntil(response.nav.route.arrival.plusMillis(500))
+        return settled(ship)
+    }
+
     override suspend fun construction(waypoint: String): Construction {
         val site = call { api.getConstruction(OrbitalNames.getSectorSystem(waypoint), waypoint) }
         // The summary shows the home gate's progress; the last read of its bill lives on the world.
         if (OrbitalNames.getSectorSystem(waypoint) == world.hqSystemSymbol()) world.constructionBill = site.materials
+        // The first read that finds the site finished: the waypoint we hold still says under construction, so say so once and fix it.
+        if (site.isComplete) world.waypoints[waypoint]?.takeIf { it.isUnderConstruction }?.let { wp ->
+            val open = wp.copy(isUnderConstruction = false)
+            world.waypoints[waypoint] = open
+            sink.waypointChanged(open)
+            sink.event(Event.Notable("gate", "$waypoint is complete: the gate of ${OrbitalNames.getSectorSystem(waypoint)} is open"))
+        }
         return site
     }
 

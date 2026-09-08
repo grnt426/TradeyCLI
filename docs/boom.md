@@ -79,6 +79,14 @@ in it, so a kit bought at home is not bought again while it jumps out (33 probes
 chart target done or a fifth probe on one system, move to the known system with the most charts
 left (`PROBES_PER_CHART` 4 per system), else pioneer, else watch prices where they stand.
 
+**The fleet mix.** Under the request budget the metric is credits per request. Probes chart at about
+5,000 a request; a light hauler trades at about 1,000. A heavy freighter (225 hold, speed 36) does a
+trade cycle for the same requests as a hauler with 2.8x the cargo at 2.4x the speed, so the boom buys
+`FREIGHTERS` (3) and no more light haulers; the rush kit is two probes. `EXPLORERS` (2) carry warp
+drives and work `warpChart`: the nearest unheld system without a jump gate within the tank, charted
+and read, then the next. 3,930 of 7,026 systems have no gate and 27 lie within 800 of systems we
+hold. Every goal is global and counts the type wherever it is, so nothing is bought twice.
+
 **The request budget.** The API allows about 2.5 requests a second for the whole account, shared with
 the bridge and any command-line query. On 2026-09-07 with 82 ships the run made 9,700 requests an
 hour and 1,900 were refused: 5,800 were chart calls retrying waypoints another agent had charted

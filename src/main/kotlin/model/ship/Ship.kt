@@ -33,6 +33,7 @@ data class Ship(
     fun hasMount(prefix: String): Boolean = mounts.any { it.symbol.name.startsWith(prefix) }
     val canMine: Boolean get() = hasMount("MOUNT_MINING_LASER")
     val canSurvey: Boolean get() = hasMount("MOUNT_SURVEYOR")
+    val canWarp: Boolean get() = modules.any { it.symbol.toString().contains("WARP_DRIVE") }
     val canSiphon: Boolean get() = hasMount("MOUNT_GAS_SIPHON")
 
     /** Summed strength of the mining lasers; the simulator's yield knob. */

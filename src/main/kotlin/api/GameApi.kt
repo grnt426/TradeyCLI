@@ -49,6 +49,8 @@ interface GameApi {
     suspend fun orbit(ship: String): NavigationResponse
     suspend fun dock(ship: String): NavigationResponse
     suspend fun navigate(ship: String, waypoint: String): NavigationResponse
+    /** Warp to a waypoint in another system; the ship needs a warp drive and fuel for the distance between the systems. */
+    suspend fun warp(ship: String, waypoint: String): NavigationResponse
     suspend fun setFlightMode(ship: String, mode: FlightMode): NavigationResponse
     suspend fun extract(ship: String): ExtractionResponse
     suspend fun extractWithSurvey(ship: String, survey: Survey): ExtractionResponse

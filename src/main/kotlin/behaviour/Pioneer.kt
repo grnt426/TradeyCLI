@@ -90,7 +90,8 @@ suspend fun BehaviourScope.pioneer() {
         // Rush: the kit, bought here if there is a yard, else for here at a neighbour's yard while this probe charts.
         // An uncharted waypoint hides its traits, so a yard shows only once charted: chart first, then look again
         // (X1-ZK21 read "no shipyard" on 2026-09-07 with a yard at XZ2E the public listing knew about).
-        val goals = listOf(FleetGoal(ShipType.SHIP_PROBE, 2, reserve = Strategy.GALAXY_RESERVE, system = system), FleetGoal(ShipType.SHIP_LIGHT_HAULER, 1, reserve = Strategy.GALAXY_RESERVE, system = system))
+        // Probes only: light haulers are no longer bought (a freighter carries 2.8x for the same requests); traders spread from home.
+        val goals = listOf(FleetGoal(ShipType.SHIP_PROBE, 2, reserve = Strategy.GALAXY_RESERVE, system = system))
         shared.editPlan("rush kit for $system") { p -> goals.fold(p) { acc, g -> acc.withGoal(g) } }
         var yard = Tour.nearest(this.here, snapshot().waypointsIn(system).filter { it.hasShipyard })
         if (yard == null) {

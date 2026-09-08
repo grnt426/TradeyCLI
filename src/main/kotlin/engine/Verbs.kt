@@ -95,6 +95,9 @@ interface Verbs {
     /** Jumps [ship] through the gate it is at to [waypoint], buying the antimatter locally. Returns on arrival. */
     suspend fun jump(ship: String, waypoint: String): Ship
 
+    /** Warp to [waypoint] in another system and wait for arrival: fuel by the distance between the systems, no gate needed. */
+    suspend fun warpTo(ship: String, waypoint: String): Ship
+
     /** What a construction site still needs; one request. */
     suspend fun construction(waypoint: String): Construction
 

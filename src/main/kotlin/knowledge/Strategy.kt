@@ -88,8 +88,10 @@ object Strategy {
      */
     fun growProbes(plan: Plan, snapshot: Snapshot): Plan {
         // The global goal counts every probe, so the systems' kit probes are added on top of the watcher and the pioneers.
+        // A parked probe is a probe already bought and idle: no purchase while one exists (Grant, 2026-09-07: no over-provisioning).
         val bound = plan.goals.fleet.filter { it.type == ShipType.SHIP_PROBE && it.system != null }.sumOf { it.count }
-        val wanted = 1 + pioneerRoom(plan) + bound
+        val parked = plan.assignments.count { it.behaviour == "park" }
+        val wanted = 1 + pioneerRoom(plan) + bound - parked
         val goal = plan.goals.fleet.firstOrNull { it.type == ShipType.SHIP_PROBE && it.system == null }
         return if ((goal?.count ?: 0) >= wanted) plan else plan.withGoal(FleetGoal(ShipType.SHIP_PROBE, wanted, reserve = GALAXY_RESERVE))
     }
@@ -120,7 +122,7 @@ object Strategy {
     }
 
     /** The boom's bookkeeping, once a minute: stage transitions, the probe goal, and one hauler spread. Pure. */
-    fun boomTick(plan: Plan, snapshot: Snapshot, now: java.time.Instant): Plan = spreadProbes(spreadHaulers(growProbes(advanceSystems(plan, snapshot, now), snapshot), snapshot), snapshot)
+    fun boomTick(plan: Plan, snapshot: Snapshot, now: java.time.Instant): Plan = spreadProbes(spreadHaulers(growFleet(growProbes(advanceSystems(plan, snapshot, now), snapshot)), snapshot), snapshot)
     const val NETWORK_SHARE = 0.25
     /** Ships a settled system keeps: two haulers trading and gardening, one probe watching prices. */
     const val SETTLE_HAULERS = 2
@@ -452,6 +454,9 @@ object Strategy {
                 else -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
             }
             Phase.BOOM -> when {
+                // A warp ship charts the gate-less systems nobody else can reach; a freighter trades where the traders are thinnest.
+                ship.usesFuel && ship.canWarp -> Assignment(ship.symbol, "warpChart")
+                ship.usesFuel && ship.cargo.capacity >= 150 -> bestTradingSystem(snapshot.plan ?: Plan(), snapshot)?.let { Assignment(ship.symbol, "trade", mapOf("system" to it)) } ?: Assignment(ship.symbol, "trade")
                 // A probe bought without a system in mind pioneers while the frontier has room for one, else charts where it is.
                 !ship.usesFuel && (snapshot.plan?.assignments?.count { it.behaviour == "pioneer" } ?: 0) < pioneerRoom(snapshot.plan) -> Assignment(ship.symbol, "pioneer")
                 !ship.usesFuel -> Assignment(ship.symbol, "chartSystem")
@@ -513,6 +518,8 @@ object Strategy {
                 // "Read" allows for the odd market that shows no prices even with a ship present.
                 Stage.RUSH -> if (charted && read >= (markets * 0.9).toInt()) {
                     next = next.withSystem(record.copy(stage = if (gateUnbuilt) Stage.NETWORK else Stage.SETTLE, gateBuilt = !gateUnbuilt))
+                    // The kit has done its work: its probe goal goes, or the probes that leave would be bought again.
+                    next = next.withoutGoal(ShipType.SHIP_PROBE, record.symbol)
                 }
                 Stage.NETWORK -> {
                     if (!gateUnbuilt) next = next.withSystem(record.copy(stage = Stage.SETTLE, gateBuilt = true))
@@ -525,6 +532,7 @@ object Strategy {
                     }
                 }
                 Stage.SETTLE -> {
+                    if (next.goals.fleet.any { it.type == ShipType.SHIP_PROBE && it.system == record.symbol }) next = next.withoutGoal(ShipType.SHIP_PROBE, record.symbol)
                     // Extra probes beyond the watcher pioneer while the frontier has room.
                     // Symbols sort by length then name so -2 stays the watcher ahead of -10; a probe bound to another system's kit is not taken.
                     val probesHere = snapshot.ships.values.filter { it.nav.systemSymbol == record.symbol && !it.usesFuel }.sortedWith(compareBy({ it.symbol.length }, { it.symbol }))
@@ -572,12 +580,49 @@ object Strategy {
     fun priceCeiling(type: ShipType): Long? = when (type) {
         ShipType.SHIP_PROBE -> 60_000L
         ShipType.SHIP_LIGHT_HAULER -> 450_000L
+        ShipType.SHIP_HEAVY_FREIGHTER -> 2_200_000L
+        ShipType.SHIP_EXPLORER -> 900_000L
         ShipType.SHIP_MINING_DRONE, ShipType.SHIP_SURVEYOR, ShipType.SHIP_SIPHON_DRONE -> 90_000L
         else -> null
     }
 
     /** Minutes between a boom watcher's re-reads: with 80 ships the API's budget goes to charts and jumps first (156 rate-limit hits in four hours on 2026-09-07, two thirds of them market reads). */
     const val BOOM_WATCH_MINUTES = 30
+    /**
+     * The boom's big ships (Grant's call, 2026-09-07). Under the API's request budget the metric is
+     * credits per request, and a trade cycle costs the same requests whatever the hold: a heavy
+     * freighter carries 2.8x a light hauler's cargo at 2.4x its speed. Explorers warp to the
+     * gate-less systems (3,930 of 7,026) that nobody trading through the network has touched.
+     * Global goals count every ship of the type wherever it is, so nothing is bought twice.
+     */
+    const val FREIGHTERS = 3
+    const val EXPLORERS = 2
+
+    /** Adds the boom's freighter and explorer goals once; the goals themselves stop the buying. */
+    fun growFleet(plan: Plan): Plan {
+        var next = plan
+        if (plan.goals.fleet.none { it.type == ShipType.SHIP_HEAVY_FREIGHTER && it.system == null }) next = next.withGoal(FleetGoal(ShipType.SHIP_HEAVY_FREIGHTER, FREIGHTERS, reserve = 3_000_000))
+        if (plan.goals.fleet.none { it.type == ShipType.SHIP_EXPLORER && it.system == null }) next = next.withGoal(FleetGoal(ShipType.SHIP_EXPLORER, EXPLORERS, reserve = 3_000_000))
+        return next
+    }
+
+    /**
+     * Where a new freighter trades: the entered system with its markets read and the fewest traders,
+     * home excluded; two freighters never pick the same system in one pass because the count they
+     * minimise includes ships already bound there.
+     */
+    fun bestTradingSystem(plan: Plan, snapshot: Snapshot): String? {
+        val home = snapshot.hqSystem
+        fun traders(system: String) = plan.assignments.count { a ->
+            a.behaviour == "trade" && (a.params["system"] == system || (a.params["system"] == null && snapshot.ships[a.ship]?.nav?.systemSymbol == system)) &&
+                snapshot.ships[a.ship]?.let { it.usesFuel && it.cargo.capacity >= 40 } == true
+        }
+        return plan.systems.values
+            .filter { it.symbol != home && it.stage != Stage.CASCADE && snapshot.pricedMarketsIn(it.symbol).size >= 3 }
+            .minWithOrNull(compareBy({ traders(it.symbol) }, { -snapshot.pricedMarketsIn(it.symbol).size }))
+            ?.symbol
+    }
+
     /** Probes charting one system at once: more than this collide on the same waypoints. */
     const val PROBES_PER_CHART = 4
 

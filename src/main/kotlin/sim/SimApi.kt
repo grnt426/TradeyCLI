@@ -42,6 +42,7 @@ class SimApi(val universe: SimUniverse) : GameApi {
     override suspend fun orbit(ship: String): NavigationResponse = universe.orbit(ship)
     override suspend fun dock(ship: String): NavigationResponse = universe.dock(ship)
     override suspend fun navigate(ship: String, waypoint: String): NavigationResponse = universe.navigate(ship, waypoint)
+    override suspend fun warp(ship: String, waypoint: String): NavigationResponse = throw api.ApiError(400, 4241, "the simulator has one system and no warp", "sim")
     override suspend fun setFlightMode(ship: String, mode: FlightMode): NavigationResponse = universe.setFlightMode(ship, mode)
     override suspend fun extract(ship: String): ExtractionResponse = universe.extract(ship, null)
     override suspend fun extractWithSurvey(ship: String, survey: Survey): ExtractionResponse = universe.extract(ship, survey)

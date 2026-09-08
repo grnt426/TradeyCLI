@@ -86,6 +86,25 @@ class BoomTest {
     }
 
     @Test
+    fun `the boom wants freighters and explorers once, a warp ship charts gate-less systems, and a freighter trades where traders are thinnest`() {
+        val snap = snap()
+        val plan = Plan(phase = Phase.BOOM, systems = listOf(
+            SystemRecord("X1-TH77", Stage.SETTLE, gateBuilt = true, note = "home"),
+            SystemRecord("X1-MF53", Stage.SETTLE, gateBuilt = true),
+        ).associateBy { it.symbol })
+        val grown = Strategy.growFleet(plan)
+        assertEquals(Strategy.FREIGHTERS, grown.goals.fleet.first { it.type == ShipType.SHIP_HEAVY_FREIGHTER }.count)
+        assertEquals(Strategy.EXPLORERS, grown.goals.fleet.first { it.type == ShipType.SHIP_EXPLORER }.count)
+        assertEquals(grown, Strategy.growFleet(grown), "added once; the goals themselves stop the buying")
+        val frigate = snap.ships.getValue(Fixtures.COMMAND_SHIP)
+        val explorer = frigate.copy(symbol = "E-1", modules = frigate.modules + model.ship.components.Module("MODULE_WARP_DRIVE_I", "Warp Drive I", "", 0, frigate.modules.first().requirements))
+        assertEquals("warpChart", Strategy.defaultAssignment(Phase.BOOM, explorer, snap.copy(plan = grown))?.behaviour)
+        val freighter = frigate.copy(symbol = "F-1", mounts = emptyList(), cargo = frigate.cargo.copy(capacity = 225))
+        // Only home has priced markets in the fixture, and home is excluded: the freighter trades without a system.
+        assertEquals("trade", Strategy.defaultAssignment(Phase.BOOM, freighter, snap.copy(plan = grown))?.behaviour)
+    }
+
+    @Test
     fun `the probe goal follows the frontier and home's spare traders spread two per opened system, one move a tick`() {
         val snap = snap()
         val frigate = snap.ships.getValue(Fixtures.COMMAND_SHIP)
@@ -104,6 +123,8 @@ class BoomTest {
         assertEquals(6, Strategy.growProbes(plan, fleet).goals.fleet.first { it.type == model.ship.ShipType.SHIP_PROBE && it.system == null }.count)
         val withKit = plan.withGoal(FleetGoal(ShipType.SHIP_PROBE, 2, system = "X1-MF53"))
         assertEquals(8, Strategy.growProbes(withKit, fleet).goals.fleet.first { it.type == model.ship.ShipType.SHIP_PROBE && it.system == null }.count, "a system's kit probes count on top")
+        val withParked = withKit.with(Assignment("P-9", "park")).with(Assignment("P-8", "park"))
+        assertEquals(6, Strategy.growProbes(withParked, fleet).goals.fleet.first { it.type == model.ship.ShipType.SHIP_PROBE && it.system == null }.count, "two parked probes mean two fewer to buy")
         val once = Strategy.spreadHaulers(plan, fleet)
         assertEquals("X1-MF53", once.assignmentFor("H-5")?.params?.get("system"), "the newest hauler goes to the entered system, not the one still in cascade")
         val twice = Strategy.spreadHaulers(once, fleet)

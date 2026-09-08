@@ -102,6 +102,9 @@ class SpaceTradersApi(val client: ApiClient) : GameApi {
     override suspend fun navigate(ship: String, waypoint: String): NavigationResponse =
         client.post("my/ships/$ship/navigate", WaypointSymbol(waypoint), Priority.ACTION).decode()
 
+    override suspend fun warp(ship: String, waypoint: String): NavigationResponse =
+        client.post("my/ships/$ship/warp", WaypointSymbol(waypoint), Priority.ACTION).decode()
+
     override suspend fun setFlightMode(ship: String, mode: FlightMode): NavigationResponse =
         client.patch("my/ships/$ship/nav", FlightModeRequest(mode), Priority.ACTION).decode()
 
