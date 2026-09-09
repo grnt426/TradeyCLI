@@ -101,8 +101,13 @@ class BoomTest {
             systems = listOf("X1-TH77", "X1-NEAR", "X1-FAR").map { SystemRecord(it, Stage.SETTLE, gateBuilt = true) }.associateBy { it.symbol },
         )
         val gates = mapOf(homeGate to listOf("X1-NEAR-G1"))
-        assertEquals("X1-NEAR", Strategy.spreadProbes(plan, fleet, gates).assignmentFor(probe.symbol)?.params?.get("system"), "three charts one jump away beat eight at an unknown distance")
-        assertEquals("X1-FAR", Strategy.spreadProbes(plan, fleet).assignmentFor(probe.symbol)?.params?.get("system"), "with no map at all, the most charts win")
+        assertEquals("X1-NEAR", Strategy.spreadProbes(plan, fleet, gates).assignmentFor(probe.symbol)?.params?.get("system"), "three charts one jump away; the unknown-distance system is not a target")
+        assertEquals("pioneer", Strategy.spreadProbes(plan, fleet).assignmentFor(probe.symbol)?.behaviour, "with no map at all nothing is in reach: the probe pioneers rather than jump blind")
+        val farAway = mapOf(homeGate to listOf("X1-A-G"), "X1-A-G" to listOf("X1-B-G"), "X1-B-G" to listOf("X1-C-G"), "X1-C-G" to listOf("X1-FAR-G1"))
+        val bound = Plan(listOf(Assignment(probe.symbol, "chartSystem", mapOf("system" to "X1-FAR"))), phase = Phase.BOOM, systems = plan.systems)
+        assertEquals("pioneer", Strategy.spreadProbes(bound, fleet, farAway).assignmentFor(probe.symbol)?.behaviour, "a target four jumps out is too far: the probe is taken off the trip")
+        val nearer = farAway + (homeGate to listOf("X1-A-G", "X1-NEAR-G1"))
+        assertEquals("X1-NEAR", Strategy.spreadProbes(bound, fleet, nearer).assignmentFor(probe.symbol)?.params?.get("system"), "and sent to the charts one jump away instead")
     }
 
     @Test
@@ -113,10 +118,11 @@ class BoomTest {
         val far = (1..3).map { i -> template.copy(symbol = "X1-FAR-B$i", systemSymbol = "X1-FAR", traits = listOf(model.WaypointTrait(WaypointTraitSymbol.UNCHARTED, "Uncharted", ""))) }
         val fleet = snap.copy(waypoints = snap.waypoints + far.associateBy { it.symbol })
         val systems = listOf("X1-TH77", "X1-FAR").map { SystemRecord(it, Stage.SETTLE, gateBuilt = true) }.associateBy { it.symbol }
+        val gates = mapOf(snap.waypointsIn("X1-TH77").first { it.type == model.system.WaypointType.JUMP_GATE }.symbol to listOf("X1-FAR-G1"))
         val watching = Plan(listOf(Assignment(probe.symbol, "probeMarkets", mapOf("maxAge" to "30"))), phase = Phase.BOOM, systems = systems)
-        assertEquals("X1-FAR", Strategy.spreadProbes(watching, fleet).assignmentFor(probe.symbol)?.params?.get("system"), "home has no trader: its watcher goes to chart")
+        assertEquals("X1-FAR", Strategy.spreadProbes(watching, fleet, gates).assignmentFor(probe.symbol)?.params?.get("system"), "home has no trader: its watcher goes to chart one jump away")
         val withTrader = watching.with(Assignment(Fixtures.COMMAND_SHIP, "trade"))
-        assertEquals(watching.assignmentFor(probe.symbol), Strategy.spreadProbes(withTrader, fleet).assignmentFor(probe.symbol), "with a trader at home the one watcher stays")
+        assertEquals(watching.assignmentFor(probe.symbol), Strategy.spreadProbes(withTrader, fleet, gates).assignmentFor(probe.symbol), "with a trader at home the one watcher stays")
         val nothingLeft = Plan(listOf(Assignment(probe.symbol, "probeMarkets", mapOf("maxAge" to "30"))), phase = Phase.BOOM, systems = systems.filterKeys { it == "X1-TH77" })
         assertEquals("probeMarkets", Strategy.spreadProbes(nothingLeft, snap).assignmentFor(probe.symbol)?.behaviour, "no charts anywhere: the lone watcher keeps watching rather than pioneer or park")
     }

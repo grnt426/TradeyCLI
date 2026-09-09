@@ -759,6 +759,16 @@ object Strategy {
 
     /** A chart target more jumps away than this counts as unknown-far; a jump costs ~5.7k of antimatter and a 10-minute cooldown. */
     const val FAR_HOPS = 6
+    /**
+     * A chart probe moves at most this many known jumps, and only to a system with [CHARTS_PER_JUMP]
+     * uncharted waypoints per jump. On 2026-09-09 273 probes took 12- to 17-jump routes through the same
+     * hub gates; antimatter went from 5.7k to 9.7k a jump (107k at the hubs) and cost 12M an hour, the
+     * whole of the chart income.
+     */
+    const val CHART_HOPS = 3
+    const val CHARTS_PER_JUMP = 2
+    /** Above this antimatter price at the local gate a probe stays put: a chart pays about 30k. */
+    const val MAX_JUMP_ANTIMATTER = 20_000
     /** A yard's price counts this much more per jump to reach it: the buyer took a six-jump, ninety-minute trip to save 4% on 2026-09-08. */
     const val HOP_PRICE_PENALTY = 0.04
     /** Probes a pioneered system's kit buys when the fleet has no spares. */
@@ -814,19 +824,36 @@ object Strategy {
         fun hopsFrom(ship: String): Map<String, Int> {
             val system = snapshot.ships[ship]?.nav?.systemSymbol ?: return emptyMap()
             val gate = snapshot.waypointsIn(system).firstOrNull { it.type == model.system.WaypointType.JUMP_GATE } ?: return mapOf(system to 0)
-            return GateGraph.hopsFrom(gates, gate.symbol, FAR_HOPS)
+            return GateGraph.hopsFrom(gates, gate.symbol, CHART_HOPS)
+        }
+        // A jump is bought at the local gate's market; when its antimatter is dear the probe charts here or waits.
+        fun jumpTooDear(ship: String): Boolean {
+            val system = snapshot.ships[ship]?.nav?.systemSymbol ?: return false
+            val gate = snapshot.waypointsIn(system).firstOrNull { it.type == model.system.WaypointType.JUMP_GATE } ?: return false
+            return (snapshot.markets[gate.symbol]?.good(model.market.TradeSymbol.ANTIMATTER)?.purchasePrice ?: 0) > MAX_JUMP_ANTIMATTER
+        }
+        // A probe bound for a target known to lie beyond CHART_HOPS of where it stands is spare: it is re-sent somewhere
+        // near, or parked. Known: the local gate's connections have been read; an unread gate says nothing about distance.
+        fun tooFar(a: Assignment): Boolean {
+            val t = target(a) ?: return false
+            val here = snapshot.ships[a.ship]?.nav?.systemSymbol ?: return false
+            if (here == t) return false
+            val gate = snapshot.waypointsIn(here).firstOrNull { it.type == model.system.WaypointType.JUMP_GATE } ?: return false
+            return gates[gate.symbol].orEmpty().isNotEmpty() && hopsFrom(a.ship)[t] == null
         }
         var next = plan
         var moves = 0
         while (moves < PROBE_MOVES_PER_TICK) {
             val bound = next.assignments.filter { it.behaviour == "chartSystem" }.groupBy { target(it) }
             val spare = charting.firstOrNull { a ->
-                next.assignmentFor(a.ship) == a && (target(a)?.let { t -> done(t) || (bound[t]?.indexOf(a) ?: 0) >= room(t) } ?: true)
+                next.assignmentFor(a.ship) == a && (target(a)?.let { t -> done(t) || (bound[t]?.indexOf(a) ?: 0) >= room(t) || tooFar(a) } ?: true)
             } ?: watching.firstOrNull { next.assignmentFor(it.ship) == it } ?: break
             val hops = hopsFrom(spare.ship)
+            val dear = jumpTooDear(spare.ship)
             val need = next.systems.keys
                 .filter { it != target(spare) && uncharted(it) > 0 && (bound[it]?.size ?: 0) < room(it) }
-                .maxByOrNull { uncharted(it).toDouble() / (1 + (hops[it] ?: FAR_HOPS)) }
+                .filter { hops[it]?.let { h -> (h == 0 || !dear) && uncharted(it) >= CHARTS_PER_JUMP * h } == true }
+                .maxByOrNull { uncharted(it).toDouble() / (1 + hops.getValue(it)) }
             val pioneers = next.assignments.count { it.behaviour == "pioneer" }
             next = when {
                 need != null -> next.with(Assignment(spare.ship, "chartSystem", mapOf("system" to need)))
