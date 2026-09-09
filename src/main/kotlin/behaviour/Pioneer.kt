@@ -78,7 +78,8 @@ suspend fun BehaviourScope.pioneer() {
         if (!arrived) continue
         val system = entry.system
         val arrivedAt = clock.now().toString()
-        shared.editPlan("entered $system") { p -> p.withoutFrontier(entry.gate).withSystem(SystemRecord(system, Stage.CASCADE, gate = entry.gate, gateBuilt = true, pioneer = ship, arrivedAt = arrivedAt, budget = kit)) }
+        val entered = SystemRecord(system, Stage.CASCADE, gate = entry.gate, gateBuilt = true, pioneer = ship, arrivedAt = arrivedAt, budget = kit)
+        shared.editPlan("entered $system") { p -> p.withoutFrontier(entry.gate).withSystem(entered) }
         if (snapshot().waypointsIn(system).isEmpty()) phase("map", system) { loadSystem(system) }
         // Cascade: the gate on this side leads on to gates we may not know.
         phase("read gate", entry.gate) {
@@ -98,7 +99,7 @@ suspend fun BehaviourScope.pioneer() {
         else shared.editPlan("rush kit for $system") { p -> goals.fold(p) { acc, g -> acc.withGoal(g) } }
         var yard = Tour.nearest(this.here, snapshot().waypointsIn(system).filter { it.hasShipyard })
         if (yard == null) {
-            shared.editPlan("$system has no yard yet") { p -> p.withSystem(p.system(system)!!.copy(stage = Stage.RUSH, yard = null, note = "no shipyard seen before charting; kit bought at a neighbour")) }
+            shared.editPlan("$system has no yard yet") { p -> p.withSystem((p.system(system) ?: entered).copy(stage = Stage.RUSH, yard = null, note = "no shipyard seen before charting; kit bought at a neighbour")) }
             status(detail = "$system shows no shipyard before charting; charting it now")
             phase("chart", system) { chartSystem() }
             yard = Tour.nearest(this.here, snapshot().waypointsIn(system).filter { it.hasShipyard })
@@ -119,7 +120,7 @@ suspend fun BehaviourScope.pioneer() {
                 bought++
                 status(detail = "bought ${bought1.symbol} for $system; ${Intentions.format(spent)} of the ${Intentions.format(kit)} kit")
             }
-            shared.editPlan("$system rushed") { p -> p.withSystem(p.system(system)!!.copy(stage = Stage.RUSH, yard = yard.symbol, spent = start - agent().credits)) }
+            shared.editPlan("$system rushed") { p -> p.withSystem((p.system(system) ?: entered).copy(stage = Stage.RUSH, yard = yard.symbol, spent = start - agent().credits)) }
             status(detail = "$bought ship(s) bought for $system at ${yard.symbol}; the rest of the kit as the bank allows")
         }
     }

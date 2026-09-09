@@ -61,9 +61,16 @@ data class Plan(
 
         fun load(file: File): Plan = if (file.isFile) json.decodeFromString(file.readText()) else Plan()
 
+        /** Written whole or not at all: a reader never sees a half-written file (the run reloads the file whenever it changes). */
         fun save(file: File, plan: Plan) {
             file.parentFile?.mkdirs()
-            file.writeText(json.encodeToString(plan))
+            val tmp = File(file.parentFile, file.name + ".tmp")
+            tmp.writeText(json.encodeToString(plan))
+            try {
+                java.nio.file.Files.move(tmp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+            } catch (e: java.nio.file.AtomicMoveNotSupportedException) {
+                java.nio.file.Files.move(tmp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
         }
     }
 }

@@ -64,14 +64,21 @@ class Supervisor(
         shared.onPlanEdited = { edit, why -> change(why, edit) }
     }
 
+    /**
+     * Every plan edit runs under this lock: load, edit, apply, save is one step. Without it two ships
+     * editing at once each loaded the same base and the second save dropped the first edit (a pioneer's
+     * "entered" record vanished on 2026-09-09 with 375 ships editing, and its next edit hit a null).
+     */
+    private val editLock = Any()
+
     /** Applies a plan the supervisor wrote itself and saves it when it is valid. The edit is made on top of the file's plan, not a stale copy. */
-    private fun change(next: Plan, what: String) {
+    private fun change(next: Plan, what: String) = synchronized(editLock) {
         val problems = apply(next)
         if (problems.isEmpty()) savePlan(next) else logger.warn { "could not $what: $problems" }
     }
 
     /** Applies [edit] to the latest plan on disk (or the running one), so a hand edit made meanwhile survives. */
-    private fun change(what: String, edit: (Plan) -> Plan) {
+    private fun change(what: String, edit: (Plan) -> Plan) = synchronized(editLock) {
         val base = loadPlan() ?: plan
         change(edit(base), what)
     }
