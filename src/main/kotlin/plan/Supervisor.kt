@@ -42,8 +42,8 @@ class Supervisor(
         private set
 
     init {
-        shared.onShipPurchased = { ship, forSystem ->
-            val assignment = knowledge.Strategy.defaultAssignment(plan.phase, ship, verbs.snapshot().copy(plan = loadPlan() ?: plan), forSystem)
+        shared.onShipPurchased = { ship, forSystem, purpose ->
+            val assignment = knowledge.Strategy.defaultAssignment(plan.phase, ship, verbs.snapshot().copy(plan = loadPlan() ?: plan), forSystem, purpose)
             if (assignment != null) change("assign ${assignment.behaviour} to ${ship.symbol}") { it.with(assignment) }
         }
         shared.onPhaseChanged = { phase ->
