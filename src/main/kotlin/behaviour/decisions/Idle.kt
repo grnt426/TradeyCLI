@@ -53,14 +53,33 @@ object Idle {
         fun hours(kind: String): Double = (byKind[kind] ?: Duration.ZERO).toMinutes() / 60.0
     }
 
-    fun time(activities: List<storage.ActivityRecord>, phases: List<storage.PhaseRecord>, now: Instant): List<ShipTime> {
-        val idle = perShip(phases, now).associateBy { it.ship }
-        val ships = (activities.map { it.ship } + idle.keys).toSet()
-        return ships.map { ship ->
-            val mine = activities.filter { it.ship == ship }
-            val byKind = mine.groupBy { it.kind }.mapValues { (_, l) -> Duration.ofSeconds(l.sumOf { it.seconds }) }
+    fun time(activities: List<storage.ActivityRecord>, phases: List<storage.PhaseRecord>, now: Instant): List<ShipTime> =
+        time(activities, perShip(phases, now))
+
+    /** [time] with the idle figures already worked out, so a caller holding them does not pay for the phase log twice. */
+    fun time(activities: List<storage.ActivityRecord>, perShip: List<ShipIdle>): List<ShipTime> {
+        val idle = perShip.associateBy { it.ship }
+        val byShip = activities.groupBy { it.ship }
+        return (byShip.keys + idle.keys).map { ship ->
+            val byKind = (byShip[ship] ?: emptyList()).groupBy { it.kind }.mapValues { (_, l) -> Duration.ofSeconds(l.sumOf { it.seconds }) }
             ShipTime(ship, byKind, idle[ship]?.idle ?: Duration.ZERO, idle[ship]?.busy ?: Duration.ZERO)
         }.sortedBy { it.ship }
+    }
+
+    /**
+     * Every figure the day's phase and activity logs yield, worked out once. A day of a big
+     * fleet's phases runs to hundreds of thousands of records, so a screen that redraws twenty
+     * times a second must not walk them per frame: it keeps one of these per snapshot.
+     */
+    data class Report(val at: Instant, val perShip: List<ShipIdle>, val time: List<ShipTime>, val perBehaviour: Map<String, Pair<Duration, Duration>>) {
+        val idleByShip: Map<String, ShipIdle> by lazy { perShip.associateBy { it.ship } }
+        val timeByShip: Map<String, ShipTime> by lazy { time.associateBy { it.ship } }
+        val fleetShare: Double get() = fleetShare(perShip)
+    }
+
+    fun report(activities: List<storage.ActivityRecord>, phases: List<PhaseRecord>, now: Instant): Report {
+        val perShip = perShip(phases, now)
+        return Report(now, perShip, time(activities, perShip), perBehaviour(phases, now))
     }
 
     /** Drift legs per ship with the job that sent them: every one is a route planned past the tank. */

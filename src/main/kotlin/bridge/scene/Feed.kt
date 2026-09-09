@@ -29,9 +29,9 @@ class Feed(private val lines: () -> List<FeedLine>, private val now: () -> Insta
         val top = h - shown.size
         val at = now()
         shown.forEachIndexed { i, line ->
-            val age = Format.age(line.at, at).padStart(4)
+            val age = Format.age(line.at, at).padStart(5) // "11h35" is the widest age
             p.text(0, top + i, age, bridge.glyphs.Palette.textDim)
-            p.text(5, top + i, line.text.take((p.width - 5).coerceAtLeast(0)), line.tone)
+            p.text(6, top + i, line.text.take((p.width - 6).coerceAtLeast(0)), line.tone)
         }
         if (back > 0) p.textRight(p.width, 0, "↑$back", bridge.glyphs.Palette.warn)
     }

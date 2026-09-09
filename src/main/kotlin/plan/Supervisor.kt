@@ -73,8 +73,13 @@ class Supervisor(
 
     /** Applies a plan the supervisor wrote itself and saves it when it is valid. The edit is made on top of the file's plan, not a stale copy. */
     private fun change(next: Plan, what: String) = synchronized(editLock) {
+        val before = plan
         val problems = apply(next)
-        if (problems.isEmpty()) savePlan(next) else logger.warn { "could not $what: $problems" }
+        if (problems.isEmpty()) {
+            savePlan(next)
+            // The moves worth a line on the bridge: the phase, the rush, a system entering or changing stage.
+            PlanChanges.describe(before, next, what).forEach { emit(Event.Notable("plan", it)) }
+        } else logger.warn { "could not $what: $problems" }
     }
 
     /** Applies [edit] to the latest plan on disk (or the running one), so a hand edit made meanwhile survives. */

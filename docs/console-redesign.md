@@ -557,3 +557,85 @@ Still assumed:
   400s are uncharted gates. So the walk follows other agents' charting outward and the map shows
   the charted network, not what we can jump. The home's links are amber until our gate is open,
   and the map's readout says which it is.
+- 2026-09-07, Grant asked for three things on the galaxy screen. Jumps: a jump is instant and
+  leaves no ship in flight to draw, so the map reads the activity log instead (`bridge/RecentJumps`
+  over the snapshot's activities; the jump verb now records `gate -> gate` rather than the
+  destination alone). Every jump of the last five minutes lights its link in the accent, fading
+  as it ages, with a spark per jump (four at most) running from the gate left to the gate reached
+  every two and a half seconds, and a count at the link's midpoint; the readout totals them.
+  Opening a system: Enter or a double click on any system opens it on the system screen, fetching
+  its waypoints first when no ship of ours has been there (`BridgeModel.openSystem`, one request
+  per twenty waypoints on the normal lane, since it is asked for), and the system screen says
+  "loading waypoints" until they land; it also opens where it was last left rather than at home,
+  kept in the store's meta table under `console.lastSystem`. Unbuilt gates: the jump-gate endpoint
+  answers for a charted gate whether or not it is finished, so a system could sit in the middle of
+  the drawn network and still be an island. The galaxy now reads the waypoint of every gate the
+  network names (`Galaxy.readGateStates`, nearest home first, one idle request per gate beside the
+  gate walk, kept in `gate_waypoints`; a finished gate is final for the reset, an unfinished one is
+  read again every half hour). What a system's gate is comes from the surest source first
+  (`GalaxyMap.gateStanding`): a gate a ship of ours saw finished or a system the plan entered is
+  open; else the console's read decides; else a ship's sighting of construction. An unbuilt gate's
+  system is drawn `◌` in amber and every link to it dotted amber, the selected system's card says
+  so with the read's age, and the map's title counts them, with the legend, beside the gates read
+  and uncharted. With the whole galaxy on screen several systems share a cell, so the
+  notable ones (home, homes named, the selection, unbuilt gates) are drawn last and show.
+- 2026-09-07, Grant found the fleet hard to read once it spread across systems, and wanted the
+  ledger's categories over time. The fleet table groups ships by the system they are in (a ship in
+  flight counts where it is bound), home first then the busiest, under a heading row per system
+  with the count and how many are moving; ships sit indented under it. `Table.Row` gained `group`
+  and `indent` for this: a group row's first cell spans the width in bold on the track colour, its
+  second sits at the right edge. Enter or a double click on a heading folds that system's ships
+  away (the heading says "folded" and turns its arrow) and unfolds them again; on a ship it still
+  opens the ship screen. Selecting a heading shows a system card instead of a ship card: ships in
+  flight, docked and in orbit, what the system offers, and its ships by behaviour. On the economy
+  screen the ledger panel keeps its totals and bars and, given seven rows or more below them, adds
+  two line charts: cost growth by purpose and revenue growth by source, each category a running
+  total over the reset (`bridge/MoneyFlows` turns the tagged transactions and ledger into events
+  with `Summary`'s attribution; `scene/GrowthChart` rebuilds the series only when the events
+  change). A purpose whose line climbs steadily is a standing cost, one that steps once was a
+  purchase, a source that flattens has stopped paying.
+- 2026-09-07, after Grant's look at the charts: arbitrage dwarfed every other line, so the growth
+  charts are on a log scale from a thousand credits (`LineChart.paint(log = true)`, the axis
+  labels still credits); each chart's own legend repeated the categories both sides share, so the
+  charts share one colour per category (assigned largest flow first) and one legend under both,
+  packed into at most two rows; and the contracts panel gave up thirty percent of its width to the
+  ledger (13:7), which the legend and the two charts needed more than the contract rows did.
+- 2026-09-07, Grant found a log curve impossible to read off by eye in a terminal. A log chart now
+  ticks every power of ten with a faint dotted gridline across the canvas (every other decade when
+  the rows are too few), so the spacing shows the scale for what it is; and a click on a growth
+  chart's canvas probes it: the curve whose value at that time lies nearest the click is picked, a
+  dotted crosshair in its colour marks the time and the value, the value is written on the axis
+  at that row and a readout at the top names the category, the value and how long ago. The probe
+  keeps its time as the ledger grows; a click on the axis clears it. `LineChart.paint` returns its
+  `Geometry` (time per column, row per value) and takes a `marks` callback drawn under the series,
+  which is all a widget needs for a crosshair of its own.
+- 2026-09-07, two trims from Grant's look: the contracts table's "deadline" column is "due" at
+  five cells, which gives the state column its full word back; and the galaxy map writes jump
+  counts on the links only once zoomed in to where every system is named (under 60 units a row),
+  since zoomed out the sparks already say it and the counts cluttered the whole-galaxy view.
+- 2026-09-07, the events panel only ever showed the boot: it collected the console's own engine's
+  events, and everything worth reading happens in the run, another process. Grant chose three
+  things worth a line: a ship jumping into a system none of ours had been in, the plan's moves
+  (the phase, the rush, a system entering the plan or changing stage: `plan/PlanChanges` diffs
+  the plan in `Supervisor.change`), and a gate completing (the first construction read that finds
+  the site finished, which also clears the waypoint's flag). Each is an `Event.Notable(kind,
+  text)` the run writes to `notable_events` in the store; the console tails the table every five
+  seconds (`BridgeModel.followNotables`), the last fifty first so a console started late has a
+  past, merged into the feed by time and coloured by kind (gate good, plan accent, system info).
+  The first-jump test seeds `World.visitedSystems` at boot from home, every ship's system, the
+  plan's systems and every jump the activity log has landed. Nothing else joins the feed: trades,
+  refuels, extractions and market reads stay where they are. The feed's age column is five cells
+  now, since "11h35" ran into the text.
+- 2026-09-07, Grant found the agents' names ugly near the core, where the leaderboard's homes
+  crowd together. Other agents' homes keep their diamond at every zoom but are named only under
+  100 units a row; ours is always named. Smaller units a row is closer in.
+- 2026-09-07, Grant asked why the galaxy was eating the request budget. The request log for the
+  evening: the run at the whole static limit with 250 to 380 throttles every ten minutes (charts
+  41%, market reads 16%), the console's idle lane 13% on top, most of it from consoles opened on
+  the galaxy tab. Cause: `Galaxy.status()` ran on the first paint, before the boot had loaded the
+  store's systems, so the crawl saw an empty galaxy and paged all 352 pages again (290 of them
+  landed in fourteen minutes); and every fresh process retried the fifty uncharted gates, since
+  refusals lived in memory. Now nothing in the galaxy starts until the boot is done and the agent
+  is known, the crawl checks completeness before every page, and refusals are kept in the meta
+  table (`gateRefused:GATE`) and left alone for six hours. The idle lane is still per process and
+  blind to the run's traffic; yielding to a live run is the next fix if the budget stays tight.

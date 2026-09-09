@@ -207,8 +207,10 @@ object Summary {
     }
 
     /** One line on the fleet's idle share, or null before there is any phase history. */
-    fun idleLine(snapshot: Snapshot, now: Instant): String? {
-        val ships = Idle.perShip(snapshot.phases, now)
+    fun idleLine(snapshot: Snapshot, now: Instant): String? = idleLine(snapshot, Idle.perShip(snapshot.phases, now))
+
+    /** [idleLine] from figures already worked out. */
+    fun idleLine(snapshot: Snapshot, ships: List<ShipIdle>): String? {
         if (ships.isEmpty()) return null
         val worst = ships.firstOrNull { it.share > 0.3 }
         val drifts = snapshot.activities.filter { it.kind == "drift" }

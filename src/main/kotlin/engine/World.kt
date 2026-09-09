@@ -70,6 +70,9 @@ class World {
     @Volatile
     var activities: List<storage.ActivityRecord> = emptyList()
 
+    /** Every system a ship of ours has been in this reset, seeded at boot, so the first jump into a new one is known for what it is. */
+    val visitedSystems: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     /** The last day of phase changes, for the idle report. */
     @Volatile
     var phases: List<storage.PhaseRecord> = emptyList()
@@ -185,6 +188,9 @@ sealed interface Event {
     data class Jumped(val ship: String, val waypoint: String, val antimatterCost: Long) : Event
     data class PhaseAdvanced(val phase: String, val description: String) : Event
     data class Transferred(val from: String, val to: String, val good: String, val units: Int) : Event
+
+    /** A happening worth a line on the bridge, kept in the store so every console sees it: kind is system, plan or gate. */
+    data class Notable(val kind: String, val text: String) : Event
     /** A timed activity: a leg flown (kind cruise/drift/burn), an extraction, a siphon, a survey, a jump; [seconds] is how long it holds the ship. */
     data class Activity(val ship: String, val behaviour: String, val kind: String, val detail: String, val seconds: Long) : Event
 }

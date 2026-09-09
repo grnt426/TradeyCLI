@@ -25,7 +25,9 @@ import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.greater
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.like
 import org.jetbrains.exposed.sql.Transaction
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.batchInsert
@@ -65,7 +67,13 @@ data class TaggedTransaction(val transaction: MarketTransaction, val tag: String
 /** One historical reading of a listing. */
 data class PriceReading(val market: String, val good: TradeSymbol, val supply: String, val activity: String?, val purchasePrice: Int, val sellPrice: Int, val tradeVolume: Int, val at: Instant)
 
-/** One timed activity of one ship: kind is cruise, drift, burn, extract, siphon, survey or jump. */
+/** A happening worth a line on the bridge (kind: system, plan, gate), kept so a console started later still shows it. */
+data class Notable(val id: Long, val at: Instant, val kind: String, val text: String)
+
+/** A jump gate's waypoint record as last read for its construction state, and when. */
+data class GateWaypointRecord(val waypoint: Waypoint, val fetchedAt: Instant)
+
+/** One timed activity of one ship: kind is cruise, drift, burn, extract, siphon, survey or jump; a jump's detail is `from -> to`, gate to gate. */
 data class ActivityRecord(val at: Instant, val ship: String, val behaviour: String, val kind: String, val detail: String, val seconds: Long)
 
 /** One phase change of one ship. */
@@ -300,6 +308,31 @@ class AgentStore private constructor(
         }
     }
 
+    suspend fun putNotable(at: Instant, kind: String, text: String) = tx {
+        NotableTable.insert {
+            it[NotableTable.at] = at.toEpochMilli()
+            it[NotableTable.kind] = kind
+            it[NotableTable.text] = text.take(400)
+        }
+    }
+
+    /** Notable events after [afterId], oldest first, at most [limit]: the console's tail. */
+    suspend fun listNotables(afterId: Long = 0, limit: Int = 200): List<Notable> = tx {
+        NotableTable.selectAll().where { NotableTable.id greater afterId }.orderBy(NotableTable.id, SortOrder.ASC).limit(limit).map { notable(it) }
+    }
+
+    /** The last [n] notable events, oldest first: a console started late still has a past. */
+    suspend fun listRecentNotables(n: Int): List<Notable> = tx {
+        NotableTable.selectAll().orderBy(NotableTable.id, SortOrder.DESC).limit(n).map { notable(it) }.reversed()
+    }
+
+    private fun notable(row: ResultRow) = Notable(row[NotableTable.id], Instant.ofEpochMilli(row[NotableTable.at]), row[NotableTable.kind], row[NotableTable.text])
+
+    /** Every system a jump of ours has landed in this reset, from the activity log (a jump's detail ends with the gate reached). */
+    suspend fun listJumpedSystems(): Set<String> = tx {
+        ActivityTable.selectAll().where { ActivityTable.kind eq "jump" }.map { row -> row[ActivityTable.detail].substringAfter(" -> ").trim().substringBeforeLast('-') }.toSet()
+    }
+
     suspend fun listLedger(since: Instant? = null): List<LedgerEntry> = tx {
         val query = LedgerTable.selectAll()
         if (since != null) query.where { LedgerTable.at greaterEq since.toEpochMilli() }
@@ -473,6 +506,29 @@ class AgentStore private constructor(
 
     suspend fun listGates(): List<JumpGate> = tx { GateTable.selectAll().map { decode<JumpGate>(it[GateTable.json]) } }
 
+    suspend fun putGateWaypoint(waypoint: Waypoint, at: Instant = Instant.now()) = tx {
+        GateWaypointTable.upsert {
+            it[symbol] = waypoint.symbol
+            it[json] = ApiJson.encodeToString(waypoint)
+            it[fetchedAt] = at.toEpochMilli()
+        }
+    }
+
+    suspend fun listGateWaypoints(): List<GateWaypointRecord> = tx {
+        GateWaypointTable.selectAll().map { GateWaypointRecord(decode<Waypoint>(it[GateWaypointTable.json]), Instant.ofEpochMilli(it[GateWaypointTable.fetchedAt])) }
+    }
+
+    /** Free-form settings beside the reset's own keys: the console keeps what it last showed here. */
+    suspend fun getMeta(key: String): String? = tx { MetaTable.selectAll().where { MetaTable.key eq key }.firstOrNull()?.get(MetaTable.value) }
+    suspend fun putMeta(key: String, value: String) = tx { MetaTable.upsert { it[MetaTable.key] = key; it[MetaTable.value] = value } }
+
+    /** A gate the jump-gate endpoint refused (uncharted, no ship of ours there), and when, so no later process asks again too soon. */
+    suspend fun putGateRefusal(gate: String, at: Instant) = putMeta(GATE_REFUSED + gate, at.toEpochMilli().toString())
+    suspend fun listGateRefusals(): Map<String, Instant> = tx {
+        MetaTable.selectAll().where { MetaTable.key like "$GATE_REFUSED%" }
+            .associate { it[MetaTable.key].removePrefix(GATE_REFUSED) to Instant.ofEpochMilli(it[MetaTable.value].toLong()) }
+    }
+
     /** Every price read at [market] since [since], every good, oldest first: the console's sparklines. */
     suspend fun listPrices(market: String, since: Instant): List<PriceObservation> = tx {
         PriceTable.selectAll()
@@ -518,6 +574,9 @@ class AgentStore private constructor(
 
     companion object {
         const val SCHEMA_VERSION = 1
+
+        /** Meta key prefix for gate refusals: the gate waypoint follows. */
+        const val GATE_REFUSED = "gateRefused:"
 
         /**
          * Opens (creating if needed) the database for [agentSymbol] on [resetDate], moving the

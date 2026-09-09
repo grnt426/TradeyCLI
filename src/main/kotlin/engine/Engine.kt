@@ -135,6 +135,11 @@ class Engine(
         store.listShipyards().forEach { world.shipyards[it.symbol] = it }
         store.listShips().forEach { world.ships[it.symbol] = it }
         loadActivity(store, agent.symbol)
+        // Where the fleet has been this reset: home, wherever a ship stands, every system the plan holds, every jump landed.
+        world.hqSystemSymbol()?.let { world.visitedSystems += it }
+        world.ships.values.forEach { world.visitedSystems += it.nav.systemSymbol }
+        world.plan?.systems?.keys?.let { world.visitedSystems += it }
+        runCatching { world.visitedSystems += store.listJumpedSystems() }.onFailure { logger.warn(it) { "reading the systems jumped to failed" } }
         store.putCredits(clock.now(), agent.credits)
         publish()
 
@@ -426,6 +431,12 @@ class Engine(
                     store?.putActivity(record)
                     world.activities = world.activities + record
                 }
+                is Event.Jumped -> {
+                    // The first jump of ours into a system is worth a line: the fleet's reach grew.
+                    val system = model.system.OrbitalNames.getSectorSystem(event.waypoint)
+                    if (world.visitedSystems.add(system)) event(Event.Notable("system", "${event.ship} is the first of ours into $system, through ${event.waypoint}"))
+                }
+                is Event.Notable -> scope.launch { store?.putNotable(clock.now(), event.kind, event.text) }
                 else -> {}
             }
             emit(event)

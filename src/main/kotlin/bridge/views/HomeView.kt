@@ -54,9 +54,19 @@ class HomeView : WidgetView() {
             Table.Column("idle", 5, alignRight = true),
             Table.Column("drift", 5, alignRight = true),
         ),
-        onSelect = { row -> selectedShip = row?.key; model?.selectedShip = row?.key },
-        onActivate = { model?.navigateTo("Ship") },
+        onSelect = { row ->
+            if (row?.group == true) selectedSystem = row.key.removePrefix(SYSTEM_KEY)
+            else { selectedSystem = null; selectedShip = row?.key; model?.selectedShip = row?.key }
+        },
+        onActivate = { row ->
+            if (row.group) { val sys = row.key.removePrefix(SYSTEM_KEY); if (!folded.remove(sys)) folded += sys }
+            else model?.navigateTo("Ship")
+        },
     )
+
+    /** Systems whose ships are folded away under their heading; Enter or a double click on the heading toggles. */
+    private val folded = HashSet<String>()
+    private var selectedSystem: String? = null
     private val health = Table(
         columns = listOf(
             Table.Column("system", 9),
@@ -108,8 +118,10 @@ class HomeView : WidgetView() {
         val (left, right) = middle.cols(Len.weight(), Len.fixed(sideWidth))
         val (cardRect, feedRect) = right.rows(Len.fixed(15), Len.weight())
         fleetRows(snap, now)
-        place(fleet, p.panel(left, "Fleet (${snap.ships.size})", focus === fleet, hint = "↑↓ · Enter or double-click opens"), t)
-        shipCard(p.panel(cardRect, selectedShip ?: "Ship"), snap.ships[selectedShip], model)
+        place(fleet, p.panel(left, "Fleet (${snap.ships.size}) · by system", focus === fleet, hint = "↑↓ · Enter or double-click opens a ship, folds a system"), t)
+        val sysSelected = selectedSystem
+        if (sysSelected != null) systemCard(p.panel(cardRect, sysSelected), sysSelected, model)
+        else shipCard(p.panel(cardRect, selectedShip ?: "Ship"), snap.ships[selectedShip], model)
         place(feed, p.panel(feedRect, "Events", hint = "wheel"), t)
 
         if (bottomH > 0) {
@@ -156,10 +168,29 @@ class HomeView : WidgetView() {
     private fun fleetRows(snap: engine.Snapshot, now: java.time.Instant) {
         // Summary names ships by their number; the table keys on the full symbol.
         val bySuffix = snap.ships.values.associateBy { it.symbol.substringAfterLast('-') }
-        val idleByShip = Idle.perShip(snap.phases, now).associateBy { it.ship }
-        val timeByShip = Idle.time(snap.activities, snap.phases, now).associateBy { it.ship }
-        fleet.setRows(Summary.fleet(snap, now).map { r ->
-            val ship = bySuffix[r.ship]
+        val idleReport = model!!.idle()
+        val idleByShip = idleReport.idleByShip
+        val timeByShip = idleReport.timeByShip
+        // Grouped by the system each ship is in (a ship in flight counts where it is bound), home
+        // first, then the busiest, with a heading per system that folds its ships away when asked.
+        val home = snap.hqSystem
+        val bySystem = Summary.fleet(snap, now).groupBy { r -> bySuffix[r.ship]?.nav?.systemSymbol ?: "?" }
+        val order = bySystem.keys.sortedWith(compareBy({ it != home }, { -(bySystem[it]?.size ?: 0) }, { it }))
+        val rows = ArrayList<Table.Row>()
+        for (sys in order) {
+            val ships = bySystem[sys] ?: continue
+            val inFlight = ships.count { r -> bySuffix[r.ship]?.nav?.inTransitAt(now) == true }
+            val isFolded = sys in folded
+            val summary = "${ships.size} ship${if (ships.size == 1) "" else "s"}" + (if (inFlight > 0) ", $inFlight in flight" else "") + (if (isFolded) " · folded" else "")
+            rows += Table.Row(SYSTEM_KEY + sys, listOf("${if (isFolded) "▸" else "▾"} $sys" + (if (sys == home) " · home" else ""), summary, "", "", "", "", "", "", ""), if (sys == home) Palette.accent else Palette.title, group = true)
+            if (isFolded) continue
+            rows += ships.map { r -> shipRow(r, bySuffix[r.ship], idleByShip, timeByShip) }
+        }
+        fleet.setRows(rows)
+    }
+
+    private fun shipRow(r: behaviour.decisions.FleetRow, ship: Ship?, idleByShip: Map<String, behaviour.decisions.ShipIdle>, timeByShip: Map<String, Idle.ShipTime>): Table.Row {
+        return run {
             val share = ship?.let { idleByShip[it.symbol]?.share }
             // Drift as a share of time spent moving; blank for a ship that has not moved, such as a probe parked on a market.
             val drift = ship?.let { timeByShip[it.symbol] }?.let { tm ->
@@ -177,8 +208,9 @@ class HomeView : WidgetView() {
                     drift?.let { "${(it * 100).toInt()}%" } ?: "",
                 ),
                 tone = if ((share != null && share > 0.5) || (drift != null && drift > 0.3)) Palette.warn else tone(r.tone),
+                indent = 1,
             )
-        })
+        }
     }
 
     private fun healthRows(snap: engine.Snapshot, now: java.time.Instant) {
@@ -206,24 +238,23 @@ class HomeView : WidgetView() {
             lines += Line("  ${m.tradeSymbol.name.padEnd(18)} ${gaugeText(m.fulfilled, m.required)} ${m.fulfilled}/${m.required}", if (done) Palette.good else Palette.text)
         }
         progress.lines.forEach { lines += Line(it.text, tone(it.tone)) }
-        Summary.idleLine(snap, now)?.let { lines += Line(it, if (it.contains("worst")) Palette.warn else Palette.text) }
+        Summary.idleLine(snap, model!!.idle().perShip)?.let { lines += Line(it, if (it.contains("worst")) Palette.warn else Palette.text) }
         return lines
     }
 
     /** The fleet's idle share, then the behaviours that left ships waiting, worst first. */
     private fun idleLines(): List<Line> {
-        val snap = snap()
-        val now = now()
-        val ships = Idle.perShip(snap.phases, now)
+        val report = model!!.idle()
+        val ships = report.perShip
         if (ships.isEmpty()) return emptyList()
-        val lines = mutableListOf(Line("fleet idle ${(Idle.fleetShare(ships) * 100).toInt()}% of recorded time", Palette.textBright, bold = true))
-        val times = Idle.time(snap.activities, snap.phases, now)
+        val lines = mutableListOf(Line("fleet idle ${(report.fleetShare * 100).toInt()}% of recorded time", Palette.textBright, bold = true))
+        val times = report.time
         val moving = times.sumOf { it.hours("cruise") + it.hours("burn") + it.hours("drift") }
         if (moving > 0.05) {
             val drift = times.sumOf { it.hours("drift") } / moving
             lines += Line("fleet drifted ${(drift * 100).toInt()}% of its ${"%.1f".format(moving)} h under way", if (drift > 0.3) Palette.warn else Palette.textDim)
         }
-        Idle.perBehaviour(snap.phases, now).entries
+        report.perBehaviour.entries
             .map { (b, t) -> Triple(b, t.first, t.second) }
             .filter { (_, busy, idle) -> (busy + idle).seconds > 0 }
             .sortedByDescending { (_, busy, idle) -> idle.seconds.toDouble() / (busy + idle).seconds }
@@ -310,9 +341,37 @@ class HomeView : WidgetView() {
         }
     }
 
+    /** The card for a system heading: its ships by behaviour, how many are moving, and what the system offers. */
+    private fun systemCard(p: Painter, sys: String, model: BridgeModel) {
+        val snap = model.snapshot()
+        val now = model.now()
+        val ships = snap.ships.values.filter { it.nav.systemSymbol == sys }.sortedBy { it.symbol }
+        var y = 0
+        p.text(0, y, if (sys == snap.hqSystem) "home system" else "system", Palette.accent, null, Attr.BOLD)
+        p.textRight(p.width, y++, "${ships.size} ships", Palette.textDim)
+        val moving = ships.count { it.nav.inTransitAt(now) }
+        val docked = ships.count { it.nav.status == ShipNavStatus.DOCKED }
+        p.text(0, y++, "$moving in flight, $docked docked, ${ships.size - moving - docked} in orbit", Palette.text)
+        val waypoints = snap.waypointsIn(sys)
+        if (waypoints.isNotEmpty()) p.text(0, y++, "${waypoints.size} waypoints, ${waypoints.count { it.hasMarket }} markets, ${waypoints.count { it.hasShipyard }} shipyards".take(p.width), Palette.textDim)
+        else p.text(0, y++, "waypoints not loaded", Palette.textDim)
+        y++
+        p.text(0, y++, "by behaviour", Palette.textDim)
+        ships.groupBy { snap.shipStatus[it.symbol]?.behaviour ?: "unassigned" }.entries.sortedByDescending { it.value.size }.take((p.height - y).coerceAtLeast(0)).forEach { (behaviour, list) ->
+            p.text(0, y, behaviour.take(14).padEnd(14), Palette.text)
+            p.text(15, y++, list.joinToString(" ") { it.symbol.substringAfterLast('-') }.take((p.width - 15).coerceAtLeast(0)), Palette.textDim)
+        }
+        if (y < p.height) p.text(0, p.height - 1, "Enter folds or unfolds these ships", Palette.textDim)
+    }
+
     private fun tone(t: Intent.Tone): Rgb = when (t) {
         Intent.Tone.GOOD -> Palette.good
         Intent.Tone.WARN -> Palette.warn
         Intent.Tone.NEUTRAL -> Palette.text
+    }
+
+    private companion object {
+        /** Row keys of the fleet table's system headings, so they never collide with a ship symbol. */
+        const val SYSTEM_KEY = "system:"
     }
 }

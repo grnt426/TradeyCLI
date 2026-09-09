@@ -26,8 +26,8 @@ class DotCanvas(val cellsW: Int, val cellsH: Int, val mode: Mode = Mode.BRAILLE)
         colours[i] = colour.packed
     }
 
-    /** A straight line of dots, Bresenham. */
-    fun line(x0: Int, y0: Int, x1: Int, y1: Int, colour: Rgb) {
+    /** A straight line of dots, Bresenham; [stride] above 1 sets only every [stride]th dot, a dotted line. */
+    fun line(x0: Int, y0: Int, x1: Int, y1: Int, colour: Rgb, stride: Int = 1) {
         var x = x0
         var y = y0
         val dx = kotlin.math.abs(x1 - x0)
@@ -35,8 +35,9 @@ class DotCanvas(val cellsW: Int, val cellsH: Int, val mode: Mode = Mode.BRAILLE)
         val sx = if (x0 < x1) 1 else -1
         val sy = if (y0 < y1) 1 else -1
         var err = dx + dy
+        var n = 0
         while (true) {
-            set(x, y, colour)
+            if (n++ % stride == 0) set(x, y, colour)
             if (x == x1 && y == y1) break
             val e2 = 2 * err
             if (e2 >= dy) { err += dy; x += sx }

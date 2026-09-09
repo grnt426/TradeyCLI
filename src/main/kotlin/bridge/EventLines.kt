@@ -32,5 +32,14 @@ object EventLines {
         is Event.PhaseAdvanced -> "phase ${e.phase}: ${e.description}" to Palette.accent
         is Event.Activity -> "${e.ship} ${e.kind} ${e.detail}, ${e.seconds / 60} min" to (if (e.kind == "drift") Palette.warn else Palette.text)
         is Event.Transferred -> "${e.to} took ${e.units} ${e.good} from ${e.from}" to Palette.text
+        is Event.Notable -> e.text to tone(e.kind)
+    }
+
+    /** The colour of a notable event by kind: a gate opening is good news, the plan's moves carry the accent, a new system the info blue. */
+    fun tone(kind: String): Rgb = when (kind) {
+        "gate" -> Palette.good
+        "plan" -> Palette.accent
+        "system" -> Palette.info
+        else -> Palette.text
     }
 }

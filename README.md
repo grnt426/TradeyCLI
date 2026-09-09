@@ -32,13 +32,15 @@ only watches; it starts no behaviours and takes no commands.
 
 Its screens, on the number keys or a click on the bottom bar: the bridge (the phase and how far
 it has got, the bank over the last hours with the trend a quarter hour ahead, market health per
-system, the fleet, the selected ship, the event feed, the plan's notes, where credits went and came
-from); the system map (zoom, pan, orbitals on rings when close, ships in flight with their trails);
+system, the fleet grouped by system with headings that fold, the selected ship or system, the event
+feed, the plan's notes, where credits went and came from); the system map (zoom, pan, orbitals on rings when close, ships in flight with their trails);
 a waypoint up close with its portrait, traits and market with price trends; a ship up close with
 its silhouette, parts, route, hold and trades; the markets (a goods-by-markets price grid, price
 history across markets, the trader's ranked routes, starving producers); the economy (the bank
-over the reset, the race between the account's agents, the ledger, contracts, the gate); the
-galaxy (every known system, our home and the leaderboard homes named, the most-credits and
+over the reset, the race between the account's agents, the ledger with each purpose's cost and each
+source's revenue as running totals, contracts, the gate); the
+galaxy (every known system, our home and the leaderboard homes named, gate links drawn by whether
+a jump can cross them, the last five minutes' jumps animated along them, the most-credits and
 most-charts boards with our place, the server's numbers; the whole galaxy and our rank among every
 agent arrive over time on the pacer's idle lane, which only spends requests nobody else wanted);
 and a diagnostics screen (API rate and failures from the request log, the pacer, the run lock, failures and

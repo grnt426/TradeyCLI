@@ -31,6 +31,12 @@ object PublicAgentTable : EntityTable("public_agents")
 
 /** Jump gates read, keyed by the gate waypoint, with their connections; they do not change within a reset. */
 object GateTable : EntityTable("gate_connections")
+
+/**
+ * Jump gate waypoints read by the console for their construction state, keyed by the gate; a
+ * finished gate stays finished within a reset, an unfinished one is read again now and then.
+ */
+object GateWaypointTable : EntityTable("gate_waypoints")
 object ShipTable : EntityTable("ships")
 object SystemTable : EntityTable("systems")
 object WaypointTable : SystemScopedTable("waypoints")
@@ -113,6 +119,20 @@ object SupplyTable : Table("construction_supplies") {
  * Credits that moved without a market transaction: ship purchases, chart rewards, contract
  * payments. With the tagged transactions this is the whole ledger: where money went and came from.
  */
+/**
+ * The few happenings worth a line on the bridge, written by the run so a console in another
+ * process, or started later, sees them: a system entered for the first time, the plan's phase or
+ * a system's stage changing, a gate completing.
+ */
+object NotableTable : Table("notable_events") {
+    val id = long("id").autoIncrement()
+    val at = long("at").index()
+    /** system, plan, gate */
+    val kind = varchar("kind", 32)
+    val text = varchar("text", 400)
+    override val primaryKey = PrimaryKey(id)
+}
+
 object LedgerTable : Table("ledger") {
     val id = long("id").autoIncrement()
     val at = long("at").index()
@@ -195,7 +215,7 @@ object PublicAgentSampleTable : Table("public_agent_samples") {
 }
 
 val ALL_TABLES = listOf(
-    PublicAgentTable, GateTable, PublicAgentSampleTable,
+    PublicAgentTable, GateTable, GateWaypointTable, PublicAgentSampleTable,
     MetaTable, AgentTable, ShipTable, SystemTable, WaypointTable, MarketTable, ShipyardTable,
-    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable, LedgerTable, PhaseLogTable, ActivityTable,
+    PriceTable, TransactionTable, ExtractionTable, CheckpointTable, CreditsTable, ContractTable, SupplyTable, RequestLogTable, LedgerTable, PhaseLogTable, ActivityTable, NotableTable,
 )

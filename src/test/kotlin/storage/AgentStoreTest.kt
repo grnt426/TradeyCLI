@@ -56,6 +56,18 @@ class AgentStoreTest {
     }
 
     @Test
+    fun `gate refusals and the console's last system survive in the meta table`() = runBlocking {
+        val store = AgentStore.open(tempDir(), "TEST", "2026-08-30")
+        store.putGateRefusal("X1-AA-G1", Instant.ofEpochMilli(5_000))
+        store.putGateRefusal("X1-BB-G2", Instant.ofEpochMilli(6_000))
+        store.putMeta("console.lastSystem", "X1-AA")
+        assertEquals(mapOf("X1-AA-G1" to Instant.ofEpochMilli(5_000), "X1-BB-G2" to Instant.ofEpochMilli(6_000)), store.listGateRefusals())
+        assertEquals("X1-AA", store.getMeta("console.lastSystem"))
+        assertEquals("TEST", store.getMeta("agent"), "the reset's own keys sit beside them")
+        store.close()
+    }
+
+    @Test
     fun `market writes append to the price history`() = runBlocking {
         val store = AgentStore.open(tempDir(), "TEST", "2026-08-30")
         store.putMarket(market("X1-AA-A1", 100), Instant.ofEpochMilli(1_000))

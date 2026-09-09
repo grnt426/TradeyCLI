@@ -44,6 +44,39 @@ class SceneTest {
     }
 
     @Test
+    fun `a group row spans the width and activating it reaches the view`() {
+        val activated = ArrayList<String>()
+        val t = Table(listOf(Table.Column("a", 4), Table.Column("b")), onActivate = { activated += it.key })
+        t.setRows(listOf(Table.Row("system:X1-AA11", listOf("▾ X1-AA11", "2 ships"), group = true), Table.Row("s1", listOf("1", "row 1"), indent = 1), Table.Row("s2", listOf("2", "row 2"), indent = 1)))
+        val lines = paint(t, Rect(0, 0, 30, 6)).toText().lines()
+        assertEquals("▾ X1-AA11", lines[1].substring(0, 9))
+        assertEquals("2 ships", lines[1].substring(0, 30).trimEnd().takeLast(7))
+        assertEquals(" 1", lines[2].substring(0, 2))
+        t.onKey(Input.Key("Enter"))
+        assertEquals(listOf("system:X1-AA11"), activated)
+    }
+
+    @Test
+    fun `a click on a growth chart probes the nearest curve and labels its value`() {
+        val t0 = java.time.Instant.parse("2026-09-07T00:00:00Z")
+        val now = t0.plusSeconds(3600 * 10)
+        val events = listOf(
+            bridge.MoneyEvent(t0, "trading", 1_000_000), bridge.MoneyEvent(t0.plusSeconds(3600 * 5), "trading", 9_000_000),
+            bridge.MoneyEvent(t0, "gate", 2_000), bridge.MoneyEvent(t0.plusSeconds(3600 * 5), "gate", 3_000),
+        )
+        val chart = bridge.scene.GrowthChart(events = { events }, now = { now }, dots = { bridge.canvas.DotCanvas.Mode.BRAILLE }, colour = { bridge.glyphs.Palette.info })
+        val s = Surface(60, 14)
+        Scene().place(chart, Painter(s, Rect(0, 0, 60, 14)), false, 0.0)
+        val axis = (0 until 14).map { y -> (0 until 8).map { x -> s.charAt(x, y) }.joinToString("").trim() }.filter { it.isNotEmpty() }
+        assertTrue(axis.containsAll(listOf("1000", "10.0k", "100.0k", "1.00M", "10.00M")), "decade ticks, got $axis")
+        // A click three quarters of the way along, near the bottom, picks the gate line: 5000 by then.
+        chart.onMouse(Input.Mouse(8 + 40, 12, left = true), 8 + 40, 12)
+        Scene().place(chart, Painter(s, Rect(0, 0, 60, 14)), false, 0.0)
+        val readout = (0 until 60).map { x -> s.charAt(x, 0) }.joinToString("")
+        assertTrue(readout.contains("gate 5000"), readout)
+    }
+
+    @Test
     fun `a click selects the row under it, in the table's own coordinates`() {
         val t = table(10)
         val s = paint(t, Rect(5, 3, 30, 8))

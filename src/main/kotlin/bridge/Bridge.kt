@@ -24,6 +24,8 @@ import cli.LineMode
 import engine.Engine
 import engine.Snapshot
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import model.BootProgress
@@ -43,6 +45,26 @@ class BridgeModel(private val engine: Engine, val mode: String) {
     fun snapshot(): Snapshot = engine.state.value
     fun now(): Instant = engine.clock.now()
 
+    private var idleReport: behaviour.decisions.Idle.Report? = null
+    private var idlePhases: List<storage.PhaseRecord>? = null
+    private var idleActivities: List<storage.ActivityRecord>? = null
+
+    /**
+     * The day's idle and time figures for the current snapshot, worked out once when its phase
+     * and activity logs change (the store is re-read every few seconds) rather than every frame.
+     * The open span of each ship's last phase is measured to the moment the report was made.
+     */
+    fun idle(): behaviour.decisions.Idle.Report {
+        val snap = snapshot()
+        val cached = idleReport
+        if (cached != null && snap.phases === idlePhases && snap.activities === idleActivities) return cached
+        val report = behaviour.decisions.Idle.report(snap.activities, snap.phases, now())
+        idlePhases = snap.phases
+        idleActivities = snap.activities
+        idleReport = report
+        return report
+    }
+
     /** The screen's current size, for views that need to know where the bottom is. */
     var width: Int = 0
     var height: Int = 0
@@ -53,6 +75,51 @@ class BridgeModel(private val engine: Engine, val mode: String) {
 
     /** A system chosen on the galaxy screen for the system screen to open; consumed when it does. */
     var selectedSystem: String? = null
+
+    /** Opens [symbol] on the system screen, fetching its waypoints first when none of our ships has been there. */
+    fun openSystem(symbol: String) {
+        if (snapshot().waypointsIn(symbol).isEmpty()) loadWaypoints(symbol)
+        selectedSystem = symbol
+        navigateTo("System")
+    }
+
+    private val waypointLoads = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
+    /** Fetches a system's waypoints into the snapshot, once; a system opened from the galaxy map has none until then. */
+    fun loadWaypoints(symbol: String) {
+        if (!waypointLoads.add(symbol)) return
+        engine.scope.launch {
+            runCatching { engine.refreshWaypoints(symbol) }.onFailure { logger.warn(it) { "loading the waypoints of $symbol failed" }; waypointLoads.remove(symbol) }
+        }
+    }
+
+    @Volatile private var lastSystemCache: String? = null
+    @Volatile private var lastSystemAsked = false
+
+    /** True once the store has answered which system the console last showed; until then a null [lastSystem] means "not known yet". */
+    @Volatile var lastSystemResolved = false; private set
+
+    /** The system the system screen last showed, kept in the store so a restart opens it again rather than home. */
+    fun lastSystem(): String? {
+        if (!lastSystemAsked) {
+            val store = engine.store
+            if (store != null) {
+                lastSystemAsked = true
+                engine.scope.launch {
+                    runCatching { store.getMeta(LAST_SYSTEM) }.getOrNull()?.let { if (lastSystemCache == null) lastSystemCache = it }
+                    lastSystemResolved = true
+                }
+            }
+        }
+        return lastSystemCache
+    }
+
+    fun rememberSystem(symbol: String) {
+        if (lastSystemCache == symbol) return
+        lastSystemCache = symbol
+        val store = engine.store ?: return
+        engine.scope.launch { runCatching { store.putMeta(LAST_SYSTEM, symbol) }.onFailure { logger.warn(it) { "remembering $symbol failed" } } }
+    }
 
     /** Server status, leaderboards, public agents, and the wider galaxy, fetched in the background. */
     val galaxy = Galaxy(engine)
@@ -78,6 +145,28 @@ class BridgeModel(private val engine: Engine, val mode: String) {
             }
         }
         return allCreditsCache.ifEmpty { snapshot().creditsHistory }
+    }
+
+    private var leaderRatesAt = 0L
+    @Volatile private var leaderRatesCache: Map<String, behaviour.decisions.AgentRate> = emptyMap()
+
+    /**
+     * Each public agent's credits per hour, and per ship, over the last day's samples of the
+     * public agent list (the run records it every half hour), by agent symbol. From the store,
+     * worked out in the background and refreshed every two minutes. An agent with under half an
+     * hour of samples has no entry.
+     */
+    fun leaderRates(): Map<String, behaviour.decisions.AgentRate> {
+        val nowNanos = System.nanoTime()
+        if (nowNanos - leaderRatesAt > 120_000_000_000L) {
+            leaderRatesAt = nowNanos
+            val store = engine.store
+            if (store != null) engine.scope.launch {
+                runCatching { behaviour.decisions.Leaders.rates(store.listPublicAgentSamples(now().minus(LEADER_RATE_WINDOW))) }
+                    .onSuccess { rates -> leaderRatesCache = rates.associateBy { it.symbol } }
+            }
+        }
+        return leaderRatesCache
     }
 
     private var contractsAt = 0L
@@ -190,6 +279,8 @@ class BridgeModel(private val engine: Engine, val mode: String) {
     fun followEvents() {
         engine.scope.launch {
             engine.events.collect { e ->
+                // A notable event reaches the feed through the store's tail, which every process shares; here it would show twice.
+                if (e is engine.Event.Notable && engine.store != null) return@collect
                 val (text, tone) = EventLines.describe(e)
                 synchronized(feedLines) {
                     feedLines.addLast(FeedLine(now(), text, tone))
@@ -200,6 +291,36 @@ class BridgeModel(private val engine: Engine, val mode: String) {
                     problemList.addLast(Problem(now(), text, severe))
                     while (problemList.size > 200) problemList.removeFirst()
                 }
+            }
+        }
+    }
+
+    private var lastNotableId = 0L
+
+    /**
+     * Tails the store's notable events, which the run writes: a system entered for the first
+     * time, the plan's moves, a gate completing. The last fifty come first so a console started
+     * late has a past; then whatever is new, every five seconds, merged into the feed by time.
+     */
+    fun followNotables() {
+        engine.scope.launch {
+            var seeded = false
+            while (isActive) {
+                val store = engine.store
+                if (store != null) runCatching {
+                    val fresh = if (seeded) store.listNotables(lastNotableId) else store.listRecentNotables(50).also { seeded = true }
+                    if (fresh.isNotEmpty()) {
+                        lastNotableId = fresh.last().id
+                        synchronized(feedLines) {
+                            fresh.forEach { n -> feedLines.addLast(FeedLine(n.at, n.text, EventLines.tone(n.kind))) }
+                            val byTime = feedLines.sortedBy { it.at }
+                            feedLines.clear()
+                            feedLines.addAll(byTime)
+                            while (feedLines.size > FEED_LIMIT) feedLines.removeFirst()
+                        }
+                    }
+                }.onFailure { logger.warn(it) { "following the notable events failed" } }
+                delay(5_000)
             }
         }
     }
@@ -269,6 +390,9 @@ class BridgeModel(private val engine: Engine, val mode: String) {
 
     private companion object {
         const val FEED_LIMIT = 500
+        /** How far back the leaderboard's rates look: a day of half-hourly samples. */
+        val LEADER_RATE_WINDOW: java.time.Duration = java.time.Duration.ofHours(24)
+        const val LAST_SYSTEM = "console.lastSystem"
     }
 }
 
@@ -324,6 +448,7 @@ object Bridge {
         val mode = if (sim != null) "sim ×${sim.factor}" else if (boot) "live" else "no boot"
         val model = BridgeModel(engine, mode)
         model.followEvents()
+        model.followNotables()
         if (boot) startBoot(engine, sim, agent)
 
         // A ship or waypoint symbol; each screen looks it up in its own table, so one flag serves both.

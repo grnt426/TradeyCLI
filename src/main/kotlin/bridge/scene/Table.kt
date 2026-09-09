@@ -20,7 +20,13 @@ class Table(
 
     /** [width] 0 means: share what the fixed columns leave. */
     data class Column(val title: String, val width: Int = 0, val alignRight: Boolean = false)
-    data class Row(val key: String, val cells: List<String>, val tone: Rgb = Palette.text)
+
+    /**
+     * One row. A [group] row heads a section: its first cell spans the width in bold, its second
+     * sits at the right edge, and activating it is the view's cue to fold or unfold the section.
+     * [indent] shifts a member row's first cell under its heading.
+     */
+    data class Row(val key: String, val cells: List<String>, val tone: Rgb = Palette.text, val group: Boolean = false, val indent: Int = 0)
 
     var rows: List<Row> = emptyList()
         private set
@@ -70,7 +76,8 @@ class Table(
     }
 
     override fun paint(p: Painter, focused: Boolean, t: Double) {
-        val widths = widths(p.width)
+        // The scrollbar takes the last column when there is one, so the cells stop short of it.
+        val widths = widths(if (rows.size > visibleRows() && visibleRows() > 0) p.width - 1 else p.width)
         var x = 0
         columns.forEachIndexed { i, c ->
             val w = widths[i]
@@ -95,12 +102,20 @@ class Table(
             }
             if (bg != null) for (cx in 0 until p.width) p.put(cx, y, ' ', row.tone, bg)
             val fg = if (isSelected && focused) Palette.textBright else row.tone
+            if (row.group) {
+                val groundBg = bg ?: Palette.track
+                if (bg == null) for (cx in 0 until p.width) p.put(cx, y, ' ', row.tone, groundBg)
+                val right = row.cells.getOrNull(1) ?: ""
+                p.text(0, y, (row.cells.firstOrNull() ?: "").take((p.width - right.length - 1).coerceAtLeast(0)), fg, groundBg, Attr.BOLD)
+                if (right.isNotEmpty()) p.textRight(p.width, y, right, Palette.textDim, groundBg)
+                continue
+            }
             x = 0
             columns.forEachIndexed { i, c ->
                 val w = widths[i]
                 if (w > 0) {
-                    val cell = (row.cells.getOrNull(i) ?: "").take(w)
-                    if (c.alignRight) p.textRight(x + w, y, cell, fg, bg) else p.text(x, y, cell, fg, bg)
+                    val cell = (if (i == 0) " ".repeat(row.indent) else "") + (row.cells.getOrNull(i) ?: "")
+                    if (c.alignRight) p.textRight(x + w, y, cell.take(w), fg, bg) else p.text(x, y, cell.take(w), fg, bg)
                 }
                 x += w + 1
             }

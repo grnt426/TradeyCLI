@@ -5,6 +5,7 @@ import behaviour.decisions.Summary
 import bridge.BridgeModel
 import bridge.Format
 import bridge.GateChain
+import bridge.MoneyFlows
 import bridge.canvas.Attr
 import bridge.canvas.Len
 import bridge.canvas.Painter
@@ -14,6 +15,8 @@ import bridge.glyphs.Palette
 import bridge.scene.Bar
 import bridge.scene.Bars
 import bridge.scene.CreditsChart
+import bridge.scene.GrowthChart
+import bridge.scene.LineChart
 import bridge.scene.Table
 import bridge.scene.TextBlock
 import knowledge.Strategy
@@ -47,13 +50,13 @@ class EconomyView : WidgetView() {
     private val chain = TextBlock(lines = { GateChain.lines(model!!.snapshot(), model!!) }, empty = "no home system")
     private val contracts = Table(
         columns = listOf(
-            Table.Column("contract", 10),
-            Table.Column("type", 9),
+            Table.Column("contract", 8),
+            Table.Column("type", 7),
             Table.Column("deliver"),
-            Table.Column("done", 9, alignRight = true),
-            Table.Column("pays", 8, alignRight = true),
-            Table.Column("net", 8, alignRight = true),
-            Table.Column("deadline", 9, alignRight = true),
+            Table.Column("done", 7, alignRight = true),
+            Table.Column("pays", 7, alignRight = true),
+            Table.Column("net", 7, alignRight = true),
+            Table.Column("due", 5, alignRight = true),
             Table.Column("state", 9),
         ),
     )
@@ -77,7 +80,8 @@ class EconomyView : WidgetView() {
         })
         place(race, p.panel(raceRect, "Race · every agent of the account", focus === race), t)
 
-        val (ledgerRect, contractsRect) = middle.cols(Len.weight(1), Len.weight(1))
+        // The ledger takes the wider share: its charts need the width more than the contracts do.
+        val (ledgerRect, contractsRect) = middle.cols(Len.weight(13), Len.weight(7))
         ledger(p.panel(ledgerRect, "Ledger · whole reset"), model, t)
         val records = model.contractRecords()
         contracts.setRows(records.sortedByDescending { it.seenAt }.map { rec ->
@@ -115,20 +119,73 @@ class EconomyView : WidgetView() {
         endFrame(listOf(race, contracts))
     }
 
+    /** One colour per category, the same on both charts and in the one legend under them; assigned largest first as categories appear. */
+    private val hues = LinkedHashMap<String, bridge.canvas.Rgb>()
+    private fun hue(category: String) = hues.getOrPut(category) { LineChart.HUES[hues.size % LineChart.HUES.size] }
+    private val spentGrowth = GrowthChart(events = { MoneyFlows.spending(model!!.snapshot()) }, now = { model!!.now() }, dots = { model!!.dots }, colour = ::hue, empty = "nothing spent yet")
+    private val earnedGrowth = GrowthChart(events = { MoneyFlows.revenue(model!!.snapshot()) }, now = { model!!.now() }, dots = { model!!.dots }, colour = ::hue, empty = "nothing earned yet")
+
+    /**
+     * Totals, then each side's categories as bars, then, given the room, how each category has
+     * grown over the reset as running-total lines on a log scale, under one legend for both: a
+     * purpose whose line climbs steadily is a standing cost, one that steps once was a purchase;
+     * a source that flattens has stopped paying.
+     */
     private fun ledger(p: Painter, model: BridgeModel, t: Double) {
         val snap = model.snapshot()
-        val spentTotal = Summary.spending(snap).sumOf { it.credits }
-        val earnedTotal = Summary.revenue(snap).sumOf { it.credits }
+        val spending = Summary.spending(snap)
+        val revenue = Summary.revenue(snap)
+        val spentTotal = spending.sumOf { it.credits }
+        val earnedTotal = revenue.sumOf { it.credits }
         val net = earnedTotal - spentTotal
         var x = 0
         x += p.text(x, 0, "earned ${Format.credits(earnedTotal)}", Palette.good) + 3
         x += p.text(x, 0, "spent ${Format.credits(spentTotal)}", Palette.warn) + 3
         p.text(x, 0, "net ${if (net >= 0) "+" else ""}${Format.credits(net)}", if (net >= 0) Palette.good else Palette.bad, null, Attr.BOLD)
-        val (l, r) = Rect(0, 2, p.width, p.height - 2).cols(Len.weight(), Len.weight())
+        // Colours in order of size, spending's categories first, so the biggest flows keep the first hues.
+        (spending + revenue).sortedByDescending { it.credits }.forEach { hue(it.category) }
+        val legend = legendRows(hues.keys.toList(), p.width)
+        // The bars take a row per category; the charts get what is left when that is enough to read.
+        val barsH = maxOf(spending.size, revenue.size, 1).coerceAtMost(8)
+        val chartsH = p.height - 2 - barsH - 1 - legend.size
+        val (l, r) = Rect(0, 2, p.width, if (chartsH >= 7) barsH else p.height - 2).cols(Len.weight(), Len.weight())
         p.text(l.x, 1, "spent on", Palette.textDim)
         p.text(r.x, 1, "earned from", Palette.textDim)
         place(spent, p.sub(Rect(l.x, l.y, l.w - 1, l.h)), t)
         place(earned, p.sub(r), t)
+        if (chartsH >= 7) {
+            val top = 2 + barsH
+            p.text(l.x, top, "cost growth by purpose · log scale", Palette.textDim)
+            p.text(r.x, top, "revenue growth by source · log scale", Palette.textDim)
+            val (cl, cr) = Rect(0, top + 1, p.width, chartsH).cols(Len.weight(), Len.weight())
+            place(spentGrowth, p.sub(Rect(cl.x, cl.y, cl.w - 1, cl.h)), t)
+            place(earnedGrowth, p.sub(cr), t)
+            legend.forEachIndexed { i, row ->
+                var lx = 0
+                val y = top + 1 + chartsH + i
+                for (category in row) {
+                    p.put(lx, y, '■', hue(category))
+                    lx += p.text(lx + 2, y, category, Palette.text) + 4
+                }
+            }
+        }
+    }
+
+    /** The categories packed into legend rows of [width] cells, two at most; what does not fit is left off. */
+    private fun legendRows(categories: List<String>, width: Int): List<List<String>> {
+        val rows = ArrayList<MutableList<String>>()
+        var used = 0
+        for (c in categories) {
+            val item = c.length + 4
+            if (rows.isEmpty() || used + item > width) {
+                if (rows.size == 2) break
+                rows += mutableListOf<String>()
+                used = 0
+            }
+            rows.last() += c
+            used += item
+        }
+        return rows
     }
 
     private fun flows(flows: List<behaviour.decisions.Flow>, tone: bridge.canvas.Rgb): List<Bar> {

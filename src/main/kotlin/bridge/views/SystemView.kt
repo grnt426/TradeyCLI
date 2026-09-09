@@ -23,6 +23,12 @@ class SystemView : WidgetView() {
     private var selectedShip: String? = null
     private var selectedStar = false
 
+    /** What the map showed last frame, so a change is remembered in the store once. */
+    private var shown: String? = null
+
+    /** True once the store's last-shown system has been applied, or a choice has overtaken it. */
+    private var adoptedLast = false
+
     private val map: SystemMap = SystemMap(
         model = { model!! },
         onSelectWaypoint = { selectedWaypoint = it; selectedShip = null; selectedStar = false; model?.selectedWaypoint = it; it?.let(list::selectKey) },
@@ -53,18 +59,37 @@ class SystemView : WidgetView() {
         beginFrame()
         val snap = model.snapshot()
         val now = model.now()
+        fun show(chosen: String) {
+            if (chosen == map.system) return
+            map.system = chosen
+            map.fit()
+            selectedWaypoint = null
+            selectedShip = null
+            selectedStar = false
+        }
         model.selectedSystem?.let { chosen ->
             model.selectedSystem = null
-            if (chosen != map.system) {
-                map.system = chosen
-                map.fit()
-                selectedWaypoint = null
-                selectedShip = null
-                selectedStar = false
-            }
+            adoptedLast = true
+            show(chosen)
+        }
+        // Before any choice this session, the screen opens where it was last left rather than at home.
+        if (!adoptedLast) {
+            val last = model.lastSystem()
+            if (last != null) {
+                adoptedLast = true
+                if (snap.systems.containsKey(last) || model.galaxy.systems().containsKey(last)) {
+                    show(last)
+                    if (snap.waypointsIn(last).isEmpty()) model.loadWaypoints(last)
+                }
+            } else if (model.lastSystemResolved) adoptedLast = true
         }
         val sys = map.system ?: snap.hqSystem
         val waypoints = sys?.let { snap.waypointsIn(it) } ?: emptyList()
+        // Remember what is shown, apart from the home fallback before the store has answered.
+        if (sys != null && sys != shown && (adoptedLast || sys != snap.hqSystem)) {
+            shown = sys
+            model.rememberSystem(sys)
+        }
 
         val sideWidth = (p.width / 3).coerceIn(36, 50)
         val (mapRect, side) = Rect(0, 0, p.width, p.height).cols(Len.weight(), Len.fixed(sideWidth))
@@ -86,7 +111,7 @@ class SystemView : WidgetView() {
         map.selectedShip = selectedShip
         map.selectedStar = selectedStar
 
-        place(map, p.panel(mapRect, sys ?: "System", focus === map), t)
+        place(map, p.panel(mapRect, (sys ?: "System") + (if (sys != null && waypoints.isEmpty()) " · loading waypoints" else ""), focus === map), t)
         place(list, p.panel(listRect, "Waypoints (${waypoints.size})", focus === list, hint = "↑↓ · double-click centres"), t)
         val ship = selectedShip?.let { snap.ships[it] }
         val wp = selectedWaypoint?.let { snap.waypoints[it] }

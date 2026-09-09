@@ -14,7 +14,10 @@ import model.ServerStatus
 import model.responsebody.JumpGate
 import model.system.OrbitalNames
 import model.system.System
+import model.system.Waypoint
 import model.system.WaypointType
+import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
 private val logger = KotlinLogging.logger {}
@@ -45,8 +48,18 @@ class Galaxy(private val engine: Engine) {
     val connections = ConcurrentHashMap<String, Set<String>>()
     private val gatesRead = ConcurrentHashMap.newKeySet<String>()
 
-    /** Gates the server refused (400: an uncharted gate has no connections to give), with when; retried after an hour. */
-    private val gatesRefused = ConcurrentHashMap<String, Long>()
+    /** Gates the server refused (400: an uncharted gate has no connections to give), with when; kept in the store, retried after [REFUSAL_RETRY]. */
+    private val gatesRefused = ConcurrentHashMap<String, Instant>()
+
+    /** The gate waypoint of every system a gate read has named, by system: the gates read and every gate they connect to. */
+    val gateSymbols = ConcurrentHashMap<String, String>()
+
+    /** What a system's gate waypoint said of its construction when the console last read it. */
+    data class GateState(val gate: String, val underConstruction: Boolean, val readAt: Instant)
+
+    /** Construction state by system, for every gate whose waypoint the console has read. */
+    val gateStates = ConcurrentHashMap<String, GateState>()
+    private var gateStateJob: Job? = null
 
     @Volatile var progress: String? = null; private set
     private var galaxyJob: Job? = null
@@ -74,7 +87,10 @@ class Galaxy(private val engine: Engine) {
             store.listGates().forEach { gate ->
                 gatesRead += gate.symbol
                 connections[OrbitalNames.getSectorSystem(gate.symbol)] = gate.connections.map { OrbitalNames.getSectorSystem(it) }.toSet()
+                noteGates(gate)
             }
+            store.listGateWaypoints().forEach { (wp, at) -> gateStates[wp.systemSymbol] = GateState(wp.symbol, wp.isUnderConstruction, at) }
+            store.listGateRefusals().forEach { (gate, at) -> gatesRefused[gate] = at }
         }.onFailure { logger.warn(it) { "loading the galaxy cache failed" } }
     }
 
@@ -84,6 +100,9 @@ class Galaxy(private val engine: Engine) {
      * agent's home), then the galaxy crawl, then the gates outward from home.
      */
     fun status(): ServerStatus? {
+        // Nothing starts until the boot has loaded the store: a crawl begun against an empty world
+        // pages the whole galaxy again (290 pages on 2026-09-07, from a console opened on the galaxy tab).
+        if (model.BootProgress.current != null || engine.state.value.agent == null) return engine.state.value.serverStatus
         val nowNanos = java.lang.System.nanoTime()
         if (nowNanos - statusAt > 300_000_000_000L) {
             statusAt = nowNanos
@@ -100,6 +119,7 @@ class Galaxy(private val engine: Engine) {
                         rankUs()
                         loadGalaxy()
                         mapGates()
+                        readGateStates()
                     }
                     .onFailure { logger.warn(it) { "server status failed" } }
             }
@@ -142,6 +162,8 @@ class Galaxy(private val engine: Engine) {
             rankJob?.join()
             try {
                 for (page in 1..pages) {
+                    // The store may have finished loading since the crawl began; every page it already holds is one not asked for.
+                    if (galaxyComplete) break
                     progress = "loading the galaxy in idle moments: page $page of $pages"
                     val items = client.get("systems", Priority.IDLE, mapOf("page" to page.toString(), "limit" to "20")).jsonArray
                     if (items.isEmpty()) break
@@ -231,14 +253,20 @@ class Galaxy(private val engine: Engine) {
                     val gate = system.waypoints.firstOrNull { it.type == WaypointType.JUMP_GATE } ?: continue
                     if (gate.symbol !in gatesRead) {
                         val refusedAt = gatesRefused[gate.symbol]
-                        if (refusedAt != null && java.lang.System.nanoTime() - refusedAt < 3_600_000_000_000L) continue
+                        if (refusedAt != null && Duration.between(refusedAt, engine.clock.now()) < REFUSAL_RETRY) continue
                         fetched++
                         progress = "reading gates outward from home: ${gatesRead.size} read, $sys"
                         val read = runCatching { ApiJson.decodeFromJsonElement<JumpGate>(client.get("systems/$sys/waypoints/${gate.symbol}/jump-gate", Priority.IDLE)) }
-                            .onFailure { logger.info { "gate ${gate.symbol} refused: ${it.message}" }; gatesRefused[gate.symbol] = java.lang.System.nanoTime() }
+                            .onFailure {
+                                logger.info { "gate ${gate.symbol} refused: ${it.message}" }
+                                val at = engine.clock.now()
+                                gatesRefused[gate.symbol] = at
+                                engine.store?.putGateRefusal(gate.symbol, at)
+                            }
                             .getOrNull() ?: continue
                         connections[sys] = read.connections.map { OrbitalNames.getSectorSystem(it) }.toSet()
                         gatesRead += gate.symbol
+                        noteGates(read)
                         engine.store?.putGate(read)
                     }
                     connections[sys]?.forEach { if (it !in seen) frontier.addLast(it) }
@@ -253,7 +281,62 @@ class Galaxy(private val engine: Engine) {
         }
     }
 
+    /** Remembers the gate waypoint of the gate read and of every gate it names, so their state can be read. */
+    private fun noteGates(gate: JumpGate) {
+        gateSymbols[OrbitalNames.getSectorSystem(gate.symbol)] = gate.symbol
+        gate.connections.forEach { gateSymbols[OrbitalNames.getSectorSystem(it)] = it }
+    }
+
+    /** Gates whose last read said under construction. */
+    val gatesUnbuilt: Int get() = gateStates.values.count { it.underConstruction }
+
+    /**
+     * Reads the waypoint of every gate the network names, nearest home first, for whether it is
+     * built: the jump-gate endpoint answers for a charted gate whether or not it is finished, so
+     * a link on the map says nothing about whether a jump can cross it. A finished gate is final
+     * within a reset; an unfinished one is read again every [GATE_RECHECK]. One idle request per
+     * gate, at most [GATES_PER_RUN] a run, beside the gate walk rather than after it (a fresh
+     * process retries every uncharted gate first, a minute's worth of idle requests); the store
+     * keeps every answer, and the next status refresh picks up gates the walk found since.
+     */
+    fun readGateStates() {
+        if (gateStateJob?.isActive == true) return
+        val client = engine.apiClient ?: return
+        gateStateJob = engine.scope.launch {
+            val now = engine.clock.now()
+            val snap = engine.state.value
+            val lookup = systems()
+            val homeSystem = snap.hqSystem?.let { lookup[it] }
+            val due = gateSymbols.entries.filter { (sys, _) ->
+                val known = gateStates[sys]
+                known == null || (known.underConstruction && Duration.between(known.readAt, now) > GATE_RECHECK)
+            }.sortedBy { (sys, _) ->
+                val s = lookup[sys]
+                if (s == null || homeSystem == null) Double.MAX_VALUE else Math.hypot((s.x - homeSystem.x).toDouble(), (s.y - homeSystem.y).toDouble())
+            }.take(GATES_PER_RUN)
+            var read = 0
+            for ((sys, gate) in due) {
+                // A gate one of our ships has seen finished needs no request: construction never regresses.
+                val seen = snap.waypoints[gate]
+                if (seen != null && !seen.isUnderConstruction) { gateStates[sys] = GateState(gate, false, now); continue }
+                progress = "reading gate states: ${gateStates.size} known, $sys"
+                val wp = runCatching { ApiJson.decodeFromJsonElement<Waypoint>(client.get("systems/$sys/waypoints/$gate", Priority.IDLE)) }
+                    .onFailure { logger.info { "gate waypoint $gate failed: ${it.message}" } }
+                    .getOrNull() ?: continue
+                val at = engine.clock.now()
+                gateStates[sys] = GateState(gate, wp.isUnderConstruction, at)
+                engine.store?.putGateWaypoint(wp, at)
+                read++
+            }
+            if (read > 0) progress = "gate states read: ${gateStates.size} known, $gatesUnbuilt unbuilt"
+        }
+    }
+
     private companion object {
         const val GATES_PER_RUN = 120
+        val GATE_RECHECK: Duration = Duration.ofMinutes(30)
+
+        /** How long a refused gate is left alone: a chart of it by anyone is what changes the answer, and that is slow. */
+        val REFUSAL_RETRY: Duration = Duration.ofHours(6)
     }
 }
