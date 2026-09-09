@@ -739,7 +739,16 @@ object Strategy {
      */
     fun warpFleetTick(plan: Plan, snapshot: Snapshot): Plan {
         val heavies = plan.assignments.filter { it.behaviour == "refitWarp" && it.params["from"] == null }
-        val donors = plan.assignments.filter { it.behaviour == "donateWarpDrive" && it.params["to"] == null }.toMutableList()
+        // An explorer in a system with no gate must be able to warp to a held gate on the fuel it has, or it is a donor in name only
+        // (A2 sat in X1-PA74 with 451 fuel, no market, and the nearest gate 521 away on 2026-09-09).
+        fun canLeave(donor: Assignment): Boolean {
+            val ship = snapshot.ships[donor.ship] ?: return false
+            val system = snapshot.systems[ship.nav.systemSymbol] ?: return true
+            if (snapshot.waypointsIn(system.symbol).any { it.type == model.system.WaypointType.JUMP_GATE }) return true
+            val fuel = if (snapshot.marketsIn(system.symbol).any { it.trades(model.market.TradeSymbol.FUEL) }) ship.fuel.capacity.toDouble() else ship.fuel.current.toDouble()
+            return warpHome(plan, snapshot, system) { s -> warpReach(fuel, snapshot.marketsIn(s.symbol).any { it.trades(model.market.TradeSymbol.FUEL) }) } != null
+        }
+        val donors = plan.assignments.filter { it.behaviour == "donateWarpDrive" && it.params["to"] == null && canLeave(it) }.toMutableList()
         var next = plan
         fun pos(ship: String) = snapshot.ships[ship]?.let { snapshot.systems[it.nav.systemSymbol] }
         fun yardIn(system: String?) = system?.let { s -> snapshot.waypointsIn(s).firstOrNull { it.hasShipyard }?.symbol }
