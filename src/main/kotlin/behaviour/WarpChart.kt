@@ -46,10 +46,24 @@ suspend fun BehaviourScope.warpChart() {
         if (target == null) {
             // Nothing within a safe warp of here: go where there is something, through the gates.
             val base = Strategy.warpBase(shared.plan, snap, me.fuel.capacity.toDouble())
-            if (base != null && base != from.symbol && snap.waypointsIn(from.symbol).any { it.type == WaypointType.JUMP_GATE }) {
+            val hasGate = snap.waypointsIn(from.symbol).any { it.type == WaypointType.JUMP_GATE }
+            if (base != null && base != from.symbol && hasGate) {
                 val moved = phase("relocate", "to $base, which has gate-less neighbours in reach") { goToSystem(base) }
                 if (moved) continue
                 status(detail = "$base could not be reached from ${from.symbol}")
+            }
+            if (!hasGate) {
+                // Stranded in a gate-less system: warp back to the nearest held system with a gate, then relocate through it.
+                val home = Strategy.warpHome(shared.plan, snap, from, ::reach)
+                if (home != null) {
+                    val (system, distance) = home
+                    val gate = snap.waypointsIn(system.symbol).firstOrNull { it.type == WaypointType.JUMP_GATE }?.symbol
+                        ?: system.waypoints.first { it.type == WaypointType.JUMP_GATE }.symbol
+                    val back = phase("warp home", "to ${system.symbol} (${distance.toInt()} away), the nearest gate") {
+                        try { warpTo(ship, gate); true } catch (e: VerbFailure) { status(detail = "could not warp to ${system.symbol}: ${e.message}"); false }
+                    }
+                    if (back) continue
+                }
             }
             status("waiting", "no unheld gate-less system within a safe warp of ${from.symbol}; checking again in 30 minutes")
             clock.sleep(30.minutes)

@@ -138,6 +138,13 @@ dearest unmet goal first (it left the cheapest heavy yard for a 21k kit probe af
 Kit goals are pruned by the boom tick whenever the fleet has spare probes; with every probe busy they
 stay, and rightly: a chart is about 15k a request, better than any trade.
 
+**Nine hours in (2026-09-09, 01:00 UTC).** Bank 479M, second place, 34M an hour gross over the run;
+25 heavies at 511k an hour each, 21 lights at 263k, charts 15M an hour falling to 10M as 175
+watchers sat one per system while 1,681 waypoints in 113 held systems went uncharted. So a lone
+watcher in a system with no trader is spare while charts remain anywhere (never parked for it),
+`FREIGHTERS` is 32, a trader with no local route at all looks `RELOCATE_HOPS_IDLE` (5) jumps out,
+and a stranded explorer warps back to the nearest held gate in reach (`warpHome`).
+
 **Explorers (2026-09-08).** A warp is taken only as far as the tank brings the ship back
 (`warpReach`: half the tank, the whole tank where the far side is known to sell fuel), the ship
 refuels at the nearest fuel market in the system rather than only where it stands, and when nothing

@@ -106,6 +106,34 @@ class BoomTest {
     }
 
     @Test
+    fun `a lone watcher in a system without a trader charts while charts remain, and is never parked for it`() {
+        val snap = snap()
+        val probe = snap.ships.getValue(Fixtures.PROBE)
+        val template = snap.waypointsIn("X1-TH77").first { it.type == model.system.WaypointType.ASTEROID }
+        val far = (1..3).map { i -> template.copy(symbol = "X1-FAR-B$i", systemSymbol = "X1-FAR", traits = listOf(model.WaypointTrait(WaypointTraitSymbol.UNCHARTED, "Uncharted", ""))) }
+        val fleet = snap.copy(waypoints = snap.waypoints + far.associateBy { it.symbol })
+        val systems = listOf("X1-TH77", "X1-FAR").map { SystemRecord(it, Stage.SETTLE, gateBuilt = true) }.associateBy { it.symbol }
+        val watching = Plan(listOf(Assignment(probe.symbol, "probeMarkets", mapOf("maxAge" to "30"))), phase = Phase.BOOM, systems = systems)
+        assertEquals("X1-FAR", Strategy.spreadProbes(watching, fleet).assignmentFor(probe.symbol)?.params?.get("system"), "home has no trader: its watcher goes to chart")
+        val withTrader = watching.with(Assignment(Fixtures.COMMAND_SHIP, "trade"))
+        assertEquals(watching.assignmentFor(probe.symbol), Strategy.spreadProbes(withTrader, fleet).assignmentFor(probe.symbol), "with a trader at home the one watcher stays")
+        val nothingLeft = Plan(listOf(Assignment(probe.symbol, "probeMarkets", mapOf("maxAge" to "30"))), phase = Phase.BOOM, systems = systems.filterKeys { it == "X1-TH77" })
+        assertEquals("probeMarkets", Strategy.spreadProbes(nothingLeft, snap).assignmentFor(probe.symbol)?.behaviour, "no charts anywhere: the lone watcher keeps watching rather than pioneer or park")
+    }
+
+    @Test
+    fun `a stranded explorer warps back to the nearest held system with a gate in reach`() {
+        val snap = snap()
+        val home = snap.systems.getValue("X1-TH77")
+        val here = home.copy(symbol = "X1-LOST", x = home.x + 300, y = home.y, waypoints = home.waypoints.filter { it.type != model.system.WaypointType.JUMP_GATE })
+        val farther = home.copy(symbol = "X1-GATED", x = home.x + 900, y = home.y)
+        val world = snap.copy(systems = snap.systems + listOf(here, farther).associateBy { it.symbol })
+        val plan = Plan(systems = listOf("X1-TH77", "X1-GATED", "X1-LOST").map { SystemRecord(it, Stage.SETTLE, gateBuilt = it != "X1-LOST") }.associateBy { it.symbol })
+        assertEquals("X1-TH77", Strategy.warpHome(plan, world, here) { 400.0 }?.first?.symbol, "home's gate is 300 away")
+        assertEquals(null, Strategy.warpHome(plan, world, here) { 200.0 }, "nothing gated within 200")
+    }
+
+    @Test
     fun `a trader in a drained system moves to the neighbour within two jumps that promises the most, if it has a slot`() {
         val snap = snap()
         val frigate = snap.ships.getValue(Fixtures.COMMAND_SHIP)

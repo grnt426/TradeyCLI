@@ -633,6 +633,17 @@ object Strategy {
             .sortedBy { (_, d) -> d }
 
     /**
+     * A stranded explorer's way back into the network: the nearest held system with a gate within
+     * [reach] of [from]. Both explorers sat in gate-less systems for hours on 2026-09-08 with nothing
+     * to warp to and no gate to leave by.
+     */
+    fun warpHome(plan: Plan, snapshot: Snapshot, from: model.system.System, reach: (model.system.System) -> Double): Pair<model.system.System, Double>? =
+        plan.systems.values.filter { it.gateBuilt && it.symbol != from.symbol }
+            .mapNotNull { r -> snapshot.systems[r.symbol]?.let { s -> s to engine.Travel.distance(from.x.toInt(), from.y.toInt(), s.x.toInt(), s.y.toInt()) } }
+            .filter { (s, d) -> d <= reach(s) && s.waypoints.any { it.type == model.system.WaypointType.JUMP_GATE } }
+            .minByOrNull { (_, d) -> d }
+
+    /**
      * Where an explorer with nothing in reach should go: the held system with a built gate that has the
      * most unheld gate-less systems within a safe warp of it. A2 waited nine hours at X1-ZX11 on
      * 2026-09-08 with nothing within 795 while RK94 and ND68 each had five gate-less neighbours.
@@ -655,7 +666,7 @@ object Strategy {
      * systems for nine hours while 25 held systems had no trader at all. A heavy uses about 120
      * requests an hour, so with the budget at 1.46 of 2.5 a second there was room for twenty-odd more.
      */
-    const val FREIGHTERS = 25
+    const val FREIGHTERS = 32
     const val EXPLORERS = 2
     /** One bulk freighter (hold ~490, speed 60, 3.1M) to measure against the heavies: per request it should carry twice as much. */
     const val BULK_FREIGHTERS = 1
@@ -791,8 +802,14 @@ object Strategy {
         // A system whose waypoints we have not loaded is not done, only unread.
         fun done(system: String) = snapshot.waypointsIn(system).isNotEmpty() && uncharted(system) == 0
         // Idle watchers beyond one per system, and parked probes, are spare too: the reserve for the next system.
+        // A lone watcher where no trader is reads prices nobody acts on: it is spare while charts remain somewhere
+        // (2026-09-09: 175 watchers, 81 charters, 1,681 waypoints uncharted in held systems), but never parked for it.
+        val lone = mutableSetOf<String>()
         val watching = plan.assignments.filter { it.behaviour == "probeMarkets" && it.params["markets"] == null && snapshot.ships[it.ship]?.usesFuel == false }
-            .groupBy { snapshot.ships[it.ship]?.nav?.systemSymbol }.values.flatMap { it.sortedWith(compareBy({ it.ship.length }, { it.ship })).drop(SETTLE_PROBES) } +
+            .groupBy { snapshot.ships[it.ship]?.nav?.systemSymbol }.entries.flatMap { (system, here) ->
+                val sorted = here.sortedWith(compareBy({ it.ship.length }, { it.ship }))
+                if (system != null && traderSlots(plan, snapshot, system) == 0) sorted.also { s -> s.take(SETTLE_PROBES).forEach { lone += it.ship } } else sorted.drop(SETTLE_PROBES)
+            } +
             plan.assignments.filter { it.behaviour == "park" && snapshot.ships[it.ship]?.usesFuel == false }
         fun hopsFrom(ship: String): Map<String, Int> {
             val system = snapshot.ships[ship]?.nav?.systemSymbol ?: return emptyMap()
@@ -813,6 +830,7 @@ object Strategy {
             val pioneers = next.assignments.count { it.behaviour == "pioneer" }
             next = when {
                 need != null -> next.with(Assignment(spare.ship, "chartSystem", mapOf("system" to need)))
+                spare.ship in lone -> break // the system's only eyes: charts or nothing
                 pioneers < pioneerRoom(next) -> next.with(Assignment(spare.ship, "pioneer"))
                 spare.behaviour == "park" -> break // already parked, nowhere better to be
                 else -> next.with(Assignment(spare.ship, "park")) // a watcher touring its markets costs requests and earns nothing
