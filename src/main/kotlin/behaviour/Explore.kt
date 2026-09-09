@@ -50,6 +50,7 @@ suspend fun BehaviourScope.explore() {
                     if (e.error.code != DESTINATION_UNDER_CONSTRUCTION) throw e
                     // A gate needs both ends built; remember this one and take the next connection.
                     shared.unreachableGates += next
+                    shared.editPlan("$next is unbuilt") { it.withUnbuilt(next) }
                     status(detail = "$next is under construction; trying the next connection")
                     false
                 }

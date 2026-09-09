@@ -53,6 +53,8 @@ class SimApi(val universe: SimUniverse) : GameApi {
     override suspend fun jettison(ship: String, symbol: TradeSymbol, units: Int): Cargo = universe.jettison(ship, symbol, units)
     override suspend fun transfer(fromShip: String, toShip: String, symbol: TradeSymbol, units: Int): model.responsebody.TransferResponse = universe.transfer(fromShip, toShip, symbol, units)
     override suspend fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse = universe.purchaseShip(type, waypoint)
+    override suspend fun installModule(ship: String, module: String): model.responsebody.ShipModuleResponse = throw api.ApiError(400, 4266, "the simulator has no module shop", "sim")
+    override suspend fun removeModule(ship: String, module: String): model.responsebody.ShipModuleResponse = throw api.ApiError(400, 4266, "the simulator has no module shop", "sim")
     override suspend fun siphon(ship: String): SiphonResponse = universe.siphon(ship)
     override suspend fun chart(ship: String): ChartResponse = universe.chart(ship)
     override suspend fun listContracts(): List<Contract> = universe.listContracts()

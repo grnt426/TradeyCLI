@@ -26,7 +26,10 @@ data class Plan(
     val systems: Map<String, SystemRecord> = emptyMap(),
     /** Gates we know of and have not entered, each with the system whose gate leads to it. */
     val frontier: List<FrontierGate> = emptyList(),
+    /** Gates a jump was refused to because they are under construction: the warp-only fleet's targets, kept across restarts. */
+    val unbuilt: List<String> = emptyList(),
 ) {
+    fun withUnbuilt(gate: String): Plan = if (gate in unbuilt) this else copy(unbuilt = unbuilt + gate)
     fun withPhase(phase: Phase): Plan = copy(phase = phase)
     fun withSystem(record: SystemRecord): Plan = copy(systems = systems + (record.symbol to record))
     fun system(symbol: String): SystemRecord? = systems[symbol]
@@ -134,6 +137,8 @@ data class FleetGoal(
     val reserve: Long = 100_000,
     /** The system this goal is for: only ships there count, and the ship is bought for it (null: anywhere). */
     val system: String? = null,
+    /** A fleet the ship is bought into (the warp-only fleet, "WO"): its assignment carries `fleet` and `origin`, and only those ships count. */
+    val purpose: String? = null,
 ) {
     fun owned(ships: Collection<model.ship.Ship>): Int = ships.count { behaviour.BehaviourScope.shipTypeOf(it) == type && (system == null || it.nav.systemSymbol == system) }
 
@@ -143,12 +148,15 @@ data class FleetGoal(
      * 2026-09-07 while the first two were in transit, and the yard's price climbed to 120k.
      */
     fun owned(ships: Collection<model.ship.Ship>, plan: Plan?): Int {
+        if (purpose != null && plan != null) return ships.count { s ->
+            behaviour.BehaviourScope.shipTypeOf(s) == type && plan.assignmentFor(s.symbol)?.params?.let { it["fleet"] == purpose && (system == null || it["origin"] == system) } == true
+        }
         if (system == null || plan == null) return owned(ships)
         return ships.count { s ->
             behaviour.BehaviourScope.shipTypeOf(s) == type && (s.nav.systemSymbol == system || plan.assignmentFor(s.symbol)?.params?.get("system") == system)
         }
     }
-    fun describe(): String = "${count}x${type.name.removePrefix("SHIP_")}" + (system?.let { " in $it" } ?: "")
+    fun describe(): String = "${count}x${type.name.removePrefix("SHIP_")}" + (system?.let { " in $it" } ?: "") + (purpose?.let { " for $it" } ?: "")
 }
 
 /** Where a system stands in the boom (docs/boom.md). */
@@ -170,6 +178,8 @@ data class SystemRecord(
     /** Credits spent on ships for this system. */
     val spent: Long = 0,
     val note: String = "",
+    /** Entered by warp, held by the warp-only fleet: no gate, and the gate fleet's rules leave it alone. */
+    val warpOnly: Boolean = false,
 )
 
 /** A gate we know of and have not entered, and the system whose gate leads to it. */

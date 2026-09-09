@@ -145,6 +145,22 @@ watcher in a system with no trader is spare while charts remain anywhere (never 
 `FREIGHTERS` is 32, a trader with no local route at all looks `RELOCATE_HOPS_IDLE` (5) jumps out,
 and a stranded explorer warps back to the nearest held gate in reach (`warpHome`).
 
+**The warp-only fleet (2026-09-09).** Behind the 142 gates we were refused at lie systems twice a
+gated one's size (median 88 waypoints, four fuel stations, twenty-odd planets and moons) that nobody
+has traded since the reset; 36 lie within 1,000 of a held yard. No market in 3,683 sells a warp
+drive, but the explorers' Warp Drive I (one slot, two crew, three power) comes off at a shipyard and
+goes into a heavy's hold, which gives up one cargo hold III (three slots) for it and takes a cargo
+hold II back: a 190-hold heavy with a 2,300 tank against the explorer's 800. `warpFleetGoals` buys
+`WO_HEAVIES` (5) heavies and `WO_EXPLORERS_TO_BUY` (3) explorers one each at yards spread across the
+map (`spreadYards`), tagged `fleet=WO`; `warpFleetTick` pairs each `refitWarp` heavy with the nearest
+`donateWarpDrive` explorer at a yard; `warpTrade` then warps to the biggest unheld gate-less or
+unbuilt-gate system in reach (`Plan.unbuilt` keeps the refused gates), reads its markets, buys
+`WO_KIT_PROBES` (4) at its yard to chart it and leaves them parked, trades until nothing pays for
+`WO_DWELL_MINUTES` (30) or `WO_MAX_HOURS` (6) pass, fills the hold with the export the galaxy pays
+`WO_OUTBOUND_MARGIN` (30%) over local for, and warps on. Systems entered this way are `warpOnly`
+and the gate fleet's rules leave them alone. The measure: first-hour net on arrival against the
+0.95M a heavy made on an untouched gated system, and net per ship per hour against the gate fleet's.
+
 **Explorers (2026-09-08).** A warp is taken only as far as the tank brings the ship back
 (`warpReach`: half the tank, the whole tank where the far side is known to sell fuel), the ship
 refuels at the nearest fuel market in the system rather than only where it stands, and when nothing

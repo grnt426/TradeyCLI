@@ -171,7 +171,7 @@ class BehaviourScope(
                 val bought = purchaseShip(goal.type, here.symbol)
                 status(detail = "bought ${bought.symbol} (${goal.type}) for $price; ${owned + 1}/${goal.count}" + (goal.system?.let { " for $it" } ?: ""))
                 goal.system?.let { s -> shared.plan.system(s)?.let { r -> shared.editPlan("rush spend in $s") { p -> p.withSystem((p.system(s) ?: r).copy(spent = (p.system(s) ?: r).spent + price)) } } }
-                shared.onShipPurchased(bought, goal.system)
+                shared.onShipPurchased(bought, goal.system, goal.purpose)
                 return bought
             }
             return null
@@ -220,7 +220,7 @@ class SharedState {
 
     /** Set by the supervisor: gives a newly bought ship an assignment, for the system it was bought for. */
     @Volatile
-    var onShipPurchased: (Ship, String?) -> Unit = { _, _ -> }
+    var onShipPurchased: (Ship, String?, String?) -> Unit = { _, _, _ -> }
 
     /** Set by the supervisor: moves the plan to a new phase and saves it. */
     @Volatile

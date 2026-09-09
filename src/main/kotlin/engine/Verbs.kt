@@ -98,6 +98,12 @@ interface Verbs {
     /** Warp to [waypoint] in another system and wait for arrival: fuel by the distance between the systems, no gate needed. */
     suspend fun warpTo(ship: String, waypoint: String): Ship
 
+    /** Fits [module] (a trade symbol) from the hold; the ship must be docked at a shipyard with the slots, crew and power for it. */
+    suspend fun installModule(ship: String, module: TradeSymbol): Ship
+
+    /** Takes [module] off into the hold; the ship must be docked at a shipyard. */
+    suspend fun removeModule(ship: String, module: TradeSymbol): Ship
+
     /** What a construction site still needs; one request. */
     suspend fun construction(waypoint: String): Construction
 

@@ -31,6 +31,7 @@ suspend fun BehaviourScope.goToSystem(system: String): Boolean {
             } catch (e: VerbFailure.Api) {
                 if (e.error.code != DESTINATION_UNDER_CONSTRUCTION) throw e
                 shared.unreachableGates += target
+                shared.editPlan("$target is unbuilt") { it.withUnbuilt(target) }
                 status(detail = "$target is under construction; $system cannot be reached this way")
                 false
             }

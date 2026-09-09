@@ -62,6 +62,10 @@ interface GameApi {
     /** Moves cargo between two of our ships at the same waypoint, both docked or both in orbit. */
     suspend fun transfer(fromShip: String, toShip: String, symbol: TradeSymbol, units: Int): model.responsebody.TransferResponse
     suspend fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse
+    /** Fits a module the ship carries in its hold; at a shipyard, for a fee. */
+    suspend fun installModule(ship: String, module: String): model.responsebody.ShipModuleResponse
+    /** Takes a module off into the hold; at a shipyard, for a fee. */
+    suspend fun removeModule(ship: String, module: String): model.responsebody.ShipModuleResponse
 
     suspend fun siphon(ship: String): SiphonResponse
     suspend fun chart(ship: String): ChartResponse

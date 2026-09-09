@@ -201,6 +201,53 @@ class BoomTest {
     }
 
     @Test
+    fun `the warp-only fleet pairs a waiting heavy with the nearest waiting explorer at a yard`() {
+        val snap = snap()
+        val frigate = snap.ships.getValue(Fixtures.COMMAND_SHIP)
+        val heavy = Fixtures.heavy("F-1")
+        val explorer = frigate.copy(symbol = "E-1", modules = frigate.modules + model.ship.components.Module("MODULE_WARP_DRIVE_I", "Warp Drive I", "", 0, frigate.modules.first().requirements))
+        val world = snap.copy(ships = snap.ships + listOf(heavy, explorer).associateBy { it.symbol })
+        val plan = Plan(listOf(Assignment("F-1", "refitWarp", mapOf("fleet" to "WO")), Assignment("E-1", "donateWarpDrive", mapOf("fleet" to "WO"))), phase = Phase.BOOM)
+        val paired = Strategy.warpFleetTick(plan, world)
+        val yard = paired.assignmentFor("F-1")?.params?.get("at")
+        assertTrue(yard != null && world.waypoints.getValue(yard).hasShipyard, "they meet at a yard in the heavy's system: ${paired.assignmentFor("F-1")}")
+        assertEquals("E-1", paired.assignmentFor("F-1")?.params?.get("from"))
+        assertEquals("F-1", paired.assignmentFor("E-1")?.params?.get("to"))
+        assertEquals(yard, paired.assignmentFor("E-1")?.params?.get("at"))
+        assertEquals(paired, Strategy.warpFleetTick(paired, world), "paired once")
+    }
+
+    @Test
+    fun `the warp-only fleet's next system is the biggest untouched one in reach, gate-less or behind an unbuilt gate`() {
+        val snap = snap()
+        val home = snap.systems.getValue("X1-TH77")
+        fun renamed(symbol: String, x: Long, keepGate: Boolean) = home.copy(symbol = symbol, x = x, y = home.y,
+            waypoints = home.waypoints.filter { keepGate || it.type != model.system.WaypointType.JUMP_GATE }.map { it.copy(symbol = it.symbol.replace("X1-TH77", symbol)) })
+        val small = renamed("X1-SMALL", home.x + 300, keepGate = false).let { it.copy(waypoints = it.waypoints.take(10)) }
+        val big = renamed("X1-BIG", home.x + 500, keepGate = true)
+        val gated = renamed("X1-GATED", home.x + 200, keepGate = true)
+        val world = snap.copy(systems = snap.systems + listOf(small, big, gated).associateBy { it.symbol })
+        val plan = Plan(systems = mapOf("X1-TH77" to SystemRecord("X1-TH77", Stage.SETTLE, gateBuilt = true))).withUnbuilt("X1-BIG-I54")
+        val far = Strategy.warpTradeTarget(plan, world, "X1-TH77") { 600.0 }.map { it.first.symbol }
+        assertEquals(listOf("X1-BIG", "X1-SMALL"), far, "the big unbuilt-gate system first; the built-gate system is the gate fleet's, not ours")
+        assertEquals(listOf("X1-SMALL"), Strategy.warpTradeTarget(plan, world, "X1-TH77") { 400.0 }.map { it.first.symbol }, "only what the tank reaches")
+    }
+
+    @Test
+    fun `a probe in a system without a gate parks when its charts are done instead of pioneering`() {
+        val snap = snap()
+        val probe = snap.ships.getValue(Fixtures.PROBE)
+        val template = snap.waypointsIn("X1-TH77").first { it.type == model.system.WaypointType.ASTEROID }
+        val lost = template.copy(symbol = "X1-LOST-A1", systemSymbol = "X1-LOST")
+        val stranded = probe.copy(nav = probe.nav.copy(systemSymbol = "X1-LOST", waypointSymbol = "X1-LOST-A1"))
+        val world = snap.copy(ships = snap.ships + (stranded.symbol to stranded), waypoints = snap.waypoints + (lost.symbol to lost))
+        val plan = Plan(listOf(Assignment(probe.symbol, "chartSystem")), phase = Phase.BOOM,
+            systems = mapOf("X1-LOST" to SystemRecord("X1-LOST", Stage.SETTLE, warpOnly = true)))
+            .withFrontier((1..5).map { FrontierGate("X1-Q$it-A1", "X1-TH77") })
+        assertEquals("park", Strategy.spreadProbes(plan, world).assignmentFor(probe.symbol)?.behaviour, "no gate to leave by, so no pioneering")
+    }
+
+    @Test
     fun `an explorer warps only as far as its tank brings it back, unless fuel is known on the far side`() {
         assertEquals(397.5, Strategy.warpReach(800.0, fuelKnownAtTarget = false))
         assertEquals(795.0, Strategy.warpReach(800.0, fuelKnownAtTarget = true))

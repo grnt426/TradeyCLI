@@ -137,6 +137,12 @@ class SpaceTradersApi(val client: ApiClient) : GameApi {
     override suspend fun purchaseShip(type: ShipType, waypoint: String): ShipPurchaseResponse =
         client.post("my/ships", ShipPurchaseRequest(type, waypoint), Priority.ACTION).decode()
 
+    override suspend fun installModule(ship: String, module: String): model.responsebody.ShipModuleResponse =
+        client.post("my/ships/$ship/modules/install", model.requestbody.ModuleRequest(module), Priority.ACTION).decode()
+
+    override suspend fun removeModule(ship: String, module: String): model.responsebody.ShipModuleResponse =
+        client.post("my/ships/$ship/modules/remove", model.requestbody.ModuleRequest(module), Priority.ACTION).decode()
+
     override suspend fun siphon(ship: String): SiphonResponse =
         client.post("my/ships/$ship/siphon", Priority.ACTION).decode()
 

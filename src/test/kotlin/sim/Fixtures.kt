@@ -9,6 +9,13 @@ object Fixtures {
     fun seed(): SimSeed = SimSeed.load(seedFile)
 
     const val COMMAND_SHIP = "TRIPLEHAT-1"
+
+    /** A heavy freighter made from the command ship: its frame, a 225 hold, no mounts, standing at [system]'s first waypoint. */
+    fun heavy(symbol: String, system: String = SYSTEM): model.ship.Ship {
+        val frigate = seed().ships.first { it.symbol == COMMAND_SHIP }
+        return frigate.copy(symbol = symbol, frame = frigate.frame.copy(symbol = "FRAME_HEAVY_FREIGHTER", moduleSlots = 13), mounts = emptyList(),
+            cargo = frigate.cargo.copy(capacity = 225), nav = frigate.nav.copy(systemSymbol = system, waypointSymbol = "$system-A1"))
+    }
     const val PROBE = "TRIPLEHAT-2"
     const val SYSTEM = "X1-TH77"
     const val HQ = "X1-TH77-A1"

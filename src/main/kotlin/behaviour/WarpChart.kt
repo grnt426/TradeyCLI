@@ -91,7 +91,7 @@ suspend fun BehaviourScope.warpChart() {
 }
 
 /** Refuels here when here sells fuel, else at the nearest market in the system that does (or might: an unread market is tried). */
-private suspend fun BehaviourScope.fillTank() {
+internal suspend fun BehaviourScope.fillTank() {
     val snap = snapshot()
     val station = if (here.hasMarket) here else Tour.nearest(here, snap.waypointsIn(me.nav.systemSymbol).filter { it.hasMarket && snap.markets[it.symbol]?.trades(TradeSymbol.FUEL) != false })
     if (station == null) { status(detail = "no market in ${me.nav.systemSymbol} to refuel at"); return }

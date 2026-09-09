@@ -395,6 +395,21 @@ class ShipVerbs(
         return settled(ship)
     }
 
+    override suspend fun installModule(ship: String, module: TradeSymbol): Ship = modify(ship, module) { api.installModule(ship, module.name) }
+
+    override suspend fun removeModule(ship: String, module: TradeSymbol): Ship = modify(ship, module) { api.removeModule(ship, module.name) }
+
+    private suspend fun modify(ship: String, module: TradeSymbol, block: suspend () -> model.responsebody.ShipModuleResponse): Ship {
+        var current = settled(ship)
+        if (!waypoint(current.nav.waypointSymbol).hasShipyard) throw VerbFailure.Precondition("$ship is not at a shipyard")
+        if (!current.isDocked) current = dock(ship)
+        val response = call { block() }
+        agentChanged(response.agent)
+        current = update(current.copy(modules = response.modules, cargo = response.cargo))
+        activity(ship, "refit", "${module.name} at ${response.transaction.waypointSymbol} for ${response.transaction.totalPrice}", 0)
+        return current
+    }
+
     override suspend fun construction(waypoint: String): Construction {
         val site = call { api.getConstruction(OrbitalNames.getSectorSystem(waypoint), waypoint) }
         // The summary shows the home gate's progress; the last read of its bill lives on the world.

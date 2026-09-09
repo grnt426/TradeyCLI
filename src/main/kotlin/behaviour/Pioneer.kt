@@ -69,7 +69,7 @@ suspend fun BehaviourScope.pioneer() {
             } catch (e: VerbFailure.Api) {
                 if (e.error.code != DESTINATION_UNDER_CONSTRUCTION) throw e
                 shared.unreachableGates += entry.gate
-                shared.editPlan("frontier: ${entry.gate} is unbuilt") { it.withoutFrontier(entry.gate) }
+                shared.editPlan("frontier: ${entry.gate} is unbuilt") { it.withoutFrontier(entry.gate).withUnbuilt(entry.gate) }
                 status(detail = "${entry.gate} is under construction; dropped from the frontier")
                 false
             }
