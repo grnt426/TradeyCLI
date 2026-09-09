@@ -20,8 +20,18 @@ val chartSystemSpec = BehaviourSpec(
 
 suspend fun BehaviourScope.chartSystem() {
     val system = param("system")?.uppercase() ?: me.nav.systemSymbol
-    if (me.nav.systemSymbol != system) phase("migrate", "to $system") {
-        if (!goToSystem(system)) throw BehaviourFailure("$system cannot be reached: its gate is under construction")
+    if (me.nav.systemSymbol != system) {
+        // Never more than CHART_HOPS jumps for charts, whatever sent the probe: a jump is antimatter at the local gate's
+        // price, which our own jumps push up (thirty-jump kit trips on 2026-09-09 cost more than the charts paid).
+        val gate = localGate(me.nav.systemSymbol)
+        val hops = gate?.let { g -> knowledge.GateGraph.route(shared.gates, g.symbol, system, shared.unreachableGates)?.size }
+        if (hops != null && hops > knowledge.Strategy.CHART_HOPS) {
+            status("done", "$system is $hops jumps away, more than ${knowledge.Strategy.CHART_HOPS}; staying to watch prices here")
+            return
+        }
+        phase("migrate", "to $system") {
+            if (!goToSystem(system)) throw BehaviourFailure("$system cannot be reached: its gate is under construction")
+        }
     }
     var charted = 0
     var earned = 0L
