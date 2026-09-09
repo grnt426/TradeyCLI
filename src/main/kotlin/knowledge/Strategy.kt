@@ -632,6 +632,17 @@ object Strategy {
     /** Warp only as far as the tank brings the ship back, unless the far side is known to sell fuel: A0 sat at X1-XT25 with 51 fuel on 2026-09-08. */
     fun warpReach(fuel: Double, fuelKnownAtTarget: Boolean): Double = if (fuelKnownAtTarget) fuel - 5 else (fuel - 5) / 2
 
+    /**
+     * Whether a ship can expect to refuel in [system]: a market read that sells fuel, a marketplace
+     * seen on a waypoint, or a fuel station in the galaxy listing. Every marketplace read so far has
+     * sold fuel; requiring a read catalogue stranded A0 in X1-DK84 on 2026-09-09 with the nearest
+     * held gate 495 away and its eleven marketplaces unread.
+     */
+    fun fuelLikely(snapshot: Snapshot, system: model.system.System): Boolean =
+        snapshot.marketsIn(system.symbol).any { it.trades(model.market.TradeSymbol.FUEL) } ||
+            snapshot.waypointsIn(system.symbol).any { it.hasMarket } ||
+            system.waypoints.any { it.type == model.system.WaypointType.FUEL_STATION }
+
     /** The unheld gate-less systems within [reach] of [from], nearest first. */
     fun warpTargets(snapshot: Snapshot, held: Set<String>, from: model.system.System, reach: (model.system.System) -> Double): List<Pair<model.system.System, Double>> =
         snapshot.systems.values
@@ -745,8 +756,8 @@ object Strategy {
             val ship = snapshot.ships[donor.ship] ?: return false
             val system = snapshot.systems[ship.nav.systemSymbol] ?: return true
             if (snapshot.waypointsIn(system.symbol).any { it.type == model.system.WaypointType.JUMP_GATE }) return true
-            val fuel = if (snapshot.marketsIn(system.symbol).any { it.trades(model.market.TradeSymbol.FUEL) }) ship.fuel.capacity.toDouble() else ship.fuel.current.toDouble()
-            return warpHome(plan, snapshot, system) { s -> warpReach(fuel, snapshot.marketsIn(s.symbol).any { it.trades(model.market.TradeSymbol.FUEL) }) } != null
+            val fuel = if (fuelLikely(snapshot, system)) ship.fuel.capacity.toDouble() else ship.fuel.current.toDouble()
+            return warpHome(plan, snapshot, system) { s -> warpReach(fuel, fuelLikely(snapshot, s)) } != null
         }
         val donors = plan.assignments.filter { it.behaviour == "donateWarpDrive" && it.params["to"] == null && canLeave(it) }.toMutableList()
         var next = plan

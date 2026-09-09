@@ -150,7 +150,7 @@ suspend fun BehaviourScope.warpTrade() {
         if (plan == null && dwell.toMinutes() < Strategy.WO_DWELL_MINUTES && dry < 3) { status("waiting", "no route pays in $system yet; checking again in 5 minutes"); clock.sleep(5.minutes); continue }
         // Drained, or the dwell is up: the next untouched system in reach.
         val snap = snapshot()
-        fun reach(s: model.system.System) = Strategy.warpReach(me.fuel.capacity.toDouble(), s.waypoints.any { it.type == WaypointType.FUEL_STATION } || snap.marketsIn(s.symbol).any { it.trades(TradeSymbol.FUEL) })
+        fun reach(s: model.system.System) = Strategy.warpReach(me.fuel.capacity.toDouble(), Strategy.fuelLikely(snap, s))
         val next = Strategy.warpTradeTarget(shared.plan, snap, system, ::reach).firstOrNull { (s, _) -> !shared.claimedByOther(s.symbol, ship) }
         if (next == null) { status("waiting", "no untouched warp-only system within reach of $system; checking again in 30 minutes"); clock.sleep(30.minutes); continue }
         val (dest, distance) = next
@@ -250,7 +250,7 @@ internal suspend fun BehaviourScope.reachYard(yard: String): Boolean {
             if (there != null && Travel.distance(from.x.toInt(), from.y.toInt(), there.x.toInt(), there.y.toInt()) <= Strategy.warpReach(fuel, true)) {
                 phase("warp", "to $system") { warpTo(ship, yard) }
             } else {
-                val home = Strategy.warpHome(shared.plan, snap, from) { s -> Strategy.warpReach(fuel, snap.marketsIn(s.symbol).any { it.trades(TradeSymbol.FUEL) }) } ?: run { status("waiting", "no gate in reach to leave ${from.symbol} by"); return false }
+                val home = Strategy.warpHome(shared.plan, snap, from) { s -> Strategy.warpReach(fuel, Strategy.fuelLikely(snap, s)) } ?: run { status("waiting", "no gate in reach to leave ${from.symbol} by"); return false }
                 val gate = snap.waypointsIn(home.first.symbol).firstOrNull { it.type == WaypointType.JUMP_GATE }?.symbol ?: home.first.waypoints.first { it.type == WaypointType.JUMP_GATE }.symbol
                 phase("warp home", "to ${home.first.symbol}, the nearest gate") { warpTo(ship, gate) }
                 return false

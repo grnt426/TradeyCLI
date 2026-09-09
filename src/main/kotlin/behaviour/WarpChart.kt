@@ -44,7 +44,7 @@ suspend fun BehaviourScope.warpChart() {
         val held = shared.plan.systems.keys
         val fixed = param("reach")?.toDoubleOrNull()
         val fuel = me.fuel.current.toDouble()
-        fun reach(system: model.system.System) = fixed ?: Strategy.warpReach(fuel, snap.marketsIn(system.symbol).any { it.trades(TradeSymbol.FUEL) })
+        fun reach(system: model.system.System) = fixed ?: Strategy.warpReach(fuel, Strategy.fuelLikely(snap, system))
         val target = Strategy.warpTargets(snap, held, from, ::reach).firstOrNull { (s, _) -> !shared.claimedByOther(s.symbol, ship) }
         if (target == null) {
             // Nothing within a safe warp of here: go where there is something, through the gates.
