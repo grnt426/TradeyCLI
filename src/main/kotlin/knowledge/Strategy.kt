@@ -867,8 +867,8 @@ object Strategy {
         return next
     }
 
-    /** Spare probes re-sent per tick: 33 sat on one system on 2026-09-07, and one a minute was too slow. */
-    const val PROBE_MOVES_PER_TICK = 5
+    /** Spare probes re-sent per tick: 33 sat on one system on 2026-09-07, and one a minute was too slow; on 2026-09-09 five a minute left 200 probes on thirty-jump trips for an hour. */
+    const val PROBE_MOVES_PER_TICK = 20
 
     fun describe(phase: Phase): String = when (phase) {
         Phase.ESCAPE -> "ESCAPE: market health first; profits fund the logistics that keep producers fed and the gate supplied"
