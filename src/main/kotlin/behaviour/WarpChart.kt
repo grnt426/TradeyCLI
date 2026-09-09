@@ -34,6 +34,9 @@ val warpChartSpec = BehaviourSpec(
 suspend fun BehaviourScope.warpChart() {
     while (true) {
         clock.sleep(10.seconds)
+        // A restart can find the ship in a system whose waypoints were never loaded (A2 failed on "unknown waypoint" in
+        // its refuel check on 2026-09-09); load them before anything asks where the ship stands.
+        if (snapshot().waypointsIn(me.nav.systemSymbol).isEmpty()) phase("map", me.nav.systemSymbol) { loadSystem(me.nav.systemSymbol) }
         // Full tank first: the warp costs one fuel per unit of distance and there may be no market on the far side.
         if (me.fuel.current < me.fuel.capacity) phase("refuel") { fillTank() }
         val snap = snapshot()
