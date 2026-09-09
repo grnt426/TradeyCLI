@@ -235,6 +235,8 @@ private suspend fun BehaviourScope.outboundLoad(system: String) {
 /** Puts the ship at [yard]: through the gates when the system has one, by warp when it can, else not at all. */
 internal suspend fun BehaviourScope.reachYard(yard: String): Boolean {
     val system = yard.substringBeforeLast('-')
+    // A ship can stand in a system whose waypoints were never loaded (A2 in X1-PA74 on 2026-09-09): load them before asking where it is.
+    if (snapshot().waypointsIn(me.nav.systemSymbol).isEmpty()) phase("map", me.nav.systemSymbol) { loadSystem(me.nav.systemSymbol) }
     if (me.nav.systemSymbol != system) {
         val snap = snapshot()
         val hasGate = snap.waypointsIn(me.nav.systemSymbol).any { it.type == WaypointType.JUMP_GATE }
