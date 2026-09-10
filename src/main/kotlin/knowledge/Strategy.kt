@@ -131,7 +131,7 @@ object Strategy {
 
     /** The boom's bookkeeping, once a minute: stage transitions, the probe goal, and one hauler spread. Pure. */
     fun boomTick(plan: Plan, snapshot: Snapshot, now: java.time.Instant, gates: Map<String, List<String>> = emptyMap()): Plan =
-        warpFleetTick(spreadProbes(spreadHaulers(growFleet(growProbes(pruneKits(advanceSystems(plan, snapshot, now), snapshot), snapshot), snapshot), snapshot), snapshot, gates), snapshot, gates)
+        warpFleetTick(spreadProbes(spreadHaulers(growFleet(growProbes(pruneKits(advanceSystems(plan, snapshot, now), snapshot), snapshot), snapshot, gates), snapshot), snapshot, gates), snapshot, gates)
 
     /**
      * Kit goals still in the plan from before the fleet had spare probes go: the spread routes spares
@@ -709,7 +709,7 @@ object Strategy {
     const val BULK_FREIGHTERS = 1
 
     /** Adds the boom's freighter and explorer goals once; the goals themselves stop the buying. A raised constant raises an existing goal. */
-    fun growFleet(plan: Plan, snapshot: Snapshot? = null): Plan {
+    fun growFleet(plan: Plan, snapshot: Snapshot? = null, gates: Map<String, List<String>> = emptyMap()): Plan {
         var next = plan
         fun want(type: ShipType, count: Int) {
             val goal = next.goals.fleet.firstOrNull { it.type == type && it.system == null && it.purpose == null }
@@ -718,7 +718,7 @@ object Strategy {
         want(ShipType.SHIP_HEAVY_FREIGHTER, FREIGHTERS)
         want(ShipType.SHIP_BULK_FREIGHTER, BULK_FREIGHTERS)
         want(ShipType.SHIP_EXPLORER, EXPLORERS)
-        if (snapshot != null) next = warpFleetGoals(next, snapshot)
+        if (snapshot != null) next = warpFleetGoals(next, snapshot, gates)
         return next
     }
 
@@ -729,7 +729,8 @@ object Strategy {
      * once; the goals stop the buying.
      */
     const val WO_HEAVIES = 5
-    const val WO_EXPLORERS_TO_BUY = 3
+    /** One drive per heavy: A2's is stranded in X1-PA74, so four are bought. */
+    const val WO_EXPLORERS_TO_BUY = 4
     /** Probes bought at a warp-only system's own yard to chart it; they stay behind. */
     const val WO_KIT_PROBES = 4
     /** Minutes a warp-only heavy gives a system before it looks for the next when no route pays. */
@@ -739,11 +740,24 @@ object Strategy {
     /** The expected margin, against what the galaxy pays, that fills the hold on the way out. */
     const val WO_OUTBOUND_MARGIN = 0.3
 
-    fun warpFleetGoals(plan: Plan, snapshot: Snapshot): Plan {
+    fun warpFleetGoals(plan: Plan, snapshot: Snapshot, gates: Map<String, List<String>> = emptyMap()): Plan {
         if (plan.goals.fleet.any { it.purpose == "WO" }) return plan
         var next = plan
-        spreadYards(snapshot, ShipType.SHIP_HEAVY_FREIGHTER, WO_HEAVIES).forEach { next = next.withGoal(FleetGoal(ShipType.SHIP_HEAVY_FREIGHTER, 1, reserve = 3_000_000, system = it, purpose = "WO")) }
-        spreadYards(snapshot, ShipType.SHIP_EXPLORER, WO_EXPLORERS_TO_BUY).forEach { next = next.withGoal(FleetGoal(ShipType.SHIP_EXPLORER, 1, reserve = 3_000_000, system = it, purpose = "WO")) }
+        val heavyYards = spreadYards(snapshot, ShipType.SHIP_HEAVY_FREIGHTER, WO_HEAVIES)
+        heavyYards.forEach { next = next.withGoal(FleetGoal(ShipType.SHIP_HEAVY_FREIGHTER, 1, reserve = 3_000_000, system = it, purpose = "WO")) }
+        // No yard sells both hulls, so each explorer is bought at the explorer yard fewest jumps from a heavy's yard: the pair
+        // that met across 28 jumps on 2026-09-10 spent five hours and a heavy's day of trading on the trip.
+        val explorerYards = snapshot.shipyards.values.filter { it.priceOf(ShipType.SHIP_EXPLORER) != null }.map { it.symbol.substringBeforeLast('-') }.distinct()
+        val chosen = mutableListOf<String>()
+        for (heavyYard in heavyYards) {
+            if (chosen.size >= WO_EXPLORERS_TO_BUY) break
+            val gate = snapshot.waypointsIn(heavyYard).firstOrNull { it.type == model.system.WaypointType.JUMP_GATE }
+            val hops = gate?.let { GateGraph.hopsFrom(gates, it.symbol, 12, plan.unbuilt.toSet()) } ?: emptyMap()
+            val nearest = explorerYards.filter { it !in chosen }.minByOrNull { hops[it] ?: Int.MAX_VALUE }
+            if (nearest != null) chosen += nearest
+        }
+        (chosen + spreadYards(snapshot, ShipType.SHIP_EXPLORER, WO_EXPLORERS_TO_BUY).filter { it !in chosen }).take(WO_EXPLORERS_TO_BUY)
+            .forEach { next = next.withGoal(FleetGoal(ShipType.SHIP_EXPLORER, 1, reserve = 3_000_000, system = it, purpose = "WO")) }
         return next
     }
 
