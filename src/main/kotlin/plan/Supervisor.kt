@@ -136,6 +136,9 @@ class Supervisor(
         this.plan = plan
         shared.goals = plan.goals
         shared.plan = plan
+        // Gates the plan knows are unbuilt are unreachable from the first route: after every restart A0 walked back to the
+        // same unbuilt gate, was refused, and only then took the 28-jump way round (2026-09-10).
+        shared.unreachableGates += plan.unbuilt
         return emptyList()
     }
 
