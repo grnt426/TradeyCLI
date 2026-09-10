@@ -240,14 +240,22 @@ internal suspend fun BehaviourScope.reachYard(yard: String): Boolean {
     if (me.nav.systemSymbol != system) {
         val snap = snapshot()
         val hasGate = snap.waypointsIn(me.nav.systemSymbol).any { it.type == WaypointType.JUMP_GATE }
+        val there = snap.systems[system]
+        val fuel = me.fuel.current.toDouble()
+        val direct = there?.let { t -> snap.systems[me.nav.systemSymbol]?.let { f -> Travel.distance(f.x.toInt(), f.y.toInt(), t.x.toInt(), t.y.toInt()) } }
         if (hasGate) {
-            if (!phase("travel", "to $system") { goToSystem(system) }) { status("waiting", "no route to $system"); return false }
+            if (!phase("travel", "to $system") { goToSystem(system) }) {
+                // No gate route (a gate on the way is unbuilt): a warp ship within a tank of the yard warps instead (A0, 2026-09-10).
+                if (me.canWarp && direct != null) {
+                    fillTank()
+                    if (direct <= Strategy.warpReach(me.fuel.current.toDouble(), true)) { phase("warp", "to $system, no gate route") { warpTo(ship, yard) }; return me.nav.systemSymbol == system }
+                }
+                status("waiting", "no route to $system"); return false
+            }
         } else if (me.canWarp) {
             fillTank()
             val from = snap.systems[me.nav.systemSymbol] ?: return false
-            val there = snap.systems[system]
-            val fuel = me.fuel.current.toDouble()
-            if (there != null && Travel.distance(from.x.toInt(), from.y.toInt(), there.x.toInt(), there.y.toInt()) <= Strategy.warpReach(fuel, true)) {
+            if (there != null && Travel.distance(from.x.toInt(), from.y.toInt(), there.x.toInt(), there.y.toInt()) <= Strategy.warpReach(me.fuel.current.toDouble(), true)) {
                 phase("warp", "to $system") { warpTo(ship, yard) }
             } else {
                 val home = Strategy.warpHome(shared.plan, snap, from) { s -> Strategy.warpReach(fuel, Strategy.fuelLikely(snap, s)) } ?: run { status("waiting", "no gate in reach to leave ${from.symbol} by"); return false }

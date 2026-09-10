@@ -131,7 +131,7 @@ object Strategy {
 
     /** The boom's bookkeeping, once a minute: stage transitions, the probe goal, and one hauler spread. Pure. */
     fun boomTick(plan: Plan, snapshot: Snapshot, now: java.time.Instant, gates: Map<String, List<String>> = emptyMap()): Plan =
-        warpFleetTick(spreadProbes(spreadHaulers(growFleet(growProbes(pruneKits(advanceSystems(plan, snapshot, now), snapshot), snapshot), snapshot), snapshot), snapshot, gates), snapshot)
+        warpFleetTick(spreadProbes(spreadHaulers(growFleet(growProbes(pruneKits(advanceSystems(plan, snapshot, now), snapshot), snapshot), snapshot), snapshot), snapshot, gates), snapshot, gates)
 
     /**
      * Kit goals still in the plan from before the fleet had spare probes go: the spread routes spares
@@ -766,8 +766,15 @@ object Strategy {
      * names the yard they meet at: one in the heavy's system, else the explorer's, else the nearest
      * held yard to the heavy. The two behaviours do the rest.
      */
-    fun warpFleetTick(plan: Plan, snapshot: Snapshot): Plan {
+    fun warpFleetTick(plan: Plan, snapshot: Snapshot, gates: Map<String, List<String>> = emptyMap()): Plan {
         val heavies = plan.assignments.filter { it.behaviour == "refitWarp" && it.params["from"] == null }
+        // Jumps over the gates we know, around the ones known unbuilt; straight-line distance sent A0 on a 28-jump detour on 2026-09-10.
+        fun jumps(from: String?, to: String?): Int? {
+            if (from == null || to == null) return null
+            if (from == to) return 0
+            val gate = snapshot.waypointsIn(from).firstOrNull { it.type == model.system.WaypointType.JUMP_GATE } ?: return null
+            return GateGraph.route(gates, gate.symbol, to, plan.unbuilt.toSet())?.size
+        }
         // An explorer in a system with no gate must be able to warp to a held gate on the fuel it has, or it is a donor in name only
         // (A2 sat in X1-PA74 with 451 fuel, no market, and the nearest gate 521 away on 2026-09-09).
         fun canLeave(donor: Assignment): Boolean {
@@ -783,10 +790,25 @@ object Strategy {
         fun yardIn(system: String?) = system?.let { s -> snapshot.waypointsIn(s).firstOrNull { it.hasShipyard }?.symbol }
         for (heavy in heavies) {
             val hp = pos(heavy.ship)
-            val donor = donors.minByOrNull { d -> val dp = pos(d.ship); if (hp == null || dp == null) Double.MAX_VALUE else engine.Travel.distance(hp.x.toInt(), hp.y.toInt(), dp.x.toInt(), dp.y.toInt()) } ?: break
-            val yard = yardIn(snapshot.ships[heavy.ship]?.nav?.systemSymbol) ?: yardIn(snapshot.ships[donor.ship]?.nav?.systemSymbol)
-                ?: plan.systems.keys.mapNotNull { yardIn(it) }.minByOrNull { y -> val s = snapshot.systems[y.substringBeforeLast('-')]; if (hp == null || s == null) Double.MAX_VALUE else engine.Travel.distance(hp.x.toInt(), hp.y.toInt(), s.x.toInt(), s.y.toInt()) }
-                ?: continue
+            val hs = snapshot.ships[heavy.ship]?.nav?.systemSymbol
+            // The nearest donor by jumps when the map says, by distance when it does not; the yard on whichever side is fewer jumps for the other.
+            fun cost(d: Assignment): Double {
+                val ds = snapshot.ships[d.ship]?.nav?.systemSymbol
+                val byJumps = listOfNotNull(jumps(ds, hs), jumps(hs, ds)).minOrNull()
+                if (byJumps != null) return byJumps.toDouble()
+                val dp = pos(d.ship)
+                return if (hp == null || dp == null) Double.MAX_VALUE else 100 + engine.Travel.distance(hp.x.toInt(), hp.y.toInt(), dp.x.toInt(), dp.y.toInt()) / 100
+            }
+            val donor = donors.minByOrNull { cost(it) } ?: break
+            val ds = snapshot.ships[donor.ship]?.nav?.systemSymbol
+            val toHeavy = jumps(ds, hs)
+            val toDonor = jumps(hs, ds)
+            val yard = when {
+                yardIn(hs) != null && (toDonor == null || (toHeavy != null && toHeavy <= toDonor)) -> yardIn(hs)
+                yardIn(ds) != null && toDonor != null -> yardIn(ds)
+                else -> yardIn(hs) ?: yardIn(ds)
+                    ?: plan.systems.keys.mapNotNull { yardIn(it) }.minByOrNull { y -> val s = snapshot.systems[y.substringBeforeLast('-')]; if (hp == null || s == null) Double.MAX_VALUE else engine.Travel.distance(hp.x.toInt(), hp.y.toInt(), s.x.toInt(), s.y.toInt()) }
+            } ?: continue
             donors -= donor
             next = next.with(heavy.copy(params = heavy.params + mapOf("from" to donor.ship, "at" to yard)))
                 .with(donor.copy(params = donor.params + mapOf("to" to heavy.ship, "at" to yard)))
