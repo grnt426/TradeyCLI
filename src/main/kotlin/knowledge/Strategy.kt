@@ -956,7 +956,8 @@ object Strategy {
         fun hopsFrom(ship: String): Map<String, Int> {
             val system = snapshot.ships[ship]?.nav?.systemSymbol ?: return emptyMap()
             val gate = snapshot.waypointsIn(system).firstOrNull { it.type == model.system.WaypointType.JUMP_GATE } ?: return mapOf(system to 0)
-            return GateGraph.hopsFrom(gates, gate.symbol, CHART_HOPS)
+            // Gates known to be unbuilt are not on the way to anything: a probe sent through one is refused at the jump.
+            return GateGraph.hopsFrom(gates, gate.symbol, CHART_HOPS, plan.unbuilt.toSet())
         }
         // A jump is bought at the local gate's market; when its antimatter is dear the probe charts here or waits.
         fun jumpTooDear(ship: String): Boolean {
