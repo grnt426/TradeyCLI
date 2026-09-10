@@ -83,8 +83,11 @@ object Strategy {
     const val HOME_TRADERS = 2
     const val HAULERS_PER_SYSTEM = 2
 
-    /** Pioneers the frontier has room for right now: at least [PIONEERS], one per open gate, at most [MAX_PIONEERS]. */
-    fun pioneerRoom(plan: Plan?): Int = maxOf(PIONEERS, minOf(MAX_PIONEERS, plan?.frontier?.size ?: 0))
+    /** In LEGACY exploration goes on at half the boom's pace: the charts left are far, and every jump is a request and antimatter. */
+    const val LEGACY_MAX_PIONEERS = 16
+
+    /** Pioneers the frontier has room for right now: at least [PIONEERS], one per open gate, at most [MAX_PIONEERS] ([LEGACY_MAX_PIONEERS] in LATE). */
+    fun pioneerRoom(plan: Plan?): Int = maxOf(PIONEERS, minOf(if (plan?.phase == Phase.LATE) LEGACY_MAX_PIONEERS else MAX_PIONEERS, plan?.frontier?.size ?: 0))
 
     /**
      * The probe goal follows the frontier: a watcher at home plus one pioneer per open gate, so every
@@ -437,7 +440,7 @@ object Strategy {
                 else -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
             }
         }
-        if (phase == Phase.BOOM && forSystem != null) {
+        if (phase != Phase.ESCAPE && forSystem != null) {
             // Born for a system in the boom: probes chart it, then watch it; haulers trade it. Both migrate if bought elsewhere.
             val there = ship.nav.systemSymbol == forSystem
             return when {
@@ -495,7 +498,14 @@ object Strategy {
                 !ship.usesFuel -> Assignment(ship.symbol, "chartSystem")
                 else -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
             }
-            Phase.LATE -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
+            // LEGACY keeps the boom's jobs: warp ships explore, big holds trade where the prices promise most, probes pioneer or chart.
+            Phase.LATE -> when {
+                ship.usesFuel && ship.canWarp -> Assignment(ship.symbol, "warpChart")
+                ship.usesFuel && ship.cargo.capacity >= HEAVY_HOLD -> bestTradingSystem(snapshot.plan ?: Plan(), snapshot, ship)?.let { Assignment(ship.symbol, "trade", mapOf("system" to it)) } ?: Assignment(ship.symbol, "trade")
+                !ship.usesFuel && (snapshot.plan?.assignments?.count { it.behaviour == "pioneer" } ?: 0) < pioneerRoom(snapshot.plan) -> Assignment(ship.symbol, "pioneer")
+                !ship.usesFuel -> Assignment(ship.symbol, "chartSystem")
+                else -> Behaviours.defaultFor(ship)?.let { Assignment(ship.symbol, it) }
+            }
         }
     }
 
@@ -593,10 +603,12 @@ object Strategy {
         // The gate is done: its haulers become the boom's traders.
         behaviour == "supplyGate" && ship.cargo.capacity > 0 -> Assignment(ship.symbol, "trade")
         // Home charted: now read every market once; in the boom a charted system just needs its prices watched.
-        !ship.usesFuel && behaviour == "chartSystem" && phase == Phase.BOOM -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to BOOM_WATCH_MINUTES.toString()))
+        !ship.usesFuel && behaviour == "chartSystem" && phase != Phase.ESCAPE -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to watchMinutes(phase).toString()))
         !ship.usesFuel && behaviour == "chartSystem" -> Assignment(ship.symbol, "probeMarkets")
         // The probe has read every market: park it at a yard and buy the fleet the goals ask for, if any is still unmet.
         !ship.usesFuel && behaviour == "probeMarkets" && goalsUnmet(snapshot) -> Assignment(ship.symbol, "expand")
+        // In LEGACY a watch that finished did so because no trader is there: the prices were read once, and the probe parks (no requests).
+        !ship.usesFuel && behaviour == "probeMarkets" && phase == Phase.LATE -> Assignment(ship.symbol, "park")
         // Otherwise, and when an explorer runs out of map, keep the prices fresh where it stands.
         !ship.usesFuel && (behaviour == "probeMarkets" || behaviour == "explore") -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to (if (phase == Phase.BOOM) BOOM_WATCH_MINUTES else 10).toString()))
         else -> null
@@ -622,6 +634,9 @@ object Strategy {
 
     /** Minutes between a boom watcher's re-reads: with 80 ships the API's budget goes to charts and jumps first (156 rate-limit hits in four hours on 2026-09-07, two thirds of them market reads). */
     const val BOOM_WATCH_MINUTES = 30
+    /** LEGACY re-reads a traded system every hour; prices are for the traders, and requests are the ceiling (Grant, 2026-09-09). */
+    const val LEGACY_WATCH_MINUTES = 60
+    fun watchMinutes(phase: Phase): Int = if (phase == Phase.LATE) LEGACY_WATCH_MINUTES else BOOM_WATCH_MINUTES
     /**
      * Minutes between re-reads in a boom system with no trader in it or bound to it. Fresh prices
      * only pay where a trader can act on them; on 2026-09-08 seventy-one watchers spent 87% of their
@@ -812,6 +827,8 @@ object Strategy {
     const val RELOCATE_RATIO = 3.0
     /** Minutes a trader gives a system before it looks elsewhere: long enough to take the top routes it came for. */
     const val TRADER_DWELL_MINUTES = 15L
+    /** How old a price may be when a system is valued for a move (a purchase still needs a fresh one): with watchers parked in LEGACY, day-old is what there is. */
+    const val VALUATION_HOURS = 24L
 
     fun isTrader(a: Assignment, snapshot: Snapshot): Boolean = a.behaviour == "trade" && snapshot.ships[a.ship]?.let { it.usesFuel && it.cargo.capacity >= 40 } == true
     fun slotsOf(ship: Ship): Int = if (ship.cargo.capacity >= HEAVY_HOLD) TRADER_SLOTS_PER_SYSTEM else 1
@@ -831,7 +848,8 @@ object Strategy {
         val waypoints = snapshot.waypointsIn(system)
         val there = waypoints.firstOrNull { it.type == model.system.WaypointType.JUMP_GATE } ?: waypoints.firstOrNull { it.hasMarket } ?: return 0.0
         val visitor = ship.copy(nav = ship.nav.copy(systemSymbol = system, waypointSymbol = there.symbol), fuel = ship.fuel.copy(current = ship.fuel.capacity))
-        return behaviour.decisions.Trading.rank(snapshot, visitor, now, assumptions).take(3)
+        // A day-old price is a fair guess of a system's worth; the trader reads the markets itself on arrival before it buys.
+        return behaviour.decisions.Trading.rank(snapshot, visitor, now, assumptions.copy(maxPriceAge = java.time.Duration.ofHours(VALUATION_HOURS))).take(3)
             .mapIndexed { i, p -> p.creditsPerHour / (1 shl i) }.sum()
     }
 
@@ -972,6 +990,7 @@ object Strategy {
             val stranded = snapshot.ships[spare.ship]?.nav?.systemSymbol?.let { s -> snapshot.waypointsIn(s).isNotEmpty() && snapshot.waypointsIn(s).none { it.type == model.system.WaypointType.JUMP_GATE } } == true
             next = when {
                 need != null -> next.with(Assignment(spare.ship, "chartSystem", mapOf("system" to need)))
+                spare.ship in lone && plan.phase == Phase.LATE && spare.behaviour != "park" -> next.with(Assignment(spare.ship, "park")) // LEGACY: read once, then no requests
                 spare.ship in lone -> break // the system's only eyes: charts or nothing
                 stranded && spare.behaviour == "park" -> break
                 stranded -> next.with(Assignment(spare.ship, "park")) // no gate to leave by: a probe in a warp-only system stays
@@ -990,7 +1009,7 @@ object Strategy {
     fun describe(phase: Phase): String = when (phase) {
         Phase.ESCAPE -> "ESCAPE: market health first; profits fund the logistics that keep producers fed and the gate supplied"
         Phase.BOOM -> "BOOM: the gate is open; probes explore and chart, traders drain fresh systems"
-        Phase.LATE -> "LATE: profit first with soft health weights; measuring where markets tip"
+        Phase.LATE -> "LEGACY: the boom's fleet and warp fleet run on, requests are the ceiling: probes read once and park, traders move on day-old prices and survey on arrival"
     }
 
     /** The type a ship counts as for fleet goals, for callers without a scope. */

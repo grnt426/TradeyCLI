@@ -72,6 +72,17 @@ opposite: loosen the weights on purpose and record where each market tips, so th
 numbers. Every market reading already lands in `market_prices` with supply and activity, so the
 measurement is the ordinary run; the analysis is a query over that table.
 
+## LEGACY (the third phase, entered 2026-09-10 00:30 UTC)
+
+The boom's tick runs on unchanged: the warp-only fleet's goals and pairing, trader rotation, the
+spread of probes. What changes is that requests, not markets, are the ceiling (5% refused at 1.9
+a second with 420 ships). A probe reads a system's markets once and parks unless a trader is there,
+where it re-reads every `LEGACY_WATCH_MINUTES` (60); pioneers are capped at `LEGACY_MAX_PIONEERS`
+(16); a trader chooses its next system on prices up to `VALUATION_HOURS` (24) old and surveys on
+arrival before it buys. Entered by hand (`phase` LATE in `plan.json`) when chart probes ran out of
+reachable charts and became 198 watchers, income fell from 34M to 17M an hour and MAWHRIN-SKEL
+passed us at 1.01B to 0.99B.
+
 ## The experiment (from 2026-09-04)
 
 TRIPLEHAT (VOID, X1-TH77) got the phased plan late, after a day of blended strategy.

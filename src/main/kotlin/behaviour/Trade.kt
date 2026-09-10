@@ -78,7 +78,7 @@ suspend fun BehaviourScope.trade() {
         // A fresh system pays a heavy 3-7M in its first hour and 200k an hour from its third (2026-09-08): once this
         // system is drained, a neighbour within two jumps that promises several times more is worth the jump. Greedy,
         // and after a dwell, so the ship takes the routes it came for before it looks over the fence.
-        if (shared.plan.phase == Phase.BOOM && onlyGood == null && Duration.between(arrivedAt, now).toMinutes() >= knowledge.Strategy.TRADER_DWELL_MINUTES) {
+        if (shared.plan.phase != Phase.ESCAPE && onlyGood == null && Duration.between(arrivedAt, now).toMinutes() >= knowledge.Strategy.TRADER_DWELL_MINUTES) {
             val localRate = plan?.creditsPerHour ?: 0.0
             val better = knowledge.Strategy.betterSystem(shared.plan, snapshot(), me, shared.gates, shared.unreachableGates, now, assumptions, localRate)
             if (better != null) {
@@ -91,9 +91,10 @@ suspend fun BehaviourScope.trade() {
             }
         }
         if (plan == null) {
-            // In a system nobody of ours has read, read it once ourselves before waiting on a probe.
+            // In a system nobody of ours has read, or whose prices are too old to buy on, read it once ourselves before waiting on a probe.
             val system = me.nav.systemSymbol
-            if (!surveyed && snapshot().pricedMarketsIn(system).size < 3) {
+            val fresh = now.minus(assumptions.maxPriceAge)
+            if (!surveyed && snapshot().pricedMarketsIn(system).count { !it.lastRead.isBefore(fresh) } < 3) {
                 surveyed = true
                 phase("survey", system) { surveyMarkets(system) }
                 continue

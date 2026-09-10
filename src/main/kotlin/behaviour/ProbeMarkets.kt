@@ -41,7 +41,13 @@ suspend fun BehaviourScope.surveyMarkets(system: String, only: Set<String>? = nu
         val now = clock.now()
         // Watching a boom system nobody trades in is slowed right down: the prices are for the traders, and the requests are scarce.
         val maxAge = watchEvery?.let { wanted ->
-            if (shared.plan.phase == Phase.BOOM && knowledge.Strategy.traderSlots(shared.plan, snap, system) == 0) maxOf(wanted, knowledge.Strategy.BOOM_IDLE_WATCH_MINUTES.minutes) else wanted
+            val noTrader = knowledge.Strategy.traderSlots(shared.plan, snap, system) == 0
+            when {
+                // LEGACY: prices nobody trades on are read once; the probe finishes and parks.
+                noTrader && shared.plan.phase == Phase.LATE -> null
+                noTrader && shared.plan.phase == Phase.BOOM -> maxOf(wanted, knowledge.Strategy.BOOM_IDLE_WATCH_MINUTES.minutes)
+                else -> wanted
+            }
         }
         val stale = maxAge?.let { now.minusSeconds(it.inWholeSeconds) }
         // A market that showed nothing is tried again after maxAge (the ship may not have counted as present); without maxAge it is skipped for good.
