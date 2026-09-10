@@ -605,8 +605,9 @@ object Strategy {
         // Home charted: now read every market once; in the boom a charted system just needs its prices watched.
         !ship.usesFuel && behaviour == "chartSystem" && phase != Phase.ESCAPE -> Assignment(ship.symbol, "probeMarkets", mapOf("maxAge" to watchMinutes(phase).toString()))
         !ship.usesFuel && behaviour == "chartSystem" -> Assignment(ship.symbol, "probeMarkets")
-        // The probe has read every market: park it at a yard and buy the fleet the goals ask for, if any is still unmet.
-        !ship.usesFuel && behaviour == "probeMarkets" && goalsUnmet(snapshot) -> Assignment(ship.symbol, "expand")
+        // The probe has read every market: park it at a yard and buy the fleet the goals ask for, if any is still unmet and
+        // nobody else is buying (145 probes became buyers at once on 2026-09-10 and set off for three yards across the map).
+        !ship.usesFuel && behaviour == "probeMarkets" && goalsUnmet(snapshot) && snapshot.plan?.assignments?.none { it.behaviour == "expand" && it.ship != ship.symbol } != false -> Assignment(ship.symbol, "expand")
         // In LEGACY a watch that finished did so because no trader is there: the prices were read once, and the probe parks (no requests).
         !ship.usesFuel && behaviour == "probeMarkets" && phase == Phase.LATE -> Assignment(ship.symbol, "park")
         // Otherwise, and when an explorer runs out of map, keep the prices fresh where it stands.
