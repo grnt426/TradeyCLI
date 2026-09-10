@@ -191,7 +191,9 @@ object Strategy {
      * ESCAPE the budget is slack and market health decides, so there is no floor.
      */
     const val MIN_CREDITS_PER_REQUEST = 5_000.0
-    fun requestFloor(phase: Phase): Double = if (phase == Phase.ESCAPE) 0.0 else MIN_CREDITS_PER_REQUEST
+    /** LEGACY, where requests are the whole ceiling: a light hauler's 65k load at ten requests no longer clears it, a heavy's 200k does (Grant, 2026-09-10: cut the refusals). */
+    const val LEGACY_CREDITS_PER_REQUEST = 8_000.0
+    fun requestFloor(phase: Phase): Double = when (phase) { Phase.ESCAPE -> 0.0; Phase.BOOM -> MIN_CREDITS_PER_REQUEST; Phase.LATE -> LEGACY_CREDITS_PER_REQUEST }
 
     fun trading(phase: Phase, minMarginPerUnit: Int? = null, minMarginRatio: Double? = null, snapshot: Snapshot? = null): TradingAssumptions = TradingAssumptions(
         minMarginPerUnit = minMarginPerUnit ?: 20,
